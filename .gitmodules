@@ -1,3 +1,9 @@
 [submodule "deps/yaml-cpp"]
 	path = deps/yaml-cpp
 	url = https://github.com/jbeder/yaml-cpp.git
+[submodule "deps/andersen"]
+	path = deps/andersen
+	url = git@github.com:efeslab/andersen.git
+[submodule "deps/pmtest"]
+	path = deps/pmtest
+	url = git@github.com:efeslab/pmtest.git
