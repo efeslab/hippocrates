@@ -1,0 +1,58 @@
+#! /usr/bin/env python3
+
+from argparse import ArgumentParser
+from IPython import embed
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+import os
+import shlex
+import subprocess
+import sys
+import yaml
+
+def run_pass(args):
+    # iangneal: inserted by CMAKE
+    pass_library = Path(r'${FUNCTION_CLEANER_PATH}')
+
+    if not pass_library.exists():
+        raise Exception(r'Path ${LLVM_PASS_PATH} does not exist!')
+
+    if 'LLVM_COMPILER_PATH' not in os.environ:
+        raise Exception('Please export "LLVM_COMPILER_PATH", as you would for wllvm')
+    
+    llvm_path = Path(os.environ['LLVM_COMPILER_PATH']).absolute()
+    if not llvm_path.exists():
+        raise Exception(f'LLVM_COMPILER_PATH="{str(llvm_path)}"" does not exist!')
+
+    # Do some setup before we create the temporary directory
+
+    # 1. opt to run the remover
+    opt_exe = llvm_path / 'opt'
+    assert(opt_exe.exists())
+
+    opt_arg_str =(f'{str(opt_exe)} -load {str(pass_library)} '
+                  f'-function-cleaner -o {str(args.output_file)} {str(args.bitcode_file)}')
+
+    opt_args = shlex.split(opt_arg_str)
+    ret = subprocess.run(opt_args)
+    ret.check_returncode()
+
+
+def main(): 
+    parser = ArgumentParser(description='Apply the flush-remover LLVM pass to a given binary.')
+
+    parser.add_argument('bitcode_file', type=Path, 
+                        help='The bitcode of the program that needs to be fixed')
+    parser.add_argument('--output-file', '-o', type=Path,
+                        help='Optional output of where to put cleaned bitcode.')
+
+    args = parser.parse_args()
+    assert args.bitcode_file.exists(), f'Cannot find {str(args.bitcode_file)}!'
+    if not hasattr(args, 'output_file'):
+        args.output_file = args.bitcode_file.parent / f'{args.bitcode_file.name}.cleaned'
+
+    run_pass(args)
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,30 @@
+[submodule "deps/yaml-cpp"]
+	path = deps/yaml-cpp
+	url = https://github.com/jbeder/yaml-cpp.git
+[submodule "deps/andersen"]
+	path = deps/andersen
+	url = https://github.com/efeslab/andersen.git
+[submodule "deps/pmtest"]
+	path = deps/pmtest
+	url = https://github.com/efeslab/pmtest.git
+[submodule "deps/pmdk"]
+	path = deps/pmdk
+	url = https://github.com/efeslab/pmdk.git
+[submodule "deps/valgrind-pmem"]
+	path = deps/valgrind-pmem
+	url = https://github.com/efeslab/valgrind.git
+[submodule "deps/RECIPE"]
+	path = deps/RECIPE
+	url = https://github.com/efeslab/RECIPE.git
+[submodule "deps/whole-program-llvm"]
+	path = deps/whole-program-llvm
+	url = https://github.com/efeslab/whole-program-llvm.git
+[submodule "deps/redis"]
+	path = deps/redis
+	url = https://github.com/efeslab/redis-pmem.git
+[submodule "deps/memcached-pmem"]
+	path = deps/memcached-pmem
+	url = https://github.com/efeslab/memcached-pmem
+[submodule "deps/YCSB"]
+	path = deps/YCSB
+	url = https://github.com/brianfrankcooper/YCSB.git

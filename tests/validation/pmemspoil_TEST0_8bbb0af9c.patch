@@ -1,0 +1,9 @@
+43,44c43
+< require_fs_type pmem non-pmem
+< require_build_type nondebug
+---
+> require_fs_type pmem 
+46a46,48
+> 
+> PMEMPOOL=./pmempool
+> PMEMSPOIL=./pmemspoil$EXESUFFIX

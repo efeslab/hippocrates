@@ -1,0 +1,17 @@
+60,75d59
+< export PMEM_AVX512F=1
+< 
+< test_all
+< 
+< export PMEM_AVX=1
+< 
+< test_all
+< 
+< export PMEM_NO_MOVNT=1
+< 
+< test_all
+< 
+< export PMEM_NO_GENERIC_MEMCPY=1
+< 
+< test_all
+< 

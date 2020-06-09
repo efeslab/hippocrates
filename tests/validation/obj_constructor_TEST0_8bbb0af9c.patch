@@ -1,0 +1,4 @@
+47c47
+< require_fs_type any
+---
+> require_fs_type pmem

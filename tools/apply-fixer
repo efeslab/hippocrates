@@ -1,0 +1,165 @@
+#! /usr/bin/env python3
+
+from argparse import ArgumentParser
+from IPython import embed
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
+import logging
+import time
+import os
+import psutil
+import shlex
+import subprocess
+import sys
+import yaml
+
+def get_linker_strings():
+    # iangneal: inserted by CMAKE
+    pmtest_library = Path(r'${PMTEST_LIBS}')
+    
+    if not pmtest_library.exists():
+        raise Exception(r'Path ${PMTEST_LIBS} does not exist!')
+
+    pmdk_required = ['daxctl', 'ndctl', 'rt', 'dl', 'unwind', 'lzma', 'event']
+    pmdk_str = ' '.join(['-l'+lib for lib in pmdk_required])
+    pmtest = str(pmtest_library.absolute())
+    return f'-L{pmtest} -Wl,-rpath={pmtest} -lpmtest -lpthread {pmdk_str}'
+
+def run_pass_and_compile(args):
+    # iangneal: inserted by CMAKE
+    pass_library = Path(r'${LLVM_PASS_PATH}')
+
+    if not pass_library.exists():
+        raise Exception(r'Path ${LLVM_PASS_PATH} does not exist!')
+
+    if 'LLVM_COMPILER_PATH' not in os.environ:
+        raise Exception('Please export "LLVM_COMPILER_PATH", as you would for wllvm')
+    
+    llvm_path = Path(os.environ['LLVM_COMPILER_PATH']).absolute()
+    if not llvm_path.exists():
+        raise Exception(f'LLVM_COMPILER_PATH="{str(llvm_path)}"" does not exist!')
+
+    # Do some setup before we create the temporary directory
+    # 0. link with the persistent memory intrinsics, the fixer needs them.
+    link_exe = llvm_path / 'llvm-link'
+    assert link_exe.exists()
+    pm_intrinsics = Path(r'${PMINTRINSICS_BITCODE}')
+    assert pm_intrinsics.exists(), f'${pm_intrinsics.name} does not exist! Bad build!'
+    link_arg_str_fn = lambda out: (f'{str(link_exe)} {str(args.bitcode_file)} '
+                                   f'{str(pm_intrinsics)} -o {str(out)}')
+
+    # 1. opt to run the fixer
+    opt_exe = llvm_path / 'opt'
+    assert(opt_exe.exists())
+
+    opt_arg_str_fn = lambda bc: (f'{str(opt_exe)} -load {str(pass_library)} '
+                                 f'-pm-bug-fixer -trace-file {str(args.bug_report)} '
+                                 f'{args.extra_opt_args} {str(bc)}')
+    
+    # 2. llc to compile the optimized bitcode
+    llc_exe = llvm_path / 'llc'
+    assert(llc_exe.exists())
+
+    llc_arg_str = '-O=0 -mcpu=skylake -mattr=+clwb'
+    llc_arg_str_fn = lambda bc: f'{str(llc_exe)} {llc_arg_str} {str(bc)}'
+
+    # 3. clang to compile the assembly file and link libraries.
+    clang_exe = llvm_path / 'clang'
+    if args.cxx:
+        clang_exe = llvm_path / 'clang++'
+
+    assert(clang_exe.exists())
+    cc_arg_str = '-g -O0'
+
+    clang_arg_str_fn = lambda asm: (f'{str(clang_exe)} {cc_arg_str} {str(asm)}'
+                f' {get_linker_strings()} -o {str(args.output_file)}')
+    
+    def do_all(tempdir, output_file, skip_fixer):
+        temppath = Path(tempdir)
+        assert(temppath.exists())
+        # 0. Link
+        bitcode_linked = temppath / f'{output_file.name}_linked.bc'
+        args = shlex.split(link_arg_str_fn(bitcode_linked))
+        ret = subprocess.run(args)
+        ret.check_returncode()
+        assert bitcode_linked.exists(), 'nonsense!'
+
+        # 1. Fix
+        bitcode_opt = bitcode_linked
+        if not skip_fixer:
+            bitcode_opt = temppath / f'{output_file.name}_fixed.bc' 
+            args = shlex.split(opt_arg_str_fn(bitcode_linked))
+            # iangneal: We also vaguely want to know the time/space complexity of this.
+            proc = subprocess.Popen(args, stdout=bitcode_opt.open('w'))
+            ps_proc = psutil.Process(proc.pid)
+            rss = 0
+            while proc.poll() is None:
+                rss = max(rss, ps_proc.memory_info().rss)
+                time.sleep(0.1)
+            
+            # iangneal: now log
+            elapsed = time.time() - ps_proc.create_time()
+            logging.info(f'\nFixer stats for "{" ".join(args)}":')
+            logging.info('Fixer time: %s (%f seconds)', 
+                time.strftime("%H:%M:%S", time.gmtime(elapsed)), elapsed)
+            logging.info(f'Fixer mem: {rss / (1024 ** 2)} MB')
+            logging.info(f'Fixer return code: {proc.returncode}')
+
+            if proc.returncode:
+                print(' '.join(args))
+            assert proc.returncode == 0, 'fixer failed!'
+            assert bitcode_opt.exists(), 'nonsense!'
+        
+        # 2. Compile to machine code
+        args = shlex.split(llc_arg_str_fn(bitcode_opt))
+        ret = subprocess.run(args)
+        ret.check_returncode()
+        asm_path = temppath / f'{output_file.name}_linked.s'
+        if not skip_fixer:
+            asm_path = temppath / f'{output_file.name}_fixed.s'
+        assert(asm_path.exists())
+
+        # 3. Compile to executable.
+        args = shlex.split(clang_arg_str_fn(asm_path))
+        ret = subprocess.run(args)
+        ret.check_returncode()
+        assert(output_file.exists())
+
+    if not args.keep_files:
+        with TemporaryDirectory() as tempdir:
+            do_all(tempdir, args.output_file, args.compile_only)
+    else:
+        print(f'Not writing to temp dir, instead to {str(args.output_file.parent)}')
+        do_all(args.output_file.parent, args.output_file, args.compile_only)
+        
+
+
+def main(): 
+    parser = ArgumentParser(description='Apply the pm-bug-fixer LLVM pass to a given binary.')
+
+    parser.add_argument('bitcode_file', type=Path, help='The bitcode of the program that needs to be fixed')
+    parser.add_argument('bug_report', type=Path, 
+                        help='The bug report, as generated by parse-trace')
+    parser.add_argument('--output-file', '-o', type=Path, default=Path('a.out'), 
+                        help='Optional output of where to put the compiled binary.')
+    parser.add_argument('--keep-files', '-k', action='store_true', default=False,
+                        help='Doesn\'t delete temporary files. Helpful for debugging.')
+    parser.add_argument('--cxx', action='store_true', default=False,
+                        help='Use clang++ rather than clang')
+    parser.add_argument('--extra-opt-args', type=str, default='',
+                        help='Extra args to pass to the fixer')
+    parser.add_argument('--log-file', type=Path, default=Path('./apply_fixer.log'),
+                        help=f'Where to log {__file__} information')
+
+    parser.add_argument('--compile-only', action='store_true',
+                        help='Only compile, no PMFIXER pass.')
+
+    args = parser.parse_args()
+    logging.basicConfig(filename=str(args.log_file), level=logging.DEBUG)
+
+    run_pass_and_compile(args)
+
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,429 @@
+#! /usr/bin/env python3
+'''
+    This script fully automates running tests, applying the fixer, and 
+    validating that the fixed binaries no longer report bugs.
+'''
+
+from argparse import ArgumentParser
+from copy import deepcopy
+from enum import Enum, auto
+from IPython import embed
+from multiprocessing import cpu_count, Pool, RLock
+from multiprocessing.managers import SyncManager
+from pathlib import Path
+from pprint import pprint
+from progress.bar import ChargingBar as Bar
+from subprocess import DEVNULL, PIPE, STDOUT
+from time import sleep  
+from types import MethodType as method, ModuleType as module
+
+import os
+import shlex
+import subprocess
+import yaml
+import multiprocessing
+
+def assert_is_type(x, t):
+    assert isinstance(x, t), f'"{x}" is type {type(x)}, not {t}'
+ 
+def assert_is_path(*args):
+    for x in args:
+        assert_is_type(x, Path)
+
+
+class ToolTypes(Enum):
+    PMTEST = auto()
+    PMEMCHECK = auto()
+    PMDK_UNIT_TEST = auto()
+    NONE = auto()
+
+class TestResult(Enum):
+    PASS = auto()
+    FAIL = auto()
+
+
+class ToolRunner:
+    def __init__(self, target_name, exe_path, bc_path, tool_type, suite, issue):
+        assert_is_path(exe_path, bc_path)
+        assert_is_type(tool_type, ToolTypes)
+        self.pmemcheck_path = Path(r'${PMCHK_BIN_DIR}/valgrind')
+        assert self.pmemcheck_path.exists(), f'{str(self.pmemcheck_path)} does not exist!'
+
+        self.exe_path = exe_path
+        self.bc_path = bc_path
+        self.tool_type = tool_type
+        self.suite = suite
+        self.target = target_name
+        self.issue = issue
+        self.use_trace_aa = False
+        self.do_compile = True
+        self.verbose = False
+
+        fixed_postfix = '.fixed'
+        if tool_type == ToolTypes.PMDK_UNIT_TEST:
+            fixed_postfix = '.static-debug'
+        self.exe_fixed_path = Path(str(exe_path) + fixed_postfix)
+
+    def in_suite(self, suite):
+        if suite == 'all' or suite == self.suite:
+            return True
+        return False
+
+    def set_trace_aa(self, use_trace_aa):
+        self.use_trace_aa = use_trace_aa
+
+    def set_compile(self, do_compile):
+        self.do_compile = do_compile
+
+    def set_verbose(self, is_verbose):
+        self.verbose = is_verbose
+
+    def _run_pmtest(self):
+        raise Exception('Not implemented!')
+
+    def _run_pmemcheck(self):
+        raise Exception('Not implemented!')
+
+    def _does_not_contain_pmemcheck_bugs(self, logfile):
+        with logfile.open() as f:
+            last_line = f.readlines()[-1]
+            return 'ERROR SUMMARY: 0 errors' in last_line
+
+    def _run_pmdk_unit_test(self):
+        '''
+            Run a PMDK unit test.
+
+            Return the fix summary file on success.
+        '''
+        # Per-user temp directory
+        import getpass
+        tmp_dir = Path(f'/tmp/{getpass.getuser()}')
+        if not tmp_dir.exists():
+            tmp_dir.mkdir()
+
+        # Need to set the PATH so the scripts can find the pmemcheck tool
+        new_env = deepcopy(os.environ)
+        if 'LD_LIBRARY_PATH' not in new_env:
+            new_env['LD_LIBRARY_PATH'] = f'{str(self.exe_path.parent)}'
+        else:
+            new_env['LD_LIBRARY_PATH'] += f':{str(self.exe_path.parent)}'
+        new_env['PATH'] = f'{str(self.pmemcheck_path.parent)}:{new_env["PATH"]}'
+
+        subproc_kwargs = {'stdout': DEVNULL, 'stderr': DEVNULL}
+        if self.verbose:
+            subproc_kwargs = {}
+
+        # -1. Parse some values
+        test_file = self.exe_path.parent.name.split("_")[-2]
+        assert 'TEST' in test_file, 'Bad parsing!'
+        test_num = test_file.replace('TEST', '')
+        assert test_num.isnumeric(), 'Bad parsing!'
+        test_num = int(test_num)
+
+        # 0. Cleanup old logs, if any.
+        pmemcheck_log = self.exe_path.parent / f'pmemcheck{test_num}.log'
+        if pmemcheck_log.exists():
+            pmemcheck_log.unlink()
+
+        # 0.5 Export environment variables continually
+        new_env['UNITTEST_NUM'] = f'{test_num}'
+        new_env['UNITTEST_NAME'] = f'TEST{test_num}'
+
+        # 1. Run initial test
+        runtests_str = f'./RUNTESTS_{self.exe_path.parent.name}' 
+        runtests_args = shlex.split(f'{runtests_str} -b debug -p force-enable {self.exe_path.parent.name} -s {test_file}')
+        if self.verbose:
+            print('\tRunning initial unit test')
+
+        res = subprocess.run(runtests_args, cwd=self.exe_path.parent.parent, 
+                             env=new_env, **subproc_kwargs)
+
+        assert pmemcheck_log.exists(), f'pmemcheck log "{str(pmemcheck_log)}" does not exist!'
+
+        if res.returncode == 0:
+            assert not self._does_not_contain_pmemcheck_bugs(pmemcheck_log), 'Test was successful, meaning no bugs!'
+
+        # os.sync()
+
+        # 2. Get trace from log file
+        assert pmemcheck_log.exists(), 'Log not created!'
+        parse_script = Path(__file__).parent.absolute() / 'parse-trace'
+        assert parse_script.exists(), 'parser not available!'
+        trace_file = pmemcheck_log.parent / f'pmemcheck{test_num}.trace'
+        parse_arg_str = f'{str(parse_script)} pmemcheck {str(pmemcheck_log)} -o {str(trace_file)}'
+        parse_args = shlex.split(parse_arg_str)
+        if self.verbose:
+            print('\tRunning trace parsing')
+            print(f'\t\t{parse_arg_str}')
+
+        res = subprocess.run(parse_args, **subproc_kwargs)
+        res.check_returncode()
+        assert trace_file.exists()
+
+        # 3. Link the bitcode with the library so that opt can find the functions.
+        # -- First, ensure bitcode was auto-extracted properly.
+        # -- We DON'T extract here for build reasons.
+        shared_objects = [f for f in self.exe_path.parent.iterdir() if '.so' in f.name and '.bc' not in f.name]
+        shared_bc = [f.parent / (f.name + '.bc') for f in shared_objects]
+
+        # --- Get the required libraries
+        ldd_args = shlex.split(f'ldd {str(self.exe_path)}')
+        res = subprocess.run(ldd_args, stdout=PIPE, stderr=DEVNULL)
+        res.check_returncode()
+
+        libs = [ l.strip().split()[0] for l in res.stdout.decode().split('\n') if l]
+        self.bc_linked_path = self.bc_path.parent / (self.bc_path.name + '.linked')
+
+        # --- Report which libraries didn't pull through
+        to_link = []
+        for lib in libs:
+            matching_bc = [bc for bc in shared_bc if lib in bc.name]
+            if not matching_bc:
+                # if self.verbose:
+                #     print(f'Could not link {lib}. Continuing...')
+                continue
+
+            assert len(matching_bc) == 1, f'Too many options!'
+            bc = matching_bc[0]
+            assert bc.exists(), f'Bad cmake build! {bc.name} does not exist!'
+            to_link += [bc]
+
+        argstr = f'llvm-link-8 -o {str(self.bc_linked_path)} {str(self.bc_path)}'
+        for bc in to_link:
+            argstr += f' --override={str(bc)}'
+            
+        link_args = shlex.split(argstr)
+        res = subprocess.run(link_args)
+        res.check_returncode()
+
+        # 4. Run the fixer script
+        summary_file = f'{self.exe_path.parent.name}_summary.txt'
+
+        fixer_script = Path(__file__).parent.absolute() / 'apply-fixer'
+        if self.exe_fixed_path.exists():
+            self.exe_fixed_path.unlink()
+        
+        aa_str = '-heuristic-raising -trace-aa ' if self.use_trace_aa else '-heuristic-raising'
+        fixer_arg_str = (f'{str(fixer_script)} {str(self.bc_linked_path)} '
+            f'{str(trace_file)} -o {str(self.exe_fixed_path)} --extra-opt-args='
+            f'"-fix-summary-file={summary_file} {aa_str}"')
+        if self.verbose:
+            print('\tRunning HIPPOCRATES (automated fixing)')
+            print(f'\t\t{fixer_arg_str}')
+
+        fixer_args = shlex.split(fixer_arg_str)
+        res = subprocess.run(fixer_args, **subproc_kwargs)
+        res.check_returncode()
+        assert self.exe_fixed_path.exists(), 'Fixer did not succeed!'
+
+        # 5. Re-run the unit tests, see if we fixed it!
+        runtests_str = f'{runtests_str} -b static-debug -p force-enable {self.exe_path.parent.name} -s {test_file}'
+        runtests_args = shlex.split(runtests_str)
+        if self.verbose:
+            print('\tRunning fixed unit test')
+            print(f'\t\t{runtests_str}')
+
+        res = subprocess.run(runtests_args, cwd=self.exe_path.parent.parent, 
+                             env=new_env, **subproc_kwargs)
+
+        if self.verbose:                     
+            print(f'\tSummary file: {summary_file}')
+
+        if res.returncode != 1:
+           assert self._does_not_contain_pmemcheck_bugs(pmemcheck_log), 'Still contains bugs!'
+
+        summary_path = Path(summary_file)
+        assert summary_path.exists()
+        return summary_path
+
+    def _compile(self, do_print=True):
+        '''
+            Automatically builds/rebuilts the target test case so that it runs
+            properly.
+        '''
+        build_dir = r'${CMAKE_BINARY_DIR}'
+        argstr = f'make -C {build_dir} {self.target} -j {cpu_count()}'
+        if do_print:
+            print(f'\tCompiling: {argstr}')
+        proc = subprocess.run(shlex.split(argstr), stdout=DEVNULL, stderr=DEVNULL)
+        proc.check_returncode()
+
+    def run(self):
+        '''
+            Run the test. Return the summary file path if successful, or None
+        '''
+        # print(f'{self.exe_path}: {self.tool_type.name}')
+        # assert self.exe_path.exists(), f'{self.exe_path.name} does not exist!'
+        # assert self.bc_path.exists(), f'{self.bc_path.name} was not extracted!'
+        if self.do_compile:
+            self._compile()
+
+        if self.tool_type == ToolTypes.PMTEST:
+            return self._run_pmtest()
+        elif self.tool_type == ToolTypes.PMEMCHECK:
+            return self._run_pmemcheck()
+        elif self.tool_type == ToolTypes.PMDK_UNIT_TEST:
+            return self._run_pmdk_unit_test()
+        else:
+            return None
+
+def get_test_list():
+    '''
+        List of:
+            (test_executable, test_bitcode, tool_to_use)
+    '''
+    target_list = r'${TEST_TARGET_LIST}'.split(';')
+    exe_list = [ Path(x) for x in r'${TEST_EXE_LIST}'.split(';') ]
+    bc_list = [ Path(x) for x in r'${TEST_BC_LIST}'.split(';') ]
+    tool_list = [ ToolTypes[x] for x in r'${TEST_TOOL_LIST}'.split(';') ]
+    suite_list = [ x.lower() for x in r'${TEST_SUITE_LIST}'.split(';') ]
+    issue_list = [ int(x) for x in r'${ISSUE_LIST}'.split(';')]
+
+    # Do some sanity checking 
+
+    for x, y in zip(exe_list, bc_list):
+        assert (f'{str(x)}.bc' == str(y)), f'{str(x)}.bc != {str(y)}'
+        # assert x.exists(), f'{x} must be built!'
+        # assert y.exists(), f'{y} must be extracted!'
+    
+    for s in suite_list:
+        assert s, 'Suite cannot be empty!'
+
+    suites = set(suite_list + ['all'])
+
+    test_list = list(zip(target_list, exe_list, bc_list, tool_list, suite_list, issue_list))
+
+    return test_list, sorted(target_list), sorted(list(suites))
+
+def run_test(runner):
+    '''
+        Given a test runner, run the test!
+
+        Return the summary path, or raise exception
+    '''
+    summary_path = runner.run()
+    if summary_path is None:
+        raise Exception(f'{runner.target} failed!')
+    return summary_path
+
+
+def _run_test_runner_parallel(arg_tuple):
+    r, is_dry_run = arg_tuple
+    if is_dry_run:
+        import time
+        # import random
+        time.sleep(float(r.issue) / 100)
+    else:
+        # Ignore the summary path.
+        run_test(r)
+
+    global lock, bar
+    lock.acquire()
+    bar.next()
+    lock.release()
+
+    return r.issue
+
+def pool_init(the_bar, bar_lock):
+    global bar, lock
+    bar = the_bar
+    lock = bar_lock
+    bar.start()
+
+def run_all(args, test_list):
+    runners = []
+    for target, exe, bc, tool, suite, issue in test_list:
+        r = ToolRunner(target, exe, bc, tool, suite, issue)
+        r.set_compile(not args.disable_compile)
+        r.set_verbose(args.verbose)
+        if not r.in_suite(args.suite):
+            if args.verbose:
+                print(f'{r.target} in suite {r.suite}, skipping')
+        else:
+            runners += [r]
+
+    assert runners, 'No tests to run!'
+
+    TheBar = lambda cls, x: cls(f'{x}:', suffix='[%(index)d/%(max)d] ETA: %(eta)ds', max=len(runners)) 
+
+    with TheBar(Bar, 'Compiling Tests') as bar:
+        # Compilation needs to be done in a single-thread
+        for r in runners:
+            if r.do_compile:
+                r._compile(do_print=False)
+                r.do_compile = False
+            bar.next()
+
+    SyncManager.register('Bar', Bar)
+
+    # Parallelize the actual testing
+    with SyncManager() as manager:
+        if args.verbose and args.dry_run:
+            print(f'Parallelized dry run of {len(runners)} items')
+
+        bar_lock = manager.RLock()
+        bar = TheBar(manager.Bar, 'Running Tests')
+        with Pool(initializer=pool_init, initargs=(bar, bar_lock,)) as p:
+
+            args = [(r, args.dry_run) for r in runners]
+            res = p.map_async(_run_test_runner_parallel, args)
+            while not res.ready():
+                bar_lock.acquire()
+                bar.update()
+                bar_lock.release()
+
+                res.wait(1.0)
+            
+            issues = res.get()
+            assert_is_type(issues, list)
+        
+        bar.finish()
+    
+    issues_resolved = sorted(list(set(issues)))
+
+    print(f'\n\n\n{len(issues_resolved)} issues resolved:')
+    print(issues_resolved)
+
+
+def run_target(args, test_list):
+    for target, exe, bc, tool, suite, issue in test_list:
+        r = ToolRunner(target, exe, bc, tool, suite, issue)
+        r.set_compile(not args.disable_compile)
+        r.set_verbose(args.verbose)
+        if r.target == args.target:
+            if args.dry_run:
+                print('\tDry run, skip!')
+            else:
+                path = run_test(r)
+                print('\tTest success!')
+                if args.verbose:
+                    with path.open() as f:
+                        print('Fix summary file contents:\n')
+                        print(f.read())
+
+def main():
+    test_list, targets, suites = get_test_list()
+
+    parser = ArgumentParser(description=(r'Verify the ${CMAKE_PROJECT_NAME} by '
+        'running tests, applying fixes, then verifying all the bugs are gone.'))
+    parser.add_argument('suite', type=str, choices=suites, default='passing',
+                        nargs='?', help='Which set of tests to run')
+    parser.add_argument('--target', '-t', type=str, choices=targets, 
+                        help='Which target to run.\nWhen running in target mode, will automatically dump the fix summary to the command line.')
+    parser.add_argument('--use-trace-aa', action='store_true', 
+                        help='Use trace alias analysis instead of the full alias analysis')
+    parser.add_argument('--dry-run', action='store_true', help='do a dry run')
+    parser.add_argument('--disable-compile', action='store_true')
+    parser.add_argument('--verbose', '-v', action='store_true', help='print more testing output')
+    args = parser.parse_args()
+
+    if args.target is not None:
+        print(f'Running target "{args.target}"')
+        run_target(args, test_list)
+    else:
+        print(f'Running suite "{args.suite}"')
+        run_all(args, test_list)
+
+
+if __name__ == '__main__':
+    main()  

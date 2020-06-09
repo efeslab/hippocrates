@@ -1,0 +1,457 @@
+#! /usr/bin/env python3
+
+from argparse import ArgumentParser
+from enum import Enum, auto
+from pathlib import Path
+from subprocess import PIPE, STDOUT
+
+import re
+import shlex
+import subprocess
+import yaml
+
+from IPython import embed
+
+# Make sure we can always import Reports.py
+import sys
+sys.path.insert(0, r'${CMAKE_BINARY_DIR}')
+from Reports import *
+
+class TraceParser:
+
+    # binary_file(func+offset) [byte address]
+    PMTEST_STACK_RE = re.compile(r'(.+)\((\w+)\+(\w+)\) \[(\w+)\]')
+    READELF_RE = re.compile(r'\d+: (\w+)\s+\w+\s+\w+\s+\w+\s+\w+\s+\w+\s*(\w*)')
+    def _parse_pmtest_stack(self, stack_trace):
+        assert stack_trace is not None
+        stack_entries = []
+        entries = stack_trace.split(';')
+        for e in entries:
+            matches = self.PMTEST_STACK_RE.match(e)
+            binary_file = Path(matches.group(1))
+            func_name = matches.group(2)
+            offset = int(matches.group(3), base=16)
+            # addr = matches.group(4)
+            addr = None
+            
+            assert binary_file.exists(), f'File {binary_file} does not exist!'
+
+            # Given the function and offset, we need to find the real address.
+            # This is because of dynamic linking.
+            readelf_args = shlex.split(f'readelf -s {binary_file}')
+            proc = subprocess.run(readelf_args, stdout=PIPE, stderr=STDOUT)
+            proc.check_returncode()
+            outlines = [x.strip() for x in proc.stdout.decode().strip().split('\n')]
+            for l in outlines:
+                matches = self.READELF_RE.match(l)
+                if matches is None:
+                    continue
+                check_fn_name = matches.group(2)
+                if check_fn_name == func_name:
+                    addr = int(matches.group(1), base=16) + offset
+                    break
+
+            assert addr is not None, f'Could not find symbol {func_name}!!!'
+            
+            addr_arg_str = f'addr2line --exe={binary_file} --functions {hex(addr)}'
+            addr_args = shlex.split(addr_arg_str)
+            
+            proc = subprocess.run(addr_args, stdout=PIPE, stderr=STDOUT)
+            proc.check_returncode()
+            check_fn_name, file_line = proc.stdout.decode().strip().split('\n')
+            file_name, line_no = file_line.split(':')
+
+            if line_no == '?':
+                line_no = '-1'      
+
+            assert (check_fn_name == func_name), f'Expected {func_name}, got {check_fn_name}!' 
+
+            entry = {'function': func_name, 'file': file_name, 'line': int(line_no)}
+            stack_entries += [entry]
+
+        return stack_entries
+
+    def _parse_pmtest(self):
+        '''
+            Parse a trace that came from a PMTest instrumented program.
+        '''
+
+        # List of tuples; (time, event, line, sf). Time is an arbitrary int
+        timestamp = 0
+        pmtest_trace = []
+
+        pmtest_events = ['_ASSIGN', '_FLUSH', '_FENCE', '_PERSIST', '_ORDER',
+                        '_COMMIT', '_BARRIER', '_TRANSACTIONDELIM', '_ENDING',
+                        '_TRANSACTIONBEGIN', '_TRANSACTIONEND', '_TRANSACTIONADD', 
+                        '_EXCLUDE', '_INCLUDE']
+        pmtest_errors = ['PERSIST ERROR', 'ASSIGN ERROR', 'ORDER ERROR', 
+                        'TRANSACTIONEND ERROR', 'SENDTRACE ERROR', 
+                        'FLUSH WARNING']
+
+        with self.input_file.open() as f:
+            for l in f:
+                # Remove whitespace and color codes
+                line = TraceUtils.strip_color(l.strip())
+                parts = line.split(' ')
+                cmd = parts[0]
+                # strip colon from end
+                err = f'{parts[0]} {parts[1][:-1]}'
+                if cmd in pmtest_events:
+                    pmtest_trace += [ [timestamp, cmd, line, None] ]
+                elif err in pmtest_errors:
+                    pmtest_trace += [ [timestamp, err, line, None] ]
+                elif err == 'STACK TRACE':
+                    pmtest_trace[-1][-1] = line.replace('STACK TRACE:', '').strip()
+                timestamp += 1
+        
+        # Now we can parse the trace.
+        report = BugReport(self.output_file)
+        report.set_source(BugReportSource.PMTEST)
+
+        for i in range(len(pmtest_trace)):
+            timestamp, event, line, stacktrace = pmtest_trace[i]
+            parts = line.split(' ')
+
+            common = {
+                'timestamp': timestamp,
+                'function': parts[-3],
+                'file': parts[-2],
+                'line': int(parts[-1]) if parts[-1].isnumeric() else -1,
+                'stack': self._parse_pmtest_stack(stacktrace) if stacktrace is not None else None,
+            }
+            '''
+                Due to some weird bug, we do this now.
+                - addr2line gives use the line AFTER the one we want for PMTest stack
+                trace, but only for the last level? Odd.
+            '''
+            if common['stack'] is not None:
+                common['stack'][0] = {k: common[k] for k in ['function', 'file', 'line']}
+
+            if '_ASSIGN' == event:
+                # Operation: store value into PM
+                addr, sz = parts[1:3]
+                te = TraceEvent(event='STORE', address=int(addr, base=16), 
+                    length=int(sz), is_bug=False, **common)
+                report.add_trace_event(te)
+
+            elif '_FLUSH' == event:
+                # Operation: issue durability barrier in PM
+                addr, sz = parts[1:3]
+                te = TraceEvent(event='FLUSH', address=int(addr, base=16), 
+                    length=int(sz), is_bug=False, **common)
+                report.add_trace_event(te)
+
+            elif '_FENCE' == event:
+                # Operation: issue global ordering barrier
+                te = TraceEvent(event='FENCE', is_bug=False, **common)
+                report.add_trace_event(te)
+
+            elif '_PERSIST' == event:
+                # Assertion: check if the given address range is persisted or not.
+                is_persist = True
+                if i + 1 < len(pmtest_trace) and \
+                        pmtest_trace[i+1][1] == 'PERSIST ERROR':
+                    is_persist = False
+
+                addr, sz = parts[1:3]
+                te = TraceEvent(event='ASSERT_PERSISTED', address=int(addr, base=16), 
+                    length=int(sz), is_bug=not is_persist, **common)
+                report.add_trace_event(te)
+                
+            elif 'PERSIST ERROR' == event:
+                # Bug report from '_PERSIST'. Skip this since we already processed
+                # it with the '_PERSIST' event.
+                pass
+            
+            elif '_ORDER' == event:
+                # Assertion: check if the first address range is persisted before 
+                # the second range.
+                is_ordered = True
+                if i + 1 < len(pmtest_trace) and \
+                        pmtest_trace[i+1][1] == 'ORDER ERROR':
+                    is_ordered = False
+
+                addr_a, sz_a, addr_b, sz_b = parts[1:5]
+                te = TraceEvent(event='ASSERT_ORDERED', 
+                    address_a=int(addr_a, base=16), length_a=int(sz_a),
+                    address_b=int(addr_b, base=16), length_b=int(sz_b),
+                    is_bug=not is_ordered, **common)
+                report.add_trace_event(te)
+
+            elif 'ORDER ERROR' == event:
+                pass
+
+            elif 'FLUSH WARNING' == event:
+                # Asssertion: Insert an assertion on the last flush. Always true.
+                old_te = report[i-1]
+                new_te = TraceEvent(original=old_te, 
+                                    event='REQUIRED_FLUSH', is_bug=True)
+                report.add_trace_event(new_te)
+
+            else:
+                raise Exception(f'Unsupported event type {event}!\t\n"{line}"')
+
+        return report
+
+    # byte_addr: func_name (file_name:line_no)
+    TRACE_EVENT_RE = re.compile(r'\w+: (.+) \((.+):(\d+)\)')
+    TRACE_IMPRECISE_RE = re.compile(r'\w+: (.+) \(in (.+)\)')
+
+    def _parse_pmemcheck_stackframe(self, frame):
+        matches = self.TRACE_EVENT_RE.match(frame)
+        if matches is not None:
+            return {'function': matches.group(1), 'file': matches.group(2),
+                    'line': int(matches.group(3))}
+        
+        # Happens in the linker
+        matches = self.TRACE_IMPRECISE_RE.match(frame)
+        if matches is not None:
+            return {'function': matches.group(1), 'file': matches.group(2),
+                    'line': -1}
+
+    def _parse_pmemcheck_events(self, line, timestamp):
+        '''
+            Returns constructed trace event.
+        '''
+        events = [e.strip() for e in line.split('|')]
+        for event in events:
+            if 'START' in event:
+                pass
+            elif 'STOP' in event:
+                break
+            elif 'FENCE' in event:
+                # Splits into the event type and all the stack traces
+                parts = event.split(';')
+                event_type = parts[0]
+                assert event_type == 'FENCE', 'Error in parsing!'
+
+                stack = []
+                for frame in parts[1:]:
+                    res = self._parse_pmemcheck_stackframe(frame)
+                    if res is None:
+                        break
+                    stack += [res]
+            
+                if not stack:
+                    embed()
+                assert stack, 'Empty stack!'
+
+                yield TraceEvent(timestamp=timestamp, event=event_type,
+                                  is_bug=False, stack=stack, **stack[0])
+                timestamp += 1
+            elif 'STORE' in event or 'FLUSH' in event:
+                parts = event.split(';')
+                event_type = parts[0]
+                assert event_type == 'STORE' or event_type == 'FLUSH', 'Error in parsing!'
+                
+                # For STORE, 4 items, [STORE, ADDR, VAL, SZ]
+                # For FLUSH, 3 items, [FLUSH, ADDR, SZ]           
+                addr = int(parts[1], base=16)
+                if event_type == 'STORE':
+                    sz = int(parts[3], base=16)
+                    frames = parts[4:]
+                else:
+                    sz = int(parts[2], base=16)
+                    frames = parts[3:]
+
+                stack = []
+                for frame in frames:
+                    res = self._parse_pmemcheck_stackframe(frame)
+                    if res is None:
+                        break
+                    stack += [res]
+
+                yield TraceEvent(timestamp=timestamp, event=event_type, address=addr, 
+                                 length=sz, stack=stack, is_bug=False, **stack[0])
+                timestamp += 1
+            elif 'REGISTER_FILE':
+                # We really don't care
+                pass
+            else:
+                raise Exception(f'Unsure how to parse event "{event}"')
+
+    def _parse_pmemcheck(self):
+        '''
+            First, we need to parse the event trace. Then, we have to parse the list
+            of detected errors.
+
+            It's a little annoying that pmemcheck doesn't support as many options
+        '''
+
+        timestamp = 0
+        # List of tuples; (time, event, file, line). Time is an arbitrary int
+        # --- In this version, line can None
+        # --- Event is also either a single string or a list
+
+        pmemcheck_trace = []
+
+        start_trace = False
+        stop_trace = False
+
+        nbugs_re = re.compile(r'==\d+==\s+Number of stores not made persistent: (\d+)')
+        nperf_re = re.compile(r'==\d+==\s+Number of unnecessary flushes: (\d+)')
+        nbugs_total = None
+        nbugs_remaining = None
+        last_bug_no = -1
+        is_perf = False
+
+        bug_re = re.compile(
+            r'==\d+==\s+\[(\d+)\]\s+ at \w+: \S+ \(.+\) ==\d+==\s+Address: (\w+)\s+size: (\d+)\s+state: (\w+)')
+        perf_re = re.compile(
+            r'==\d+==\s+\[(\d+)\]\s+ at \w+: \S+ \(.+\) ==\d+==\s+Address: (\w+)\s+size: (\d+)')
+
+        # We want to insert these in specific places
+        # (addr, size, fn, file, line) describes the original assignment
+        # (state) describes the kind of bug
+        # --- (state, addr, size, fn, file, line)
+
+        report = BugReport(self.output_file)
+        report.set_source(BugReportSource.GENERIC)
+
+        with self.input_file.open() as f:
+            lines = f.readlines()
+            i = 0
+            while i < len(lines):
+                if not start_trace:
+                    if 'START|' in lines[i] or \
+                        '|STORE' in lines[i] or \
+                        '|FLUSH' in lines[i] or \
+                        '|FENCE' in lines[i]:
+                        print('Identified trace start')
+                        start_trace = True
+                        for te in self._parse_pmemcheck_events(lines[i], timestamp):
+                            report.add_trace_event(te)
+                            timestamp += 1
+                elif start_trace and not stop_trace:
+                    if '|STOP' in lines[i]:
+                        print('Identified trace end')
+                        stop_trace = True
+                    else:
+                        for te in self._parse_pmemcheck_events(lines[i], timestamp):
+                            report.add_trace_event(te)
+                            timestamp += 1
+                elif start_trace and stop_trace and nbugs_total is None:
+                    # Parse the bug reports themselves.
+                    matches = nbugs_re.match(lines[i])
+                    perf_matches = nperf_re.match(lines[i])
+                    if matches is not None:
+                        nbugs_found = int(matches.group(1))
+                        if nbugs_found > 0:
+                            nbugs_total = int(matches.group(1))
+                            nbugs_remaining = nbugs_total
+                            assert ('Stores not made persistent properly' in lines[i+1]), f'Unexpected: "{lines[i+1]}"'
+                            is_perf = False
+                        i += 1
+                    elif perf_matches is not None:
+                        nbugs_total = int(perf_matches.group(1))
+                        nbugs_remaining = nbugs_total
+                        is_perf = True
+                elif nbugs_remaining is not None and nbugs_remaining > 0:
+                    # Finish getting the bug reports
+                    # Add another one, end of function does the rest
+                    print(f'R: {nbugs_remaining}/{nbugs_total}')
+
+                    st = 0
+                    frames = []
+                    while 'by' in lines[i+st] or st == 0:
+                        # We want to capture this stack information.
+                        split_word = ' at ' if st == 0 else ' by '
+                        sf_raw = lines[i+st].split(split_word)[-1].strip()
+                        sf = self._parse_pmemcheck_stackframe(sf_raw)
+                        frames += [sf]
+                        st += 1
+
+                    bug_report = f'{lines[i].strip()} {lines[i+st].strip()}'
+                    i += st
+                    bug = None
+                    bug_no = None
+
+                    if not is_perf:
+                        matches = bug_re.match(bug_report)
+                        assert (matches is not None), f'"{bug_report}" does not match "{bug_re}"'
+                        bug_no = int(matches.group(1))
+                        addr = int(matches.group(2), base=16)
+                        size = int(matches.group(3))
+                        state = matches.group(4)
+
+                        bug = TraceEvent(state=state, address=addr, length=size, 
+                                        event='ASSERT_PERSISTED', 
+                                        timestamp=timestamp,
+                                        is_bug=True, stack=frames, **frames[0])
+                    else:
+                        matches = perf_re.match(bug_report)
+                        if matches is None:
+                            embed()
+                        assert (matches is not None), f'"{bug_report}" does not match "{perf_re}"'
+                        bug_no = int(matches.group(1))
+                        addr = int(matches.group(2), base=16)
+                        size = int(matches.group(3))
+
+                        bug = TraceEvent(address=addr, length=size, event='REQUIRED_FLUSH', 
+                                         timestamp=timestamp, is_bug=True, 
+                                         stack=frames, **frames[0])
+
+                    report.add_trace_event(bug)
+                    timestamp += 1
+
+                    if bug_no != last_bug_no + 1:
+                        print(f'{bug_no} != {last_bug_no + 1}')
+                    assert bug_no == last_bug_no + 1, f'{bug_no} != {last_bug_no + 1}'
+                    last_bug_no = bug_no
+
+                    nbugs_remaining -= 1
+                    if nbugs_remaining == 0 and not is_perf:
+                        nbugs_total = None
+                        nbugs_remaining = None
+                        last_bug_no = -1
+                else:
+                    # End of interesting stuff.
+                    print('Done!')
+                    break
+                i += 1
+
+        return report
+
+    FORMATS = {
+        'pmtest': _parse_pmtest,
+        'pmemcheck': _parse_pmemcheck
+    }
+
+    def __init__(self, format, input_file, output_file):
+        assert (format in self.FORMATS), f'{format} is not a recognized format!'
+        assert(isinstance(input_file, Path) and isinstance(output_file, Path))
+        assert(input_file.exists())
+
+        self.input_file = input_file
+        self.output_file = output_file
+        self.format_fn = self.FORMATS[format]
+
+    def parse_trace(self):
+        return self.format_fn(self)    
+
+
+def main():
+    parser = ArgumentParser(
+        description=(r'Parse PM bug finder traces into a format consumable by '
+                     r'${CMAKE_PROJECT_NAME}.'))
+    
+    parser.add_argument('format', type=str, choices=TraceParser.FORMATS.keys(), 
+                        help='what bug-finder format to parse')
+    parser.add_argument('input_file', type=Path, help='input file')
+    parser.add_argument('--output-file', '-o', type=Path, 
+                        default=Path('report.yaml'), 
+                        help='output file. Default is report.yaml')
+
+    args = parser.parse_args()
+ 
+    trace_parser = TraceParser(args.format, args.input_file, args.output_file)
+
+    report = trace_parser.parse_trace()
+    if report is None or not isinstance(report, BugReport):
+        raise Exception((f'TraceParser returned {report} when a BugReport should '
+                         'have been returned!'))
+    
+    report.dump()
+
+if __name__ == '__main__':
+    main()
