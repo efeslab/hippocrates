@@ -7,3 +7,6 @@
 [submodule "deps/pmtest"]
 	path = deps/pmtest
 	url = git@github.com:efeslab/pmtest.git
+[submodule "deps/pmdk"]
+	path = deps/pmdk
+	url = https://github.com/pmem/pmdk.git
