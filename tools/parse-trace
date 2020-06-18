@@ -1,0 +1,102 @@
+#! /usr/bin/env python3
+
+from argparse import ArgumentParser
+from pathlib import Path
+
+import re
+import yaml
+
+class BugReport:
+    def __init__(self, output_file):
+        assert isinstance(output_file, Path)
+        self.output_file = output_file
+        self.trace = []
+        self.bugs = []
+    
+    def add_bug(self, **kwargs):
+        pass
+
+    def _add_trace_event(self, **kwargs):
+        self.trace += [kwargs]
+
+    def add_pm_assignment(self, addr, len, file, lineno):
+        self._add_trace_event(address=addr, length=len, file=file, line=lineno)
+    
+    def dump(self):
+        data = {
+            'trace': self.trace,
+            'bugs':  self.bugs,
+        }
+        with self.output_file.open('w') as f:
+            yaml.dump(data, f, indent=4)
+
+def parse_common(input_file, output_file):
+    assert(isinstance(input_file, Path) and isinstance(output_file, Path))
+    assert(input_file.exists())
+
+COLOR_RE = re.compile('\\033\[\d+m')
+def strip_color(word):
+    ''' Remove the color ASCII sequence. '''
+    removed = COLOR_RE.sub('', word)
+    return removed
+
+def parse_pmtest(input_file, output_file):
+    parse_common(input_file, output_file)
+    import termcolor
+
+    pmtest_trace = []
+    pmtest_bugs = []
+
+    pmtest_events = ['_ASSIGN', '_FLUSH', '_FENCE', '_PERSIST', '_ORDER',
+                     '_COMMIT', '_BARRIER', '_TRANSACTIONDELIM', '_ENDING',
+	                 '_TRANSACTIONBEGIN', '_TRANSACTIONEND', '_TRANSACTIONADD', 
+                     '_EXCLUDE', '_INCLUDE']
+    pmtest_errors = ['PERSIST ERROR', 'ASSIGN ERROR', 'ORDER ERROR', 
+                     'TRANSACTIONEND ERROR', 'SENDTRACE ERROR']
+
+    with input_file.open() as f:
+        for l in f:
+            # Remove whitespace and color codes
+            line = strip_color(l.strip())
+            parts = line.split(' ')
+            cmd = parts[0]
+            # strip colon from end
+            err = f'{parts[0]} {parts[1][:-1]}'
+            if cmd in pmtest_events:
+                pmtest_trace += [line]
+            elif err in pmtest_errors:
+                pmtest_bugs += [line]
+    
+    # Now we can parse the trace.
+    report = BugReport(output_file)
+
+    for raw_event in pmtest_trace:
+        parts = raw_event.split(' ')
+        if '_ASSIGN' == parts[0]:
+            report.add_pm_assignment(parts[1], parts[2], parts[3], parts[4])
+
+    return report
+
+FORMATS = {
+    'pmtest': parse_pmtest
+}
+
+def main():
+    parser = ArgumentParser()
+    
+    parser.add_argument('format', type=str, choices=FORMATS.keys(), help='what bug-finder format to parse')
+    parser.add_argument('input_file', type=Path, help='input file')
+    parser.add_argument('--output-file', '-o', type=Path, default=Path('report.yaml'), help='output file. Default is report.yaml')
+
+    args = parser.parse_args()
+
+    print(args)
+    parse_fn = FORMATS[args.format]
+    report = parse_fn(args.input_file, args.output_file)
+    if report is None or not isinstance(report, BugReport):
+        raise Exception(f'parse_fn returned {report} when a BugReport should have been returned!')
+    
+    report.dump()
+
+if __name__ == '__main__':
+    main()

@@ -22,3 +22,4 @@ message("PMTEST: ${PMTEST_LIBS},${PMTEST_INCLUDE}")
 add_subdirectory(src)
 
 add_subdirectory(tests)
+add_subdirectory(tools)
