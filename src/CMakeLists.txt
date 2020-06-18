@@ -1,4 +1,6 @@
-cmake_minimum_required(VERSION 3.4.3)
-
-# Add the directory which your pass lives.
-add_subdirectory(heuristic_pass)
+add_llvm_library(PMFIXER MODULE  # Name of the generated shared library
+    pm_bug_fixer_pass.cpp        # Your pass
+    pass_utils.cpp               # ... other stuff ...
+    PLUGIN_TOOL
+    opt
+)
