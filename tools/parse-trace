@@ -6,21 +6,39 @@ from pathlib import Path
 import re
 import yaml
 
+from IPython import embed
+
 class BugReport:
     def __init__(self, output_file):
         assert isinstance(output_file, Path)
         self.output_file = output_file
         self.trace = []
-    
-    def add_bug(self, **kwargs):
-        pass
 
     def _add_trace_event(self, **kwargs):
         self.trace += [kwargs]
 
-    def add_pm_assignment(self, timestamp, addr, len, file, lineno):
+    def add_pm_update(self, timestamp, addr, length, file, lineno):
         self._add_trace_event(timestamp=timestamp, event='STORE', address=addr, 
-                              length=len, file=file, line=lineno, is_bug=False)
+                              length=length, file=file, line=lineno, is_bug=False)
+
+    def add_pm_flush(self, timestamp, addr, length, file, lineno):
+        self._add_trace_event(timestamp=timestamp, event='FLUSH', address=addr, 
+                              length=length, file=file, line=lineno, is_bug=False)
+
+    def add_pm_fence(self, timestamp, file, lineno):
+        self._add_trace_event(timestamp=timestamp, event='FENCE', file=file, 
+                              line=lineno, is_bug=False)
+    
+    def add_pm_is_persist(self, timestamp, addr, length, is_persist, file, lineno):
+        self._add_trace_event(timestamp=timestamp, event='CHECK_PERSIST',
+                              address=addr, length=length, 
+                              file=file, line=lineno, is_bug=not is_persist)
+
+    def add_pm_is_ordered(self, timestamp, addr_a, len_a, addr_b, len_b, 
+                          is_ordered, file, lineno):
+        self._add_trace_event(timestamp=timestamp, event='CHECK_ORDER', 
+            address_a=addr_a, length_a=len_a, address_b=addr_b, length_b=len_b,
+            is_bug=not is_ordered, file=file, line=lineno)
     
     def dump(self):
         with self.output_file.open('w') as f:
@@ -39,7 +57,6 @@ def strip_color(word):
 
 def parse_pmtest(input_file, output_file):
     parse_common(input_file, output_file)
-    import termcolor
 
     # List of tuples; (time, event, line). Time is an arbitrary int
     timestamp = 0
@@ -65,18 +82,56 @@ def parse_pmtest(input_file, output_file):
                 timestamp += 1
             elif err in pmtest_errors:
                 pmtest_trace += [ (timestamp, err, line) ]
-                timestamp += 1
+                # Don't increment timestamp as the errors aren't code events.
 
     
     # Now we can parse the trace.
     report = BugReport(output_file)
 
     # TODO: finish this, and bugs
-    for timestamp, event, line in pmtest_trace:
+    for i in range(len(pmtest_trace)):
+        timestamp, event, line = pmtest_trace[i]
         parts = line.split(' ')
         if '_ASSIGN' == event:
-            report.add_pm_assignment(timestamp, parts[1], parts[2], 
-                                     parts[3], parts[4])
+            # Operation: store value into PM
+            report.add_pm_update(timestamp, int(parts[1], base=16), int(parts[2]), 
+                                 parts[3], int(parts[4]))
+        elif '_FLUSH' == event:
+            # Operation: issue durability barrier in PM
+            report.add_pm_flush(timestamp, int(parts[1], base=16), int(parts[2]), 
+                                parts[3], int(parts[4]))
+        elif '_FENCE' == event:
+            # Operation: issue global ordering barrier
+            report.add_pm_fence(timestamp, parts[1], int(parts[2]))
+
+        elif '_PERSIST' == event:
+            # Assertion: check if the given address range is persisted or not.
+            is_persist = True
+            if i + 1 < len(pmtest_trace) and \
+                    pmtest_trace[i+1][1] == 'PERSIST ERROR':
+                is_persist = False
+            report.add_pm_is_persist(timestamp, int(parts[1], base=16), int(parts[2]),
+                                     is_persist, parts[3], int(parts[4]))
+        elif 'PERSIST ERROR' == event:
+            # Bug report from '_PERSIST'. Skip this since we already processed
+            # it with the '_PERSIST' event.
+            pass
+        
+        elif '_ORDER' == event:
+            # Assertion: check if the first address range is persisted before 
+            # the second range.
+            is_ordered = True
+            if i + 1 < len(pmtest_trace) and \
+                    pmtest_trace[i+1][1] == 'ORDER ERROR':
+                is_ordered = False
+            report.add_pm_is_ordered(timestamp, int(parts[1], base=16), int(parts[2]), 
+                                     int(parts[3], base=16), int(parts[4]), 
+                                     is_ordered, parts[5], int(parts[6]))
+        elif 'ORDER ERROR' == event:
+            pass
+
+        else:
+            raise Exception(f'Unsupported event type {event}!\t\n"{line}"')
 
     return report
 
@@ -87,9 +142,12 @@ FORMATS = {
 def main():
     parser = ArgumentParser()
     
-    parser.add_argument('format', type=str, choices=FORMATS.keys(), help='what bug-finder format to parse')
+    parser.add_argument('format', type=str, choices=FORMATS.keys(), 
+                        help='what bug-finder format to parse')
     parser.add_argument('input_file', type=Path, help='input file')
-    parser.add_argument('--output-file', '-o', type=Path, default=Path('report.yaml'), help='output file. Default is report.yaml')
+    parser.add_argument('--output-file', '-o', type=Path, 
+                        default=Path('report.yaml'), 
+                        help='output file. Default is report.yaml')
 
     args = parser.parse_args()
 
@@ -97,7 +155,8 @@ def main():
     parse_fn = FORMATS[args.format]
     report = parse_fn(args.input_file, args.output_file)
     if report is None or not isinstance(report, BugReport):
-        raise Exception(f'parse_fn returned {report} when a BugReport should have been returned!')
+        raise Exception((f'parse_fn returned {report} when a BugReport should '
+                         'have been returned!'))
     
     report.dump()
 
