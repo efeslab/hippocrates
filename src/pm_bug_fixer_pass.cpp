@@ -17,6 +17,7 @@
 #include "yaml-cpp/yaml.h"
 
 #include "pass_utils.hpp"
+#include "BugReports.hpp"
 
 using namespace llvm;
 using namespace std;
@@ -25,11 +26,9 @@ namespace pmfix {
     cl::opt<std::string> TraceFile("trace-file", cl::desc("<trace file>"));
 
     struct PmBugFixer : public ModulePass {
-        static char ID;
-        PmBugFixer() : ModulePass(ID) {
-            errs() << "Hello!!!\n";
-            YAML::Node trace_info = YAML::LoadFile(TraceFile);  
-        }
+        static char ID; // For LLVM purposes.
+
+        PmBugFixer() : ModulePass(ID) {}
 
         void getAnalysisUsage(AnalysisUsage &AU) const override {
             AU.setPreservesCFG();
@@ -38,6 +37,9 @@ namespace pmfix {
         }
 
         bool runOnModule(Module &m) override {
+            YAML::Node trace_info_doc = YAML::LoadFile(TraceFile);
+            TraceInfo ti = TraceInfoBuilder(trace_info_doc).build();
+        
             // We return false because we aren't modifying anything.
             return false;
         }
