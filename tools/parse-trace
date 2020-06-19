@@ -19,8 +19,8 @@ class BugReport:
         self.trace += [kwargs]
 
     def add_pm_assignment(self, timestamp, addr, len, file, lineno):
-        self._add_trace_event(timestamp=timestamp, address=addr, length=len, 
-                              file=file, line=lineno, is_bug=False)
+        self._add_trace_event(timestamp=timestamp, event='STORE', address=addr, 
+                              length=len, file=file, line=lineno, is_bug=False)
     
     def dump(self):
         with self.output_file.open('w') as f:
