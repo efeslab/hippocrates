@@ -39,6 +39,7 @@ namespace pmfix {
         bool runOnModule(Module &m) override {
             YAML::Node trace_info_doc = YAML::LoadFile(TraceFile);
             TraceInfo ti = TraceInfoBuilder(trace_info_doc).build();
+            errs() << "TraceInfo string:\n" << ti.str() << '\n';
         
             // We return false because we aren't modifying anything.
             return false;

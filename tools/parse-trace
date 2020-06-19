@@ -30,13 +30,13 @@ class BugReport:
                               line=lineno, is_bug=False)
     
     def add_pm_is_persist(self, timestamp, addr, length, is_persist, file, lineno):
-        self._add_trace_event(timestamp=timestamp, event='CHECK_PERSIST',
+        self._add_trace_event(timestamp=timestamp, event='ASSERT_PERSISTED',
                               address=addr, length=length, 
                               file=file, line=lineno, is_bug=not is_persist)
 
     def add_pm_is_ordered(self, timestamp, addr_a, len_a, addr_b, len_b, 
                           is_ordered, file, lineno):
-        self._add_trace_event(timestamp=timestamp, event='CHECK_ORDER', 
+        self._add_trace_event(timestamp=timestamp, event='ASSERT_ORDERED', 
             address_a=addr_a, length_a=len_a, address_b=addr_b, length_b=len_b,
             is_bug=not is_ordered, file=file, line=lineno)
     
