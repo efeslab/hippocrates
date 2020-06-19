@@ -5,6 +5,8 @@
 #include "llvm/IR/Dominators.h"
 #include "llvm/Analysis/PostDominators.h"
 
+#include "llvm/Support/CommandLine.h"
+
 #include <set>
 #include <map>
 #include <stack>
@@ -12,65 +14,40 @@
 #include <tuple>
 #include <queue>
 
+#include "yaml-cpp/yaml.h"
+
 #include "pass_utils.hpp"
 
 using namespace llvm;
 using namespace std;
 
-namespace {
+namespace pmfix {
+    cl::opt<std::string> TraceFile("trace-file", cl::desc("<trace file>"));
+
     struct PmBugFixer : public ModulePass {
         static char ID;
-        PmBugFixer() : ModulePass(ID) {}
+        PmBugFixer() : ModulePass(ID) {
+            errs() << "Hello!!!\n";
+            YAML::Node trace_info = YAML::LoadFile(TraceFile);  
+        }
 
-        void getAnalysisUsage(AnalysisUsage &AU) const {
+        void getAnalysisUsage(AnalysisUsage &AU) const override {
             AU.setPreservesCFG();
             AU.addRequired<DominatorTreeWrapperPass>();
             AU.addRequired<PostDominatorTreeWrapperPass>();
         }
 
         bool runOnModule(Module &m) override {
-//             {
-//                 Function *main = m.getFunction("main");
-//                 //Function *main = m.getFunction("do_copy_to_non_pmem");
-//                 //Function *main = m.getFunction("util_range_register");
-//                 //Function *main = m.getFunction("pmem_map_register");
-//                 //Function *main = m.getFunction("out_err");
-//                 auto x = utils::FunctionInfo(*this, m);
-
-//                 for (const auto &f : m) {
-//                     bool manip = x.manipulatesNVM(&f);
-//                     errs() << f.getName() << " has "
-//                         << x.totalPathsInFunction(&f) << " total paths\n";
-//                     x.dumpManip(&f);
-//                 }
-//                 errs() << "\n\n--------------------------------------\n\n";
-//                 x.computeImportantSuccessors(main);
-//                 x.dumpImportantSuccessors();
-
-//                 errs() << format("Total paths in main: %lu\n",
-//                         x.totalPathsInFunction(main));
-//                 (void)x.totalPathsThroughFunction(main);
-//                 x.dumpPathsThrough();
-//                 errs() << format("Total NVM paths in main: %lu\n",
-//                         x.totalImportantPaths(main));
-//                 x.dumpUnique();
-// #if 0
-//                 size_t npaths = x.computeNumPaths(*this, main);
-//                 errs() << format("Number of total paths: %lu %lx\n", npaths, npaths);
-//                 x.dump();
-// #endif
-//             }
-
             // We return false because we aren't modifying anything.
             return false;
         }
     };
 }
 
-char PmBugFixer::ID = 0;
-static RegisterPass<PmBugFixer> X("pm-bug-fixer", "PM Bug Fixing Pass",
-                                  true /* Only looks at CFG */,
-                                  false /* Analysis Pass */);
+char pmfix::PmBugFixer::ID = 0;
+static RegisterPass<pmfix::PmBugFixer> X("pm-bug-fixer", "PM Bug Fixing Pass",
+                                         false /* Only looks at CFG */,
+                                         false /* Analysis Pass */);
 
 #if 0
 static RegisterStandardPasses Y(

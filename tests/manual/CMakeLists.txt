@@ -1,4 +1,3 @@
-message("PMTEST: ${PMTEST_LIBS},${PMTEST_INCLUDE}")
 link_directories(${PMTEST_LIBS})
 
 # add_executable(000_SimpleBug 000_simple_bug.c)

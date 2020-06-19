@@ -18,7 +18,11 @@ add_subdirectory(deps)
 # -- This sets these variables so that they're available in the lower scope.
 get_property(PMTEST_LIBS GLOBAL PROPERTY pmtest_lib_dir)
 get_property(PMTEST_INCLUDE GLOBAL PROPERTY pmtest_include_dir)
-message("PMTEST: ${PMTEST_LIBS},${PMTEST_INCLUDE}")
+
+get_property(YAMLCPP_LIBS GLOBAL PROPERTY yaml_cpp_lib_dir)
+get_property(YAMLCPP_INCLUDE GLOBAL PROPERTY yaml_cpp_include_dir)
+
+message("YAMLCPP: ${YAMLCPP_LIBS},${YAMLCPP_INCLUDE}")
 add_subdirectory(src)
 
 add_subdirectory(tests)
