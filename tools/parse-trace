@@ -11,7 +11,6 @@ class BugReport:
         assert isinstance(output_file, Path)
         self.output_file = output_file
         self.trace = []
-        self.bugs = []
     
     def add_bug(self, **kwargs):
         pass
@@ -19,16 +18,14 @@ class BugReport:
     def _add_trace_event(self, **kwargs):
         self.trace += [kwargs]
 
-    def add_pm_assignment(self, addr, len, file, lineno):
-        self._add_trace_event(address=addr, length=len, file=file, line=lineno)
+    def add_pm_assignment(self, timestamp, addr, len, file, lineno):
+        self._add_trace_event(timestamp=timestamp, address=addr, length=len, 
+                              file=file, line=lineno, is_bug=False)
     
     def dump(self):
-        data = {
-            'trace': self.trace,
-            'bugs':  self.bugs,
-        }
         with self.output_file.open('w') as f:
-            yaml.dump(data, f, indent=4)
+            yaml.dump(self.trace, f, indent=4)
+
 
 def parse_common(input_file, output_file):
     assert(isinstance(input_file, Path) and isinstance(output_file, Path))
@@ -44,8 +41,9 @@ def parse_pmtest(input_file, output_file):
     parse_common(input_file, output_file)
     import termcolor
 
+    # List of tuples; (time, event, line). Time is an arbitrary int
+    timestamp = 0
     pmtest_trace = []
-    pmtest_bugs = []
 
     pmtest_events = ['_ASSIGN', '_FLUSH', '_FENCE', '_PERSIST', '_ORDER',
                      '_COMMIT', '_BARRIER', '_TRANSACTIONDELIM', '_ENDING',
@@ -63,17 +61,22 @@ def parse_pmtest(input_file, output_file):
             # strip colon from end
             err = f'{parts[0]} {parts[1][:-1]}'
             if cmd in pmtest_events:
-                pmtest_trace += [line]
+                pmtest_trace += [ (timestamp, cmd, line) ]
+                timestamp += 1
             elif err in pmtest_errors:
-                pmtest_bugs += [line]
+                pmtest_trace += [ (timestamp, err, line) ]
+                timestamp += 1
+
     
     # Now we can parse the trace.
     report = BugReport(output_file)
 
-    for raw_event in pmtest_trace:
-        parts = raw_event.split(' ')
-        if '_ASSIGN' == parts[0]:
-            report.add_pm_assignment(parts[1], parts[2], parts[3], parts[4])
+    # TODO: finish this, and bugs
+    for timestamp, event, line in pmtest_trace:
+        parts = line.split(' ')
+        if '_ASSIGN' == event:
+            report.add_pm_assignment(timestamp, parts[1], parts[2], 
+                                     parts[3], parts[4])
 
     return report
 
