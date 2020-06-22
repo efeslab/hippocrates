@@ -49,7 +49,7 @@ struct PmBugFixerPass : public ModulePass {
 
 }
 
-char pmfix::PmBugFixer::ID = 0;
+char pmfix::PmBugFixerPass::ID = 0;
 static RegisterPass<pmfix::PmBugFixerPass> X("pm-bug-fixer", "PM Bug Fixing Pass",
                                              false /* Only looks at CFG */,
                                              false /* Analysis Pass */);

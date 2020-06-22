@@ -5,6 +5,7 @@ add_llvm_library(PMFIXER MODULE  # Name of the generated shared library
     PmBugFixerPass.cpp           # Your pass
     pass_utils.cpp               # ... other stuff ...
     BugReports.cpp
+    BugFixer.cpp
     PLUGIN_TOOL
     opt
 )

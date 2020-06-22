@@ -22,8 +22,9 @@ get_property(PMTEST_INCLUDE GLOBAL PROPERTY pmtest_include_dir)
 get_property(YAMLCPP_LIBS GLOBAL PROPERTY yaml_cpp_lib_dir)
 get_property(YAMLCPP_INCLUDE GLOBAL PROPERTY yaml_cpp_include_dir)
 
-message("YAMLCPP: ${YAMLCPP_LIBS},${YAMLCPP_INCLUDE}")
-add_subdirectory(src)
+get_property(PMDK_LIBS GLOBAL PROPERTY pmdk_lib_dir)
+get_property(PMDK_INCLUDE GLOBAL PROPERTY pmdk_include_dir)
 
+add_subdirectory(src)
 add_subdirectory(tests)
 add_subdirectory(tools)
