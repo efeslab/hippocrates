@@ -24,7 +24,7 @@ function(add_test_executable)
     add_executable(${FN_ARGS_TARGET} ${FN_ARGS_SOURCES})
     target_include_directories(${FN_ARGS_TARGET} PUBLIC ${FN_ARGS_INCLUDE})
     target_link_libraries(${FN_ARGS_TARGET} ${FN_ARGS_EXTRA_LIBS})
-    target_compile_options(${FN_ARGS_TARGET} PUBLIC "-g")
+    target_compile_options(${FN_ARGS_TARGET} PUBLIC "-g;-march=native")
     
     add_custom_command(TARGET ${FN_ARGS_TARGET}
                        POST_BUILD
