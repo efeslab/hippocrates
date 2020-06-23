@@ -174,24 +174,25 @@ int main(int argc, char *argv[]) {
            "2X Flushes Total Time (usec),2X Flushes Time/Op (usec),"
            "1.5X Flushes Total Time (usec),1.5X Flushes Time/Op (usec),"
            "1.1X Flushes Total Time (usec),1.1X Flushes Time/Op (usec),"
+           "1.05X Flushes Total Time (usec),1.05X Flushes Time/Op (usec),"
+           "1.01X Flushes Total Time (usec),1.01X Flushes Time/Op (usec),"
+           "1.005X Flushes Total Time (usec),1.005X Flushes Time/Op (usec),"
+           "1.001X Flushes Total Time (usec),1.001X Flushes Time/Op (usec),"
            "2X Fences Total Time (usec),2X Fences Time/Op (usec),"
            "1.5X Fences Total Time (usec),1.5X Fences Time/Op (usec),"
-           "1.1X Fences Total Time (usec),1.1X Fences Time/Op (usec)\n");
+           "1.1X Fences Total Time (usec),1.1X Fences Time/Op (usec),"
+           "1.05X Fences Total Time (usec),1.05X Fences Time/Op (usec),"
+           "1.01X Fences Total Time (usec),1.01X Fences Time/Op (usec)\n");
 
     for (size_t t = 0; t < ntrials; ++t) {
         printf("%lu,%lu,%lu,%lu,", mapped_len, nops, ntrials, t);
         uint64_t usec;
         double per_op;
 
-#if 1
         usec = runner(correct, pmemaddr, mapped_len, nops);
         per_op = (double)usec / (double)nops;
         printf("%lu,%f,", usec, per_op);
-#else
-        usec = config_runner(extra_fence, pmemaddr, mapped_len, nops, 1.0);
-        per_op = (double)usec / (double)nops;
-        printf("%lu,%f,", usec, per_op);
-#endif
+
         usec = runner(non_durable, pmemaddr, mapped_len, nops);
         per_op = (double)usec / (double)nops;
         printf("%lu,%f,", usec, per_op);
@@ -208,6 +209,22 @@ int main(int argc, char *argv[]) {
         per_op = (double)usec / (double)nops;
         printf("%lu,%f,", usec, per_op);
 
+        usec = config_runner(extra_flush, pmemaddr, mapped_len, nops, 0.05);
+        per_op = (double)usec / (double)nops;
+        printf("%lu,%f,", usec, per_op);
+
+        usec = config_runner(extra_flush, pmemaddr, mapped_len, nops, 0.01);
+        per_op = (double)usec / (double)nops;
+        printf("%lu,%f,", usec, per_op);
+
+        usec = config_runner(extra_flush, pmemaddr, mapped_len, nops, 0.005);
+        per_op = (double)usec / (double)nops;
+        printf("%lu,%f,", usec, per_op);
+
+        usec = config_runner(extra_flush, pmemaddr, mapped_len, nops, 0.001);
+        per_op = (double)usec / (double)nops;
+        printf("%lu,%f,", usec, per_op);
+
         usec = config_runner(extra_fence, pmemaddr, mapped_len, nops, 1.0);
         per_op = (double)usec / (double)nops;
         printf("%lu,%f,", usec, per_op);
@@ -217,6 +234,14 @@ int main(int argc, char *argv[]) {
         printf("%lu,%f,", usec, per_op);
 
         usec = config_runner(extra_fence, pmemaddr, mapped_len, nops, 0.1);
+        per_op = (double)usec / (double)nops;
+        printf("%lu,%f,", usec, per_op);
+
+        usec = config_runner(extra_fence, pmemaddr, mapped_len, nops, 0.05);
+        per_op = (double)usec / (double)nops;
+        printf("%lu,%f,", usec, per_op);
+
+        usec = config_runner(extra_fence, pmemaddr, mapped_len, nops, 0.01);
         per_op = (double)usec / (double)nops;
         printf("%lu,%f\n", usec, per_op);
     }

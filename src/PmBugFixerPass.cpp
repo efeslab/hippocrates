@@ -16,8 +16,8 @@
 
 #include "yaml-cpp/yaml.h"
 
-#include "pass_utils.hpp"
 #include "BugReports.hpp"
+#include "BugFixer.hpp"
 
 using namespace llvm;
 using namespace std;
@@ -42,8 +42,17 @@ struct PmBugFixerPass : public ModulePass {
         TraceInfo ti = TraceInfoBuilder(trace_info_doc).build();
         errs() << "TraceInfo string:\n" << ti.str() << '\n';
     
-        // We return false because we aren't modifying anything.
-        return false;
+        // Construct bug fixer
+        BugFixer fixer(m, ti);
+
+        bool modified = fixer.doRepair();
+
+        if (modified)
+            errs() << "Modified!\n";
+        else
+            errs() << "Not modified!\n";    
+
+        return modified;
     }
 };
 

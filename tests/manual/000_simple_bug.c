@@ -37,7 +37,7 @@ void incorrect(void *p) {
 
 	PMTest_assign((void *)(&arr[4]), 4);
 	// PMTest_flush((void *)(&arr[4]), 4);
-	// PMTest_fence();
+	PMTest_fence();
 
 	PMTest_isPersistent((void *)(&arr[0]), 0);
 	PMTest_isPersistent((void *)(&arr[4]), 4);
