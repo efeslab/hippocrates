@@ -4,12 +4,32 @@
 #include <cctype>
 #include <iomanip>
 #include <sstream>
+#include <unistd.h>
 
 #include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
 using namespace pmfix;
 using namespace std;
+
+#pragma region AddressInfo
+
+bool AddressInfo::isSingleCacheLine(void) const {
+    static uint64_t cl_sz = (uint64_t)sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
+    uint64_t cl_start = start() / cl_sz;
+    uint64_t cl_end = end() / cl_sz;
+    return cl_start == cl_end;
+}
+
+bool AddressInfo::overlaps(const AddressInfo &other) const {
+    return start() < other.end() || other.start() < end();
+}
+
+bool AddressInfo::operator==(const AddressInfo &other) const {
+    return address == other.address && length == other.length;
+}
+
+#pragma endregion
 
 #pragma region TraceEvent
 

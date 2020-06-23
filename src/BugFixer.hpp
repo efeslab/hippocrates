@@ -55,6 +55,8 @@ private:
     llvm::Module &module_;
     TraceInfo &trace_;
 
+    bool fixBug(const TraceEvent &te, int bug_index);
+
 public:
     BugFixer(llvm::Module &m, TraceInfo &ti) : module_(m), trace_(ti) {}
 

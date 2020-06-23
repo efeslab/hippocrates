@@ -18,7 +18,14 @@ struct AddressInfo {
     uint64_t address;
     uint64_t length;
 
-    // TODO: methods for checking overlap.
+    // Helpers -- both inclusive.
+    uint64_t start(void) const { return address; }
+    uint64_t end(void) const { return address + length - 1;}
+
+    // Methods for checking overlap with others/cache lines.
+    bool isSingleCacheLine(void) const;
+    bool overlaps(const AddressInfo &other) const;
+    bool operator==(const AddressInfo &other) const;
 };
 
 /**
@@ -48,6 +55,11 @@ struct TraceEvent {
 
     // Debug
     std::string typeString;
+
+    // Helper
+
+    bool isOperation(void) const { return type == STORE || type == FLUSH || type == FENCE; }
+    bool isAssertion(void) const { return type == ASSERT_PERSISTED || type == ASSERT_ORDERED; }
 
     std::string str() const;
 };
