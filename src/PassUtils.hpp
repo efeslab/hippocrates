@@ -31,7 +31,16 @@
 using namespace llvm;
 using namespace std;
 
+namespace pmfix {
 namespace utils {
+
+    #pragma region PMFix
+
+
+
+    #pragma endregion
+
+    #pragma region Agamotto
 
     /**
      * Checks whether the given Instruction i is:
@@ -46,7 +55,7 @@ namespace utils {
      * Returns true if the Instruction is an inline assembly call and equal to
      * any one of the specified assembly literals and returns false otherwise.
      */
-    bool checkInlineAsmEq(const Instruction &i...);
+    bool checkInlineAsmEq(const Instruction *iptr...);
 
 
     /**
@@ -62,7 +71,7 @@ namespace utils {
      * Returns true if the Instruction is an instrinic call and contains any one
      * of the partial string names and returns false otherwise.
      */
-    bool checkInstrinicInst(const Instruction &i...);
+    bool checkInstrinicInst(const Instruction *iptr...);
 
     /**
      * Returns true if any instruction represents a cache-flushing instruction.
@@ -115,4 +124,7 @@ namespace utils {
      * returns them in a list ordered from first encountered to last encountered.
      */
     list<const Function*> getNestedFunctionCalls(const BasicBlock*);
+
+    #pragma endregion
+}
 }

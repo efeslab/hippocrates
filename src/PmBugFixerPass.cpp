@@ -50,7 +50,31 @@ struct PmBugFixerPass : public ModulePass {
         if (modified)
             errs() << "Modified!\n";
         else
-            errs() << "Not modified!\n";    
+            errs() << "Not modified!\n";  
+
+        {
+            errs() << "Begin metadata experiment\n";
+            
+            Function *main = m.getFunction("main");
+
+            for (BasicBlock &bb : *main) {
+                for (Instruction &i : bb) {
+                    errs() << i << "\n";
+                    errs() << "\tHas metadata? : " << i.hasMetadata() << "\n";
+                    if (!i.hasMetadata()) continue;
+                    errs() << "\t" << *i.getMetadata("dbg") << "\n";
+                    
+                }
+            }
+
+            // SmallVector<StringRef,100> res;
+            // m.getContext().getMDKindNames(res);
+            // for (const auto &ref : res) {
+            //     errs() << ref << "\n";
+            // }
+
+            errs() << "End metadata experiment\n";
+        }  
 
         return modified;
     }

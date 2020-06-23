@@ -1,11 +1,13 @@
-#include "pass_utils.hpp"
+#include "PassUtils.hpp"
 
-bool utils::checkInlineAsmEq(const Instruction &i...) {
+using namespace pmfix;
+
+bool utils::checkInlineAsmEq(const Instruction *iptr...) {
     va_list args;
-    va_start(args, i);
+    va_start(args, iptr);
 
     const InlineAsm *ia = nullptr;
-
+    const Instruction &i = *iptr;
     if (i.getOpcode() == Instruction::Call) {
         const CallInst &ci = static_cast<const CallInst&>(i);
         if (ci.isInlineAsm()) {
@@ -26,12 +28,12 @@ bool utils::checkInlineAsmEq(const Instruction &i...) {
     return false;
 }
 
-bool utils::checkInstrinicInst(const Instruction &i...) {
+bool utils::checkInstrinicInst(const Instruction *iptr...) {
     va_list args;
-    va_start(args, i);
+    va_start(args, iptr);
 
     const Function *fn = nullptr;
-
+    const Instruction &i = *iptr;
     if (i.getOpcode() == Instruction::Call) {
         const CallInst &ci = static_cast<const CallInst&>(i);
         if (ci.getIntrinsicID() != Intrinsic::not_intrinsic) {
@@ -54,16 +56,16 @@ bool utils::checkInstrinicInst(const Instruction &i...) {
 }
 
 bool utils::isFlush(const Instruction &i) {
-    return checkInstrinicInst(i,
+    return checkInstrinicInst(&i,
                               "clflush",
                               nullptr) ||
-           utils::checkInlineAsmEq(i,
+           utils::checkInlineAsmEq(&i,
                    ".byte 0x66; clflush $0",
                    ".byte 0x66; xsaveopt $0", nullptr);
 }
 
 bool utils::isFence(const Instruction &i) {
-    return checkInstrinicInst(i, "sfence", nullptr);
+    return checkInstrinicInst(&i, "sfence", nullptr);
 }
 
 Value* utils::getPtrLoc(Value *v) {

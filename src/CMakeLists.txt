@@ -4,7 +4,7 @@ message("Exception: ${LLVM_ENABLE_EH}")
 set(LLVM_ENABLE_EH ON)
 add_llvm_library(PMFIXER MODULE  # Name of the generated shared library
     PmBugFixerPass.cpp           # Your pass
-    pass_utils.cpp               # ... other stuff ...
+    PassUtils.cpp                # ... other stuff ...
     BugReports.cpp
     BugFixer.cpp
     PLUGIN_TOOL
