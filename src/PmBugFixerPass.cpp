@@ -4,6 +4,7 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/Analysis/PostDominators.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 
 #include "llvm/Support/CommandLine.h"
 
@@ -55,7 +56,7 @@ struct PmBugFixerPass : public ModulePass {
         {
             errs() << "Begin metadata experiment\n";
             
-            Function *main = m.getFunction("main");
+            Function *main = m.getFunction("incorrect");
 
             for (BasicBlock &bb : *main) {
                 for (Instruction &i : bb) {
@@ -63,7 +64,9 @@ struct PmBugFixerPass : public ModulePass {
                     errs() << "\tHas metadata? : " << i.hasMetadata() << "\n";
                     if (!i.hasMetadata()) continue;
                     errs() << "\t" << *i.getMetadata("dbg") << "\n";
-                    
+                    if (DILocation *di = dyn_cast<DILocation>(i.getMetadata("dbg"))) {
+                        errs() << "\t\tLine Number: " << di->getLine() << "\n";
+                    }
                 }
             }
 
