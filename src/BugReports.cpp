@@ -56,6 +56,14 @@ std::string TraceEvent::str() const {
 
 #pragma region TraceInfo
 
+void TraceInfo::addEvent(TraceEvent &&event) {
+    if (event.isBug) {
+        bugs_.push_back(events_.size());
+    }
+
+    events_.emplace_back(event); 
+}
+
 std::string TraceInfo::str(void) const {
     std::stringstream buffer;
 

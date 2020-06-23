@@ -65,7 +65,7 @@ private:
     // Don't want direct construction of this class.
     TraceInfo() {}
 
-    void addEvent(TraceEvent &&event) { events_.emplace_back(event); }
+    void addEvent(TraceEvent &&event);
 
 public:
 
