@@ -6,6 +6,10 @@
 #include <sstream>
 #include <unistd.h>
 
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Instruction.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
@@ -27,6 +31,70 @@ bool AddressInfo::overlaps(const AddressInfo &other) const {
 
 bool AddressInfo::operator==(const AddressInfo &other) const {
     return address == other.address && length == other.length;
+}
+
+#pragma endregion
+
+#pragma region LocationInfo
+
+std::string LocationInfo::getFilename(void) const {
+    size_t pos = file.find_last_of("/");
+    if (pos == std::string::npos) return file;
+    return file.substr(pos+1);
+}
+
+bool LocationInfo::operator==(const LocationInfo &other) const {
+    if (line != other.line) return false;
+
+    // We want more of a partial match, since the file name strings (directories)
+    // can vary. So if the shorter string fits in the longer, it's good enough.
+    size_t pos = string::npos;
+    if (file.size() < other.file.size()) {
+        pos = other.file.find(file);
+    } else {
+        pos = file.find(other.file);
+    }
+
+    return pos != string::npos;
+}
+
+#pragma endregion
+
+#pragma region BugLocationMapper
+
+void BugLocationMapper::insertMapping(Instruction *i) {
+    // Essentially, need to get the line number and file name from the 
+    // instruction debug information.
+    if (!i->hasMetadata()) return;
+    if (!i->getMetadata("dbg")) return;
+
+    if (DILocation *di = dyn_cast<DILocation>(i->getMetadata("dbg"))) {
+        LocationInfo li;
+        li.line = di->getLine();
+
+        DILocalScope *ls = di->getScope();
+        DIFile *df = ls->getFile();
+        li.file = df->getFilename();
+
+        // Now, there may already be a mapping, but it should be the previous 
+        // instruction.
+        locMap_[li] = i;
+
+        errs() << "Mapping:\n\tLocation: " << li.file << ":" << li.line;
+        errs() << "\n\tInst:" << *i << "\n"; 
+    }
+}
+
+void BugLocationMapper::createMappings(Module &m) {
+    for (Function &f : m) {
+        for (BasicBlock &b : f) {
+            for (Instruction &i : b) {
+                insertMapping(&i);
+            }
+        }
+    }
+
+    assert(locMap_.size() && "no debug information found!!!");
 }
 
 #pragma endregion

@@ -1,20 +1,24 @@
 #include "BugFixer.hpp"
 
+#include "llvm/IR/DebugInfoMetadata.h"
+
 using namespace pmfix;
 using namespace llvm;
 
 #pragma region FixGenerators
 
-bool PMTestFixGenerator::insertFlush(llvm::Instruction *i) {
+Instruction *PMTestFixGenerator::insertFlush(Instruction *i) {
 
-    return false;
+    errs() << "Ding!\n";
+
+    return nullptr;
 }
 
 #pragma endregion
 
 #pragma region BugFixer
 
-bool BugFixer::fixBug(const TraceEvent &te, int bug_index) {
+bool BugFixer::fixBug(FixGenerator *fixer, const TraceEvent &te, int bug_index) {
     assert(te.isBug && "Can't fix a not-a-bug!");
 
     if (te.type == TraceEvent::ASSERT_PERSISTED) {
@@ -72,6 +76,24 @@ bool BugFixer::fixBug(const TraceEvent &te, int bug_index) {
         errs() << "\t\tMissing Fence? : " << missingFence << "\n";
         errs() << "\t\tLast Operation : " << lastOpIndex << "\n";
 
+        assert(lastOpIndex >= 0 && "Has to had been assigned at least!");
+
+        // Find where the last operation was.
+        const TraceEvent &last = trace_[lastOpIndex];
+        errs() << "\t\tLocation : " << last.location.file << ":" << last.location.line << "\n";
+        Instruction *i = mapper_[last.location];
+        assert(i && "can't be null!");
+        errs() << "\t\tInstruction : " << *i << "\n";
+
+        if (missingFlush) {
+            i = fixer->insertFlush(i);
+        }
+
+        if (missingFence) {
+            i = fixer->insertFence(i);
+        } 
+
+        return nullptr != i;            
     } else {
         errs() << "Not yet supported: " << te.typeString << "\n";
         return false;
@@ -84,9 +106,14 @@ bool BugFixer::fixBug(const TraceEvent &te, int bug_index) {
 bool BugFixer::doRepair(void) {
     bool modified = false;
 
+    // TODO: see below
+    errs() << "TODO: pick the right bug fixer!\n";
+    PMTestFixGenerator pmtestFixer(module_);
+    FixGenerator *fixer = &pmtestFixer;
+
     for (int bug_index : trace_.bugs()) {
         errs() << "Bug Index: " << bug_index << "\n";
-        bool res = fixBug(trace_[bug_index], bug_index);
+        bool res = fixBug(fixer, trace_[bug_index], bug_index);
         if (!res) {
             errs() << "\tFailed to fix!\n";
         } else {

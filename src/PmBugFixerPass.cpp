@@ -66,6 +66,13 @@ struct PmBugFixerPass : public ModulePass {
                     errs() << "\t" << *i.getMetadata("dbg") << "\n";
                     if (DILocation *di = dyn_cast<DILocation>(i.getMetadata("dbg"))) {
                         errs() << "\t\tLine Number: " << di->getLine() << "\n";
+
+                        DILocalScope *ls = di->getScope();
+                        errs() << "\t\tScope: " << *ls << "\n";
+
+                        DIFile *f = ls->getFile();
+                        errs() << "\t\tFile: " << *f << "\n";
+                        errs() << "\t\tFilename: " << f->getFilename() << "\n";
                     }
                 }
             }

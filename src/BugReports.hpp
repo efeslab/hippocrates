@@ -5,7 +5,13 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
+
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Instruction.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -35,7 +41,38 @@ struct LocationInfo {
     std::string file;
     uint64_t line;
 
-    // TODO: turn this into LLVM types.
+    // Returns just the file name, trims directory information.
+    std::string getFilename(void) const;
+
+    struct Hash {
+        // We only want to hash the last part of the file to avoid 
+        // hash issues when the directories differ.
+        uint64_t operator()(const LocationInfo &li) const {
+            return std::hash<std::string>{}(li.getFilename()) ^ std::hash<uint64_t>{}(li.line);
+        }
+    };
+
+    bool operator==(const LocationInfo &other) const;
+};
+
+/**
+ * Creates a map of source code location -> LLVM IR location. Then allows lookups
+ * so that bugs can be mapped from trace info (which are at source level) to
+ * somewhere in the IR so we can start fixing bugs.
+ */
+class BugLocationMapper {
+private:
+
+    std::unordered_map<LocationInfo, llvm::Instruction*, LocationInfo::Hash> locMap_;
+
+    void insertMapping(llvm::Instruction *i);
+
+    void createMappings(llvm::Module &m);
+
+public:
+    BugLocationMapper(llvm::Module &m) { createMappings(m); }
+
+    llvm::Instruction *operator[](const LocationInfo &li) const { return locMap_.at(li); }
 };
 
 struct TraceEvent {

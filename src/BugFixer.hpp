@@ -5,6 +5,7 @@
 
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Instruction.h"
+#include "llvm/IR/Function.h"
 
 #include "BugReports.hpp"
 
@@ -24,12 +25,14 @@ public:
     FixGenerator(llvm::Module &m) : module_(m) {}
 
     /** CORRECTNESS
-     * All these functions return bool for if they were successful or not.
+     * All these functions return the new instruction they created (or a pointer
+     * to the last instruction they created), or nullptr if they were not 
+     * successful.
      */
 
-    virtual bool insertFlush(llvm::Instruction *i) = 0;
+    virtual llvm::Instruction *insertFlush(llvm::Instruction *i) = 0;
 
-    virtual bool insertFence(llvm::Instruction *i) = 0;
+    virtual llvm::Instruction *insertFence(llvm::Instruction *i) = 0;
 };
 
 /**
@@ -42,9 +45,9 @@ private:
 public:
     PMTestFixGenerator(llvm::Module &m) : FixGenerator(m) {}
 
-    virtual bool insertFlush(llvm::Instruction *i) override;
+    virtual llvm::Instruction *insertFlush(llvm::Instruction *i) override;
 
-    virtual bool insertFence(llvm::Instruction *i) override { return false; }
+    virtual llvm::Instruction *insertFence(llvm::Instruction *i) override { return nullptr; }
 };
 
 /**
@@ -54,11 +57,12 @@ class BugFixer {
 private:
     llvm::Module &module_;
     TraceInfo &trace_;
+    BugLocationMapper mapper_;
 
-    bool fixBug(const TraceEvent &te, int bug_index);
+    bool fixBug(FixGenerator *fixer, const TraceEvent &te, int bug_index);
 
 public:
-    BugFixer(llvm::Module &m, TraceInfo &ti) : module_(m), trace_(ti) {}
+    BugFixer(llvm::Module &m, TraceInfo &ti) : module_(m), trace_(ti), mapper_(m) {}
 
     /**
      * Returns true if modifications were made to the program.
