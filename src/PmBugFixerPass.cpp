@@ -51,40 +51,7 @@ struct PmBugFixerPass : public ModulePass {
         if (modified)
             errs() << "Modified!\n";
         else
-            errs() << "Not modified!\n";  
-
-        {
-            errs() << "Begin metadata experiment\n";
-            
-            Function *main = m.getFunction("incorrect");
-
-            for (BasicBlock &bb : *main) {
-                for (Instruction &i : bb) {
-                    errs() << i << "\n";
-                    errs() << "\tHas metadata? : " << i.hasMetadata() << "\n";
-                    if (!i.hasMetadata()) continue;
-                    errs() << "\t" << *i.getMetadata("dbg") << "\n";
-                    if (DILocation *di = dyn_cast<DILocation>(i.getMetadata("dbg"))) {
-                        errs() << "\t\tLine Number: " << di->getLine() << "\n";
-
-                        DILocalScope *ls = di->getScope();
-                        errs() << "\t\tScope: " << *ls << "\n";
-
-                        DIFile *f = ls->getFile();
-                        errs() << "\t\tFile: " << *f << "\n";
-                        errs() << "\t\tFilename: " << f->getFilename() << "\n";
-                    }
-                }
-            }
-
-            // SmallVector<StringRef,100> res;
-            // m.getContext().getMDKindNames(res);
-            // for (const auto &ref : res) {
-            //     errs() << ref << "\n";
-            // }
-
-            errs() << "End metadata experiment\n";
-        }  
+            errs() << "Not modified!\n";   
 
         return modified;
     }
