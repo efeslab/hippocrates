@@ -47,7 +47,7 @@ public:
 
     virtual llvm::Instruction *insertFlush(llvm::Instruction *i) override;
 
-    virtual llvm::Instruction *insertFence(llvm::Instruction *i) override { return nullptr; }
+    virtual llvm::Instruction *insertFence(llvm::Instruction *i) override;
 };
 
 /**

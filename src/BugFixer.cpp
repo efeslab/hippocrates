@@ -61,6 +61,47 @@ Instruction *PMTestFixGenerator::insertFlush(Instruction *i) {
     return nullptr;
 }
 
+/**
+ * So, with the source code mapping, the instruction we have should be a call
+ * to the C_createMetadata_Flush function, although it really shouldn't matter
+ * too much---our theorem states that it shouldn't matter where we insert the 
+ * fence. We just want it to steal the other arguments
+ * 
+ * "C_createMetadata_Fence" is the function we want to find.
+ * 
+ * TODO: Metadata for inserted instructions?
+ */
+Instruction *PMTestFixGenerator::insertFence(Instruction *i) {
+
+    if (CallInst *ci = dyn_cast<CallInst>(i)) {
+        Function *f = ci->getCalledFunction();
+        assert(f && f->getName() == "C_createMetadata_Flush" && "IDK!");
+
+        // 1) Set up the IR Builder.
+        // -- want AFTER
+        IRBuilder<> builder(i->getNextNode());
+
+        // 2) Find and insert an sfence.
+        Function *sfence = module_.getFunction("llvm.x86.sse.sfence");
+        assert(sfence && "could not find sfence!");
+ 
+        CallInst *sfenceCall = builder.CreateCall(sfence, {});
+
+        // 3) Find and insert a trace instruction.
+        Function *trace = module_.getFunction("C_createMetadata_Fence");
+        assert(trace && "could not find PMTest flush trace!");
+
+        // Should be the same arguments as to the flush call...
+        CallInst *traceCall = builder.CreateCall(trace, {ci->getArgOperand(0),
+                                                         ci->getArgOperand(3), 
+                                                         ci->getArgOperand(4)});
+
+        return traceCall;
+    }
+
+    return nullptr;
+}
+
 #pragma endregion
 
 #pragma region BugFixer
