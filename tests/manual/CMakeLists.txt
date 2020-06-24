@@ -1,9 +1,11 @@
 link_directories(${PMTEST_LIBS})
 
-# add_executable(000_SimpleBug 000_simple_bug.c)
-# target_include_directories(000_SimpleBug PUBLIC ${PMTEST_INCLUDE})
-# target_link_libraries(000_SimpleBug pmtest pthread)
-add_test_executable(TARGET 000_SimpleBug 
-                    SOURCES 000_simple_bug.c
+add_test_executable(TARGET 000_MissingFlush_PMTest
+                    SOURCES 000_missing_flush_pmtest.c
+                    INCLUDE ${PMTEST_INCLUDE}
+                    EXTRA_LIBS pmtest pthread)
+
+add_test_executable(TARGET 001_MissingFence_PMTest
+                    SOURCES 001_missing_fence_pmtest.c
                     INCLUDE ${PMTEST_INCLUDE}
                     EXTRA_LIBS pmtest pthread)
