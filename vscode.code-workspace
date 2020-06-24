@@ -69,6 +69,7 @@
 			"random": "cpp",
 			"set": "cpp",
 			"string": "cpp"
-		}
+		},
+		"python.pythonPath": "/usr/bin/python3"
 	}
 }

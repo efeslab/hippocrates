@@ -11,6 +11,8 @@ add_llvm_library(PMFIXER MODULE  # Name of the generated shared library
     opt
 )
 
+set_property(GLOBAL PROPERTY pass_library ${CMAKE_CURRENT_BINARY_DIR}/PMFIXER.so)
+
 target_include_directories(PMFIXER PUBLIC ${YAMLCPP_INCLUDE})
 target_link_libraries(PMFIXER PUBLIC yaml-cpp -Wl,-rpath=${YAMLCPP_LIBS})
 target_compile_options(PMFIXER PUBLIC "-fPIC")
