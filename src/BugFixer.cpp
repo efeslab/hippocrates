@@ -1,15 +1,62 @@
 #include "BugFixer.hpp"
 
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/DebugInfoMetadata.h"
+#include "llvm/IR/IRBuilder.h"
 
 using namespace pmfix;
 using namespace llvm;
 
 #pragma region FixGenerators
 
+/**
+ * So, with the source code mapping, the instruction we have should be a call
+ * to the C_createMetadata_Assign function. Arguments 2 and 3 are address and 
+ * width, so we can steal that for making the flush and the call to 
+ * "C_createMetadata_Flush"
+ * 
+ * TODO: Metadata for inserted instructions?
+ * TODO: What kind of flush? Determine on machine stuff I'm sure.
+ */
 Instruction *PMTestFixGenerator::insertFlush(Instruction *i) {
 
-    errs() << "Ding!\n";
+    if (CallInst *ci = dyn_cast<CallInst>(i)) {
+        Function *f = ci->getCalledFunction();
+        assert(f && f->getName() == "C_createMetadata_Assign" && "IDK!");
+
+        Value *addrExpr = ci->getArgOperand(1); // 0-indexed
+        Value *lenExpr  = ci->getArgOperand(2); 
+
+        errs() << "Address of assign: " << *addrExpr << "\n";
+        errs() << "Length of assign:  " << *lenExpr << "\n";
+
+        // I think we've made the assumption up to this point that len <= 64
+        // and that [addr, addr + len) is within a cacheline. We'll continue
+        // on with that assumption.
+
+        // 1) Set up the IR Builder.
+        // -- want AFTER
+        IRBuilder<> builder(i->getNextNode());
+
+        // 2) Find and insert a clwb.
+        Function *clwb = module_.getFunction("llvm.x86.clwb");
+        assert(clwb && "could not find clwb!");
+        // -- Need to assemble an ArrayRef<Value>
+        // Value* clwbArgs[1] = {addrExpr};
+        // ArrayRef<Value*> clwbArgRef(clwbArgs);
+        CallInst *clwbCall = builder.CreateCall(clwb, {addrExpr});
+
+        // 3) Find and insert a trace instruction.
+        Function *trace = module_.getFunction("C_createMetadata_Flush");
+        assert(trace && "could not find PMTest flush trace!");
+
+        // Should be the same arguments as to the assign call...
+        CallInst *traceCall = builder.CreateCall(trace, {ci->getArgOperand(0),
+            addrExpr, lenExpr, ci->getArgOperand(3), ci->getArgOperand(4)});
+
+        // return clwbCall;
+        return traceCall;
+    }
 
     return nullptr;
 }
