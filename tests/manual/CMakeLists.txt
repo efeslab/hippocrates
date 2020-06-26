@@ -5,6 +5,10 @@ add_test_executable(TARGET 000_MissingFlush_PMTest
                     INCLUDE ${PMTEST_INCLUDE}
                     EXTRA_LIBS pmtest pthread)
 
+add_test_executable(TARGET 000_MissingFlush_PMEMCheck
+                    SOURCES 000_missing_flush_pmemcheck.c
+                    INCLUDE ${PMCHK_INCLUDE})
+
 add_test_executable(TARGET 001_MissingFence_PMTest
                     SOURCES 001_missing_fence_pmtest.c
                     INCLUDE ${PMTEST_INCLUDE}

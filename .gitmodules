@@ -10,3 +10,6 @@
 [submodule "deps/pmdk"]
 	path = deps/pmdk
 	url = https://github.com/pmem/pmdk.git
+[submodule "deps/valgrind-pmem"]
+	path = deps/valgrind-pmem
+	url = https://github.com/pmem/valgrind

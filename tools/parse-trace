@@ -43,6 +43,7 @@ class BugReport:
     def dump(self):
         with self.output_file.open('w') as f:
             yaml.dump(self.trace, f, indent=4)
+        print(f'Report written to {str(self.output_file)}')
 
 
 def parse_common(input_file, output_file):
@@ -88,7 +89,6 @@ def parse_pmtest(input_file, output_file):
     # Now we can parse the trace.
     report = BugReport(output_file)
 
-    # TODO: finish this, and bugs
     for i in range(len(pmtest_trace)):
         timestamp, event, line = pmtest_trace[i]
         parts = line.split(' ')
@@ -135,8 +135,108 @@ def parse_pmtest(input_file, output_file):
 
     return report
 
+def parse_pmemcheck(input_file, output_file):
+    '''
+        First, we need to parse the event trace. Then, we have to parse the list
+        of detected errors.
+
+        It's a little annoying that pmemcheck doesn't support as many options
+    '''
+    parse_common(input_file, output_file)
+
+    timestamp = 0
+    # List of tuples; (time, event, file, line). Time is an arbitrary int
+    # --- In this version, line can None
+    # --- Event is also either a single string or a list
+    pmemcheck_trace = []
+
+    def insert_trace_event(event, filepath=None, line=None):
+        nonlocal pmemcheck_trace, timestamp
+        pmemcheck_trace += [(timestamp, event, filepath, line)]
+        timestamp += 1
+
+    def parse_trace(line):
+        events = [e.strip() for e in line.split('|')]
+        for event in events:
+            if 'START' in event:
+                pass
+            elif 'STOP' in event:
+                break
+            elif 'FENCE' == event:
+                insert_trace_event(event)
+            elif 'FLUSH' in event:
+                insert_trace_event(event.split(';'))
+            elif 'STORE' in event:
+                parts = event.split(':')
+                # -- Removes the code address from the end, which is unimportant
+                addr = parts[0].split(';')[0:-1]
+                # -- Removes function name, which is unnecessary 
+                filepath = parts[1].split('(')[-1].split(')')[0]
+                line = int(parts[2].replace(')', ''))
+                insert_trace_event(addr, filepath=filepath, line=line)
+            else:
+                raise Exception(f'Unsure how to parse event "{event}"')
+
+
+    start_trace = False
+    stop_trace = False
+
+    with input_file.open() as f:
+        lines = f.readlines()
+        i = 0
+        while i < len(lines):
+            if not start_trace:
+                if 'START|' in lines[i]:
+                    start_trace = True
+                    parse_trace(lines[i])
+            elif start_trace and not stop_trace:
+                if '|STOP' in lines[i]:
+                    stop_trace = True
+                else:
+                    parse_trace(lines[i])
+            elif start_trace and stop_trace:
+                # Parse the bug reports themselves.
+                print(f'TODO: {lines[i]}')
+            else:
+                raise Exception('How did we get here?')
+            i += 1
+    
+    # Now we can assemble the trace.
+    report = BugReport(output_file)
+
+    for ts, event, filepath, line in pmemcheck_trace:
+        if isinstance(event, str):
+            assert(filepath is None)
+            assert(line is None)
+            if event == 'FENCE':
+                report.add_pm_fence(ts, filepath, line)
+            else: 
+                raise Exception(f'Bad event! {event}')
+        elif isinstance(event, list):
+            event_type = event[0]
+            address = int(event[1], base=16)
+            if event_type == 'FLUSH':
+                assert(filepath is None)
+                assert(line is None)
+                length = int(event[2], base=16)
+                report.add_pm_flush(ts, address, length, filepath, line)
+            elif event_type == 'STORE':
+                assert(filepath is not None)
+                assert(line is not None and isinstance(line, int))
+                #data = int(event[1], base=16) # unused data field
+                length = int(event[3], base=16)
+                report.add_pm_update(ts, address, length, filepath, line)
+            else:
+                raise Exception(f'Bad event type! {event_type}')
+        else:
+            raise Exception(f'Unsure how to handle event {str(event)} of type {type(event)}')
+
+    return report
+
+
 FORMATS = {
-    'pmtest': parse_pmtest
+    'pmtest': parse_pmtest,
+    'pmemcheck': parse_pmemcheck
 }
 
 def main():
@@ -150,8 +250,7 @@ def main():
                         help='output file. Default is report.yaml')
 
     args = parser.parse_args()
-
-    print(args)
+ 
     parse_fn = FORMATS[args.format]
     report = parse_fn(args.input_file, args.output_file)
     if report is None or not isinstance(report, BugReport):
