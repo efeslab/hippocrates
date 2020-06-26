@@ -12,4 +12,4 @@
 	url = https://github.com/pmem/pmdk.git
 [submodule "deps/valgrind-pmem"]
 	path = deps/valgrind-pmem
-	url = https://github.com/pmem/valgrind
+	url = git@github.com:efeslab/valgrind.git
