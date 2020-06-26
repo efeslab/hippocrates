@@ -33,6 +33,8 @@ int main(int argc, char *argv[]) {
 
 	correct(&arr[0]);
 	incorrect(&arr[64]);
+	correct(&arr[128]);
+	incorrect(&arr[192]);
 
 	printf("Test complete!\n");
 
