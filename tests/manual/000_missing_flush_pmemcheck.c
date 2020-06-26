@@ -26,7 +26,7 @@ void incorrect(char *arr) {
 }
 
 int main(int argc, char *argv[]) {
-	char arr[100];
+	char arr[1024];
 	VALGRIND_PMC_REGISTER_PMEM_MAPPING(arr, sizeof(arr));
 
 	printf("Starting testing...\n");
