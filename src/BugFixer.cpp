@@ -195,7 +195,6 @@ bool BugFixer::fixBug(FixGenerator *fixer, const TraceEvent &te, int bug_index) 
          * 
          * 3. It is missing a flush AND a fence.
          */
-        bool foundStore = false;
         bool missingFlush = false;
         bool missingFence = true;
         // Need this so we know where the eventual fix will go.
@@ -216,13 +215,11 @@ bool BugFixer::fixBug(FixGenerator *fixer, const TraceEvent &te, int bug_index) 
 
                 if (event.type == TraceEvent::STORE &&
                     event.addresses.front() == te.addresses.front()) {
-                    foundStore = true;
                     missingFlush = true;
                     lastOpIndex = i;
                     break;
                 } else if (event.type == TraceEvent::FLUSH &&
                            event.addresses.front().overlaps(te.addresses.front())) {
-                    foundStore = true;
                     assert(missingFence == true &&
                            "Shouldn't be a bug in this case, has flush and fence");
                     lastOpIndex = i;
@@ -234,7 +231,6 @@ bool BugFixer::fixBug(FixGenerator *fixer, const TraceEvent &te, int bug_index) 
             }
         }
 
-        errs() << "\t\tFound Store?   : " << foundStore << "\n";
         errs() << "\t\tMissing Flush? : " << missingFlush << "\n";
         errs() << "\t\tMissing Fence? : " << missingFence << "\n";
         errs() << "\t\tLast Operation : " << lastOpIndex << "\n";
