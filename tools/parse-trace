@@ -238,10 +238,14 @@ def parse_pmemcheck(input_file, output_file):
                 # Finish getting the bug reports
                 # Add another one, end of function does the rest
                 print(f'R: {nbugs_remaining}/{nbugs_total}')
-                bug_report = f'{lines[i].strip()} {lines[i+1].strip()}'
-                i += 1
+                # --- skips the rest of the stack trace
+                st = 1
+                while 'by' in lines[i+st]:
+                    st += 1
+                bug_report = f'{lines[i].strip()} {lines[i+st].strip()}'
+                i += st
                 matches = bug_re.match(bug_report)
-                assert(matches is not None)
+                assert (matches is not None), f'"{bug_report}" does not match "{bug_re}"'
                 bug_no = int(matches.group(1))
                 filepath, line = matches.group(2).split(':')
                 addr = int(matches.group(3), base=16)
