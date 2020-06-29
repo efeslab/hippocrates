@@ -26,7 +26,7 @@ struct AddressInfo {
 
     // Helpers -- both inclusive.
     uint64_t start(void) const { return address; }
-    uint64_t end(void) const { return address + length - 1;}
+    uint64_t end(void) const { return address + length - 1llu; }
 
     // Methods for checking overlap with others/cache lines.
     bool isSingleCacheLine(void) const;
@@ -48,7 +48,8 @@ struct LocationInfo {
         // We only want to hash the last part of the file to avoid 
         // hash issues when the directories differ.
         uint64_t operator()(const LocationInfo &li) const {
-            return std::hash<std::string>{}(li.getFilename()) ^ std::hash<uint64_t>{}(li.line);
+            return std::hash<std::string>{}(li.getFilename()) ^ 
+                   std::hash<uint64_t>{}(li.line);
         }
     };
 
@@ -63,7 +64,9 @@ struct LocationInfo {
 class BugLocationMapper {
 private:
 
-    std::unordered_map<LocationInfo, llvm::Instruction*, LocationInfo::Hash> locMap_;
+    std::unordered_map<LocationInfo, 
+                       llvm::Instruction*, 
+                       LocationInfo::Hash> locMap_;
 
     void insertMapping(llvm::Instruction *i);
 
@@ -72,7 +75,8 @@ private:
 public:
     BugLocationMapper(llvm::Module &m) { createMappings(m); }
 
-    llvm::Instruction *operator[](const LocationInfo &li) const { return locMap_.at(li); }
+    llvm::Instruction *operator[](const LocationInfo &li) const 
+        { return locMap_.at(li); }
 };
 
 struct TraceEvent {
@@ -95,8 +99,10 @@ struct TraceEvent {
 
     // Helper
 
-    bool isOperation(void) const { return type == STORE || type == FLUSH || type == FENCE; }
-    bool isAssertion(void) const { return type == ASSERT_PERSISTED || type == ASSERT_ORDERED; }
+    bool isOperation(void) const { 
+        return type == STORE || type == FLUSH || type == FENCE; }
+    bool isAssertion(void) const { 
+        return type == ASSERT_PERSISTED || type == ASSERT_ORDERED; }
 
     std::string str() const;
 };
@@ -111,10 +117,15 @@ private:
     std::list<int> bugs_; 
     std::vector<TraceEvent> events_;
 
+    // Metadata. For stuff like which fix generator to use.
+    YAML::Node meta_;
+
     // Don't want direct construction of this class.
     TraceInfo() {}
 
     void addEvent(TraceEvent &&event);
+
+    TraceInfo(YAML::Node m) : meta_(m) {}
 
 public:
 
@@ -123,6 +134,9 @@ public:
     const std::list<int> &bugs() const { return bugs_; }
 
     std::string str() const;
+
+    template<typename T>
+    T getMetadata(const char *key) const { return meta_[key].as<T>(); }
 };
 
 /**

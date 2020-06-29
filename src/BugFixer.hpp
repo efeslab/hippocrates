@@ -36,6 +36,21 @@ public:
 };
 
 /**
+ * This flavor of fix generator just has to insert the fix. No metadata or 
+ * tracing needs to be added.
+ */
+class GenericFixGenerator : public FixGenerator {
+private:
+
+public:
+    GenericFixGenerator(llvm::Module &m) : FixGenerator(m) {}
+
+    virtual llvm::Instruction *insertFlush(llvm::Instruction *i) override;
+
+    virtual llvm::Instruction *insertFence(llvm::Instruction *i) override;
+};
+
+/**
  * This flavor of fix generator has to insert both the appropriate fix and
  * insert PMTest trace events which validate the fix.
  */

@@ -11,6 +11,7 @@
 #include <valgrind/pmemcheck.h>
 
 /**
+ * NOTE: Stack variables aren't guaranteed to be cache-line aligned.
  */
 
 void correct(char *arr) {
@@ -33,8 +34,8 @@ int main(int argc, char *argv[]) {
 
 	correct(&arr[0]);
 	incorrect(&arr[64]);
-	correct(&arr[128]);
-	incorrect(&arr[192]);
+	// correct(&arr[128]);
+	// incorrect(&arr[192]);	
 
 	printf("Test complete!\n");
 

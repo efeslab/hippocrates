@@ -26,7 +26,7 @@ bool AddressInfo::isSingleCacheLine(void) const {
 }
 
 bool AddressInfo::overlaps(const AddressInfo &other) const {
-    return start() < other.end() || other.start() < end();
+    return start() < other.end() && other.start() < end();
 }
 
 bool AddressInfo::operator==(const AddressInfo &other) const {
@@ -80,8 +80,8 @@ void BugLocationMapper::insertMapping(Instruction *i) {
         // instruction.
         locMap_[li] = i;
 
-        errs() << "Mapping:\n\tLocation: " << li.file << ":" << li.line;
-        errs() << "\n\tInst:" << *i << "\n"; 
+        // errs() << "Mapping:\n\tLocation: " << li.file << ":" << li.line;
+        // errs() << "\n\tInst:" << *i << "\n"; 
     }
 }
 
@@ -206,11 +206,12 @@ void TraceInfoBuilder::processEvent(TraceInfo &ti, YAML::Node event) {
 }
 
 TraceInfo TraceInfoBuilder::build(void) {
-    TraceInfo ti;
+    TraceInfo ti(doc_["metadata"]);
 
-    assert(doc_.IsSequence() && "Don't know what to do otherwise!");
-    for (size_t i = 0; i < doc_.size(); ++i) {
-        processEvent(ti, doc_[i]);
+    auto trace = doc_["trace"];
+    assert(trace.IsSequence() && "Don't know what to do otherwise!");
+    for (size_t i = 0; i < trace.size(); ++i) {
+        processEvent(ti, trace[i]);
     }
 
     return ti;

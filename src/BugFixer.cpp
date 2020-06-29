@@ -10,6 +10,73 @@ using namespace llvm;
 #pragma region FixGenerators
 
 /**
+ * The instruction given should be the store that we need to flush.
+ * 
+ * TODO: Metadata for inserted instructions?
+ * TODO: What kind of flush? Determine on machine stuff I'm sure.
+ */
+Instruction *GenericFixGenerator::insertFlush(Instruction *i) {
+
+    if (StoreInst *si = dyn_cast<StoreInst>(i)) {
+        Value *addrExpr = si->getPointerOperand();
+
+        errs() << "Address of assign: " << *addrExpr << "\n";
+
+        // I think we've made the assumption up to this point that len <= 64
+        // and that [addr, addr + len) is within a cacheline. We'll continue
+        // on with that assumption.
+        // TODO: validate size of store (non-temporals) w/ alignment
+
+        // 1) Set up the IR Builder.
+        // -- want AFTER
+        IRBuilder<> builder(i->getNextNode());
+
+        // 2) Find and insert a clwb.
+        Function *clwb = module_.getFunction("llvm.x86.clwb");
+        assert(clwb && "could not find clwb!");
+        // This magically recreates an ArrayRef<Value*>.
+        CallInst *clwbCall = builder.CreateCall(clwb, {addrExpr});
+
+        return clwbCall;
+    }
+
+    return nullptr;
+}
+
+/**
+ * This should insert the fence right after the clwb instruction/fence 
+ * instruction.
+ * 
+ * TODO: Metadata for inserted instructions?
+ */
+Instruction *GenericFixGenerator::insertFence(Instruction *i) {
+
+    if (CallInst *ci = dyn_cast<CallInst>(i)) {
+        Function *f = ci->getCalledFunction();
+        
+        // Validate that this is a flush.
+        // TODO: could also be a non temporal store.
+        if (f->getName() != std::string("llvm.x86.clwb")) {
+            assert(false && "must be a clwb!");
+        }
+
+        // 1) Set up the IR Builder.
+        // -- want AFTER
+        IRBuilder<> builder(i->getNextNode());
+
+        // 2) Find and insert an sfence.
+        Function *sfence = module_.getFunction("llvm.x86.sse.sfence");
+        assert(sfence && "could not find sfence!");
+ 
+        CallInst *sfenceCall = builder.CreateCall(sfence, {});
+
+        return sfenceCall;
+    }
+
+    return nullptr;
+}
+
+/**
  * So, with the source code mapping, the instruction we have should be a call
  * to the C_createMetadata_Assign function. Arguments 2 and 3 are address and 
  * width, so we can steal that for making the flush and the call to 
@@ -128,6 +195,7 @@ bool BugFixer::fixBug(FixGenerator *fixer, const TraceEvent &te, int bug_index) 
          * 
          * 3. It is missing a flush AND a fence.
          */
+        bool foundStore = false;
         bool missingFlush = false;
         bool missingFence = true;
         // Need this so we know where the eventual fix will go.
@@ -141,14 +209,20 @@ bool BugFixer::fixBug(FixGenerator *fixer, const TraceEvent &te, int bug_index) 
             assert(event.addresses.size() <= 1 && 
                     "Don't know how to handle more addresses!");
             if (event.addresses.size()) {
+                errs() << "Address: " << event.addresses.front().address << "\n";
+                errs() << "Length:  " << event.addresses.front().length << "\n";
                 assert(event.addresses.front().isSingleCacheLine() && 
                        "Don't know how to handle multi-cache line operations!");
 
-                if (event.type == TraceEvent::STORE) {
+                if (event.type == TraceEvent::STORE &&
+                    event.addresses.front() == te.addresses.front()) {
+                    foundStore = true;
                     missingFlush = true;
                     lastOpIndex = i;
                     break;
-                } else if (event.type == TraceEvent::FLUSH) {
+                } else if (event.type == TraceEvent::FLUSH &&
+                           event.addresses.front().overlaps(te.addresses.front())) {
+                    foundStore = true;
                     assert(missingFence == true &&
                            "Shouldn't be a bug in this case, has flush and fence");
                     lastOpIndex = i;
@@ -160,6 +234,7 @@ bool BugFixer::fixBug(FixGenerator *fixer, const TraceEvent &te, int bug_index) 
             }
         }
 
+        errs() << "\t\tFound Store?   : " << foundStore << "\n";
         errs() << "\t\tMissing Flush? : " << missingFlush << "\n";
         errs() << "\t\tMissing Fence? : " << missingFence << "\n";
         errs() << "\t\tLast Operation : " << lastOpIndex << "\n";
@@ -195,9 +270,19 @@ bool BugFixer::doRepair(void) {
     bool modified = false;
 
     // TODO: see below
-    errs() << "TODO: pick the right bug fixer!\n";
-    PMTestFixGenerator pmtestFixer(module_);
-    FixGenerator *fixer = &pmtestFixer;
+    FixGenerator *fixer = nullptr;
+    
+    std::string bugReportSrc = trace_.getMetadata<std::string>("source");
+    if ("PMTEST" == bugReportSrc) {
+        PMTestFixGenerator pmtestFixer(module_);
+        fixer = &pmtestFixer;
+    } else if ("GENERIC" == bugReportSrc) {
+        GenericFixGenerator genericFixer(module_);
+        fixer = &genericFixer;
+    } else {
+        errs() << "unsupported!\n";
+        exit(-1);
+    }
 
     for (int bug_index : trace_.bugs()) {
         errs() << "Bug Index: " << bug_index << "\n";
