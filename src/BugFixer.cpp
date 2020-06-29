@@ -265,9 +265,12 @@ bool BugFixer::fixBug(FixGenerator *fixer, const TraceEvent &te, int bug_index) 
 bool BugFixer::doRepair(void) {
     bool modified = false;
 
-    // TODO: see below
+    /**
+     * Select the bug fixer based on the source of the bug report. Mostly 
+     * differentiates between tools which require assertions (PMTEST) and 
+     * everything else.
+     */
     FixGenerator *fixer = nullptr;
-    
     std::string bugReportSrc = trace_.getMetadata<std::string>("source");
     if ("PMTEST" == bugReportSrc) {
         PMTestFixGenerator pmtestFixer(module_);
