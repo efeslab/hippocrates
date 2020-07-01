@@ -1,6 +1,6 @@
 link_directories(${YAMLCPP_LIBS})
 
-message("Exception: ${LLVM_ENABLE_EH}")
+# This is off by default but we need to enable it to use the yaml++ library.
 set(LLVM_ENABLE_EH ON)
 add_llvm_library(PMFIXER MODULE  # Name of the generated shared library
     PmBugFixerPass.cpp           # Your pass
@@ -11,7 +11,8 @@ add_llvm_library(PMFIXER MODULE  # Name of the generated shared library
     opt
 )
 
-set_property(GLOBAL PROPERTY pass_library ${CMAKE_CURRENT_BINARY_DIR}/PMFIXER.so)
+set(LLVM_PASS_PATH ${CMAKE_CURRENT_BINARY_DIR}/PMFIXER.so CACHE INTERNAL 
+    "Path to ${CMAKE_PROJECT_NAME} compiled pass.")
 
 target_include_directories(PMFIXER PUBLIC ${YAMLCPP_INCLUDE})
 target_link_libraries(PMFIXER PUBLIC yaml-cpp -Wl,-rpath=${YAMLCPP_LIBS})
