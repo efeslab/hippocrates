@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.4.3)
 project(PMFixer)
 
-include("${CMAKE_SOURCE_DIR}/cmake/add_test_executable.cmake")
+include("${CMAKE_SOURCE_DIR}/cmake/functions.cmake")
 
 # This will find the shared LLVM build.
 find_package(LLVM 8.0 REQUIRED CONFIG)

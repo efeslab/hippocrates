@@ -1,15 +1,14 @@
 ################################################################################
 #
-# Add a test executable
+# This function's purpose in life is to add a unit test from PMDK
 #
 ################################################################################
 
-function(add_test_executable)
+function(add_pmdk_unit_test)
     check_wllvm()
 
-    # Now that we know that our compiler is in order, we can parse args.
     set(options)                                                                   
-    set(oneValueArgs TARGET TOOL)                                                       
+    set(oneValueArgs TARGET)                                                       
     set(multiValueArgs SOURCES EXTRA_LIBS INCLUDE)                                         
     cmake_parse_arguments(FN_ARGS "${options}" "${oneValueArgs}"                   
                         "${multiValueArgs}" ${ARGN})
@@ -26,12 +25,11 @@ function(add_test_executable)
     target_compile_options(${FN_ARGS_TARGET} PUBLIC "-g;-march=native;-O0")
     
     add_custom_command(TARGET ${FN_ARGS_TARGET}
-                       POST_BUILD
-                       COMMAND extract-bc $<TARGET_FILE:${FN_ARGS_TARGET}>
-                               -o $<TARGET_FILE:${FN_ARGS_TARGET}>.bc
-                       COMMENT "\textract-bc ${FN_ARGS_TARGET}")
-    
-    append_tool_lists(TARGET ${FN_ARGS_TARGET} TOOL ${FN_ARGS_TOOL})
+                        POST_BUILD
+                        COMMAND extract-bc $<TARGET_FILE:${FN_ARGS_TARGET}>
+                                -o $<TARGET_FILE:${FN_ARGS_TARGET}>.bc
+                        COMMENT "\textract-bc ${FN_ARGS_TARGET}")
+     
+    append_tool_lists(TARGET ${FN_ARGS_TARGET} TOOL "PMDK_UNIT_TEST")
 
 endfunction()
-
