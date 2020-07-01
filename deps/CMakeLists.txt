@@ -30,3 +30,5 @@ endif()
 execute_process(COMMAND make -C ${PMCHK_ROOT_DIR} -j${NPROC})
 execute_process(COMMAND make -C ${PMCHK_ROOT_DIR} -j${NPROC} install)
 set_property(GLOBAL PROPERTY pmemcheck_include_dir ${PMCHK_INCLUDE_DIR})
+
+set(PMCHK_BIN_DIR ${PMCHK_INSTALL_DIR}/bin CACHE INTERNAL "Location of pmemcheck binary.")

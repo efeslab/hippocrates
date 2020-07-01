@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.4.3)
+project(PMFixer)
 
 include("${CMAKE_SOURCE_DIR}/cmake/add_test_executable.cmake")
 
