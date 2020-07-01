@@ -10,14 +10,20 @@ set_property(GLOBAL PROPERTY yaml_cpp_include_dir ${CMAKE_CURRENT_BINARY_DIR}/ya
 include(ProcessorCount)
 ProcessorCount(NPROC)
 
-set(PMDK_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/pmdk)
-set(PMDK_INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/pmdk)
-set(PMDK_INCLUDE_DIR ${PMDK_INSTALL_DIR}/include)
-set(PMDK_LIB_DIR ${PMDK_INSTALL_DIR}/lib)
-execute_process(COMMAND make -C ${PMDK_ROOT_DIR} -j${NPROC})
-execute_process(COMMAND make -C ${PMDK_ROOT_DIR} -j${NPROC} install prefix=${PMDK_INSTALL_DIR})
-set_property(GLOBAL PROPERTY pmdk_lib_dir ${PMDK_LIB_DIR})
-set_property(GLOBAL PROPERTY pmdk_include_dir ${PMDK_INCLUDE_DIR})
+set(PMDK_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/pmdk CACHE INTERNAL)
+set(PMDK_INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/pmdk CACHE INTERNAL)
+set(PMDK_INCLUDE_DIR ${PMDK_INSTALL_DIR}/include CACHE INTERNAL)
+set(PMDK_INCLUDE ${PMDK_INCLUDE_DIR} CACHE INTERNAL)
+set(PMDK_LIB_DIR ${PMDK_INSTALL_DIR}/lib CACHE INTERNAL)
+set(PMDK_LIBS ${PMDK_LIB_DIR} CACHE INTERNAL)
+add_custom_command(OUTPUT ${PMDK_ROOT_DIR}/src/debug
+                   COMMAND make -C ${PMDK_ROOT_DIR} -j${NPROC}
+                   COMMENT "Build PMDK dependency")
+add_custom_command(OUTPUT ${PMDK_INSTALL_DIR}
+                   COMMAND make -C ${PMDK_ROOT_DIR} -j${NPROC} 
+                           install prefix=${PMDK_INSTALL_DIR}
+                   COMMENT "Install PMDK dependency")
+
 
 set(PMCHK_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/valgrind-pmem)
 set(PMCHK_INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/valgrind-pmem)

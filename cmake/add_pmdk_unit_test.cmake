@@ -1,6 +1,8 @@
 ################################################################################
 #
-# This function's purpose in life is to add a unit test from PMDK
+# This function's purpose in life is to add a unit test from PMDK.
+#
+# - Need to create a dependency chain so that they don't have any races.
 #
 ################################################################################
 
@@ -8,15 +10,13 @@ function(add_pmdk_unit_test)
     check_wllvm()
 
     set(options)                                                                   
-    set(oneValueArgs TARGET)                                                       
+    set(oneValueArgs TARGET PMDK_PATH COMMIT_HASH)                                                       
     set(multiValueArgs SOURCES EXTRA_LIBS INCLUDE)                                         
     cmake_parse_arguments(FN_ARGS "${options}" "${oneValueArgs}"                   
                         "${multiValueArgs}" ${ARGN})
     
-    # -- We want at least to know what tool and target, etc
-    if (NOT DEFINED FN_ARGS_TOOL)
-        message(FATAL_ERROR "Must provide TOOL argument!")
-    endif()
+    # Checkout 
+    add_custom_command(OUTPUT)
     
     add_executable(${FN_ARGS_TARGET} ${FN_ARGS_SOURCES})
     target_include_directories(${FN_ARGS_TARGET} PUBLIC ${FN_ARGS_INCLUDE})
