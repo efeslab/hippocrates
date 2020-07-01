@@ -23,7 +23,11 @@ add_custom_command(OUTPUT ${PMDK_ROOT_DIR}/src/debug
 add_custom_command(OUTPUT ${PMDK_INSTALL_DIR}
                    COMMAND make -C ${PMDK_ROOT_DIR} -j${NPROC} 
                            install prefix=${PMDK_INSTALL_DIR}
+                   DEPENDS ${PMDK_ROOT_DIR}/src/debug
                    COMMENT "Install PMDK dependency")
+add_custom_target(PMDK ALL : # no-op command
+                  DEPENDS ${PMDK_INSTALL_DIR}
+                  COMMENT "PMDK dependencies complete")       
 
 
 set(PMCHK_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/valgrind-pmem CACHE INTERNAL "")
@@ -39,13 +43,18 @@ add_custom_command(OUTPUT ${PMCHK_ROOT_DIR}/configure
                    WORKING_DIRECTORY ${PMCHK_ROOT_DIR}
                    COMMENT "PMEMCheck autogen.sh")
 add_custom_command(OUTPUT ${PMCHK_ROOT_DIR}/Makefile
-                  COMMAND ./configure --prefix=${PMCHK_INSTALL_DIR} 
-                  WORKING_DIRECTORY ${PMCHK_ROOT_DIR}
-                  COMMENT "PMEMCheck configure")
+                   DEPENDS ${PMCHK_ROOT_DIR}/configure
+                   COMMAND ./configure --prefix=${PMCHK_INSTALL_DIR} 
+                   WORKING_DIRECTORY ${PMCHK_ROOT_DIR}
+                   COMMENT "PMEMCheck configure")
 add_custom_command(OUTPUT ${PMCHK_ROOT_DIR}/pmemcheck/pmemcheck-amd64-linux
+                   DEPENDS ${PMCHK_ROOT_DIR}/Makefile
                    COMMAND make -C ${PMCHK_ROOT_DIR} -j${NPROC}
                    COMMENT "PMEMCheck build")
 add_custom_command(OUTPUT ${PMCHK_INSTALL_DIR}/bin/valgrind
+                   DEPENDS ${PMCHK_ROOT_DIR}/pmemcheck/pmemcheck-amd64-linux
                    COMMAND make -C ${PMCHK_ROOT_DIR} -j${NPROC} install
                    COMMENT "PMEMCheck install")
-
+add_custom_target(PMEMCHECK ALL : # no-op command
+                  DEPENDS ${PMCHK_INSTALL_DIR}/bin/valgrind
+                  COMMENT "PMEMCheck dependencies complete")
