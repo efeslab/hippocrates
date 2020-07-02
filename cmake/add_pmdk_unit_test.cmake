@@ -5,6 +5,8 @@
 # - Need to create a dependency chain so that they don't have any races.
 #
 ################################################################################
+include(ProcessorCount)
+ProcessorCount(NPROC)
 
 function(add_pmdk_unit_test)
     check_wllvm()
@@ -24,30 +26,55 @@ function(add_pmdk_unit_test)
         message(FATAL_ERROR "${FN_ARGS_TARGET} already a target!")
     endif()
 
-    # # Checkout 
-    # add_custom_target(TARGET)
+    # 1. Checkout
+    set(EXTRA_FLAGS "-g -O0")
     add_custom_target("${FN_ARGS_TARGET}_checkout"
                       COMMAND git checkout ${FN_ARGS_COMMIT_HASH}
+                      COMMAND make CC=wllvm CXX=wllvm++
+                              EXTRA_CFLAGS=${EXTRA_FLAGS}
+                              EXTRA_CXXFLAGS=${EXTRA_FLAGS}
+                              -j${NPROC} 
                       WORKING_DIRECTORY ${FN_ARGS_PMDK_PATH}
                       DEPENDS ${FN_ARGS_PMDK_TARGET}
                       COMMENT "")
+
+    # 2. Build test
+    set(TEST_ROOT "${FN_ARGS_PMDK_PATH}/src/test")
+    set(TEST_PATH "${TEST_ROOT}/${FN_ARGS_TEST_CASE}")
+    set(TOOL_PATH "${TEST_ROOT}/tools")
+    # if(NOT EXISTS ${TEST_PATH} OR NOT EXISTS ${TOOL_PATH})
+    #     message(FATAL_ERROR "${TEST_PATH} does not exist!")
+    # endif()
+
+    add_custom_target("${FN_ARGS_TARGET}_build"
+                      COMMAND make CC=wllvm CXX=wllvm++
+                              EXTRA_CFLAGS=${EXTRA_FLAGS}
+                              EXTRA_CXXFLAGS=${EXTRA_FLAGS}
+                              -j${NPROC} ${FN_ARGS_TEST_CASE} tools
+                      WORKING_DIRECTORY ${TEST_ROOT}
+                      DEPENDS "${FN_ARGS_TARGET}_checkout"
+                      COMMENT "Building ${FN_ARGS_TEST_CASE}...")
+
+    # 3. Copy test directory
+    add_custom_target("${FN_ARGS_TARGET}_copy"
+                      COMMAND mkdir -p "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}"
+                      COMMAND cp -ruv ${TEST_PATH}/* 
+                                "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}"
+                      DEPENDS "${FN_ARGS_TARGET}_build"
+                      COMMENT "Copying files...")
+
+    add_custom_target("${FN_ARGS_TARGET}_tooling"
+                      COMMAND mkdir -p "${CMAKE_CURRENT_BINARY_DIR}/tools"
+                      COMMAND cp -rnv ${TOOL_PATH}/* "${CMAKE_CURRENT_BINARY_DIR}/tools"
+                      COMMAND mkdir -p "${CMAKE_CURRENT_BINARY_DIR}/unittest"
+                      COMMAND cp -rnv ${TEST_ROOT}/unittest/* "${CMAKE_CURRENT_BINARY_DIR}/unittest"
+                      DEPENDS "${FN_ARGS_TARGET}_build"
+                      COMMENT "Copying tooling...")               
                       
     add_custom_target(${FN_ARGS_TARGET} ALL : # no-op
-                      DEPENDS "${FN_ARGS_TARGET}_checkout"
+                      DEPENDS "${FN_ARGS_TARGET}_copy" "${FN_ARGS_TARGET}_tooling"
                       COMMENT "${FN_ARGS_TARGET} complete.")               
-    
-    # add_executable(${FN_ARGS_TARGET} ${FN_ARGS_SOURCES})
-    # target_include_directories(${FN_ARGS_TARGET} PUBLIC ${FN_ARGS_INCLUDE})
-    # target_link_libraries(${FN_ARGS_TARGET} ${FN_ARGS_EXTRA_LIBS})
-    # # Turning off optimizations is important to avoid line-combining.
-    # target_compile_options(${FN_ARGS_TARGET} PUBLIC "-g;-march=native;-O0")
-    
-    # add_custom_command(TARGET ${FN_ARGS_TARGET}
-    #                     POST_BUILD
-    #                     COMMAND extract-bc $<TARGET_FILE:${FN_ARGS_TARGET}>
-    #                             -o $<TARGET_FILE:${FN_ARGS_TARGET}>.bc
-    #                     COMMENT "\textract-bc ${FN_ARGS_TARGET}")
      
-    # append_tool_lists(TARGET ${FN_ARGS_TARGET} TOOL "PMDK_UNIT_TEST")
+    append_tool_lists(TARGET ${FN_ARGS_TARGET} TOOL "PMDK_UNIT_TEST")
 
 endfunction()
