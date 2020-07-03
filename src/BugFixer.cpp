@@ -29,17 +29,25 @@ Instruction *GenericFixGenerator::insertFlush(Instruction *i) {
 
         // 1) Set up the IR Builder.
         // -- want AFTER
+        errs() << "After: " << *i->getNextNode() << "\n";
         IRBuilder<> builder(i->getNextNode());
 
-        // 2) Find and insert a clwb.
-        #if 0
-        Function *clwb = module_.getFunction("llvm.x86.clwb");
-        #else 
-        Function *clwb = Intrinsic::getDeclaration(&module_, Intrinsic::x86_clwb,
-            {Type::getInt8PtrTy(module_.getContext())});
-        #endif
+        // 2) Check the type of addrExpr. If it is not an Int8PtrTy, we need to
+        // insert a bitcast instruction so the function does not become broken
+        // according to LLVM type safety.
+        auto *ptrTy = Type::getInt8PtrTy(module_.getContext());
+        if (ptrTy != addrExpr->getType()) {
+            addrExpr = builder.CreateBitCast(addrExpr, ptrTy);
+            errs() << "\t====>" << *addrExpr << "\n";
+        }
+
+        // 3) Find and insert a clwb.
+        // Function *clwb = Intrinsic::getDeclaration(&module_, Intrinsic::x86_clwb, {ptrTy});
+        // -- the above appends extra type specifiers that cause it not to generate.
+        Function *clwb = Intrinsic::getDeclaration(&module_, Intrinsic::x86_clwb);
         assert(clwb && "could not find clwb!");
         // This magically recreates an ArrayRef<Value*>.
+        errs() << "\t====>" << *clwb << "\n";
         CallInst *clwbCall = builder.CreateCall(clwb, {addrExpr});
 
         return clwbCall;
@@ -61,7 +69,8 @@ Instruction *GenericFixGenerator::insertFence(Instruction *i) {
         
         // Validate that this is a flush.
         // TODO: could also be a non temporal store.
-        if (f->getName() != std::string("llvm.x86.clwb")) {
+        // (iangneal): getting the intrinsic ID is more type-safe
+        if (f->getIntrinsicID() != Intrinsic::x86_clwb) {
             assert(false && "must be a clwb!");
         }
 
