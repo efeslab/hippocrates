@@ -40,6 +40,7 @@ function(add_pmdk_unit_test)
 
     # 2. Build test
     set(TEST_ROOT "${FN_ARGS_PMDK_PATH}/src/test")
+    set(LIB_ROOT "${FN_ARGS_PMDK_PATH}/src/debug")
     set(TEST_PATH "${TEST_ROOT}/${FN_ARGS_TEST_CASE}")
     set(TOOL_PATH "${TEST_ROOT}/tools")
     # if(NOT EXISTS ${TEST_PATH} OR NOT EXISTS ${TOOL_PATH})
@@ -55,13 +56,19 @@ function(add_pmdk_unit_test)
                       DEPENDS "${FN_ARGS_TARGET}_checkout"
                       COMMENT "Building ${FN_ARGS_TEST_CASE}...")
 
-    # 3. Copy test directory
+    # 3. Copy test directory and libs
+
     add_custom_target("${FN_ARGS_TARGET}_copy"
                       COMMAND mkdir -p "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}"
                       COMMAND cp -ruv ${TEST_PATH}/* 
                                 "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}"
+                      COMMAND extract-bc "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}"
+                                -o "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}.bc"
+                      COMMAND cp -uv "${LIB_ROOT}/*.so" "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}"
+                      COMMAND patchelf --set-rpath "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}" 
+                                "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}"
                       DEPENDS "${FN_ARGS_TARGET}_build"
-                      COMMENT "Copying files...")
+                      COMMENT "Copying and extracting files...")
 
     add_custom_target("${FN_ARGS_TARGET}_tooling"
                       COMMAND mkdir -p "${CMAKE_CURRENT_BINARY_DIR}/tools"
@@ -75,6 +82,6 @@ function(add_pmdk_unit_test)
                       DEPENDS "${FN_ARGS_TARGET}_copy" "${FN_ARGS_TARGET}_tooling"
                       COMMENT "${FN_ARGS_TARGET} complete.")               
      
-    append_tool_lists(TARGET ${FN_ARGS_TARGET} TOOL "PMDK_UNIT_TEST")
+    append_tool_lists(TARGET "${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}" TOOL "PMDK_UNIT_TEST")
 
 endfunction()

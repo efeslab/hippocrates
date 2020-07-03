@@ -5,9 +5,16 @@
 '''
 
 from argparse import ArgumentParser
+from copy import deepcopy
 from enum import Enum, auto
+from IPython import embed
 from pathlib import Path
 from pprint import pprint
+
+import os
+import shlex
+import subprocess
+import yaml
 
 def assert_is_type(x, t):
     assert isinstance(x, t), f'"{x}" is type {type(x)}, not {t}'
@@ -20,13 +27,18 @@ def assert_is_path(*args):
 class ToolTypes(Enum):
     PMTEST = auto()
     PMEMCHECK = auto()
+    PMDK_UNIT_TEST = auto()
     NONE = auto()
 
 class ToolRunner:
-    def __init__(self, exe_path, tool_type):
-        assert_is_path(exe_path)
+    def __init__(self, exe_path, bc_path, tool_type):
+        assert_is_path(exe_path, bc_path)
         assert_is_type(tool_type, ToolTypes)
+        self.pmemcheck_path = Path(r'${PMCHK_BIN_DIR}/valgrind')
+        assert self.pmemcheck_path.exists(), f'{str(self.pmemcheck_path)} does not exist!'
         self.exe_path = exe_path
+        self.exe_fixed_path = Path(str(exe_path) + '.fixed')
+        self.bc_path = bc_path
         self.tool_type = tool_type
         self.suite = exe_path.parent.name
 
@@ -42,8 +54,53 @@ class ToolRunner:
         return True
 
     def _run_pmemcheck(self):
-        pmemcheck_path = Path(r'${PMCHK_BIN_DIR}/valgrind')
-        assert pmemcheck_path.exists(), f'{str(pmemcheck_path)} does not exist!'
+        return True
+
+    def _run_pmdk_unit_test(self):
+        '''
+            We get the trace from the log file.
+        '''
+        # Need to set the PATH so the scripts can find the pmemcheck tool
+        new_env = deepcopy(os.environ)
+        if 'LD_LIBRARY_PATH' not in new_env:
+            new_env['LD_LIBRARY_PATH'] = f'{str(self.exe_path.parent)}'
+        else:
+            new_env['LD_LIBRARY_PATH'] += f':{str(self.exe_path.parent)}'
+        new_env['PATH'] = f'{str(self.pmemcheck_path.parent)}:{new_env["PATH"]}'
+
+        # 0. Cleanup old logs, if any.
+        pmemcheck_log = self.exe_path.parent / 'pmemcheck0.log'
+        if pmemcheck_log.exists():
+            pmemcheck_log.unlink()
+
+        # 1. Run initial test
+        runtests_args = shlex.split(f'./RUNTESTS -b debug -p force-enable {self.exe_path.parent.name} -s TEST0')
+        res = subprocess.run(runtests_args, cwd=self.exe_path.parent.parent, env=new_env)
+        assert (res.returncode != 0), 'Test was successful, meaning no bugs!'
+        assert pmemcheck_log.exists(), 'No pmemcheck log!'
+
+        # 2. Get trace from log file
+        assert pmemcheck_log.exists(), 'Log not created!'
+        parse_script = Path(__file__).parent.absolute() / 'parse-trace'
+        assert parse_script.exists(), 'parser not available!'
+        trace_file = pmemcheck_log.parent / "pmemcheck0.trace"
+        parse_args = shlex.split(f'{str(parse_script)} pmemcheck {str(pmemcheck_log)} -o {str(trace_file)}')
+        res = subprocess.run(parse_args)
+        res.check_returncode()
+        assert trace_file.exists()
+
+        # 3. Run the fixer script
+        fixer_script = Path(__file__).parent.absolute() / 'apply-fixer'
+        fixer_args = shlex.split(f'{str(fixer_script)} {str(self.bc_path)} {str(trace_file)} -o {str(self.exe_fixed_path)}')
+        res = subprocess.run(fixer_args)
+        res.check_returncode()
+
+        # 4. Re-run the unit tests, see if we fixed it!
+        runtests_args = shlex.split(
+            f'./RUNTESTS -b fixed -p force-enable {self.exe_path.parent.name} -s TEST0')
+        res = subprocess.run(runtests_args, cwd=self.exe_path.parent.parent, env=new_env)
+        res.check_returncode()
+
         return True
 
     def run(self):
@@ -52,6 +109,8 @@ class ToolRunner:
             return self._run_pmtest()
         elif self.tool_type == ToolTypes.PMEMCHECK:
             return self._run_pmemcheck()
+        elif self.tool_type == ToolTypes.PMDK_UNIT_TEST:
+            return self._run_pmdk_unit_test()
         else:
             return False
 
@@ -76,11 +135,11 @@ def get_test_list():
 
 def run_test(exe, bc, tool, suite):
     # 1. Run the test and gather the initial trace.
-    r = ToolRunner(exe, tool)
+    r = ToolRunner(exe, bc, tool)
     if not r.in_suite(suite):
         print(f'{r.target()} in suite {r.suite}, skipping')
         return
-        
+
     success = r.run()
     if success:
         print(f'1. {r.target()} ran successfully.')

@@ -194,6 +194,9 @@ def parse_pmemcheck(input_file, output_file):
                 filepath = parts[1].split('(')[-1].split(')')[0]
                 line = int(parts[2].replace(')', ''))
                 insert_trace_event(addr, filepath, line)
+            elif 'REGISTER_FILE':
+                # We really don't care
+                pass
             else:
                 raise Exception(f'Unsure how to parse event "{event}"')
 
@@ -265,25 +268,31 @@ def parse_pmemcheck(input_file, output_file):
             i += 1
     
     # Now, we need to insert these bugs in the right place in the trace.
+    # Ian: I think this should always be at the end, right? Because PMEMCheck
+    # verifies if something is flushed/fenced at the end.
     for state, addr, size, filepath, line in bugs:
-        # First, we need find assignments which would match the bug report
-        matching_stores = []
-        for ts, event, fp, ln in pmemcheck_trace:
-            if isinstance(event, list) and event[0] == 'STORE' \
-                and filepath == fp and line == ln \
-                and addr == int(event[1], base=16) \
-                and size == int(event[3], base=16):
-                matching_stores += [(ts, event, fp, ln)]
+        # First, we need find assignments which would match the bug report.
+        # matching_stores = []
+        # for ts, event, fp, ln in pmemcheck_trace:
+        #     if isinstance(event, list) and event[0] == 'STORE' \
+        #         and filepath == fp and line == ln \
+        #         and addr == int(event[1], base=16) \
+        #         and size == int(event[3], base=16):
+        #         matching_stores += [(ts, event, fp, ln)]
+        #     if isinstance(event, list) and event[0] == 'STORE' \
+        #         and filepath == fp and line == ln \
+        #         and addr == int(event[1], base=16) \
+        #         and size == int(event[3], base=16):
         
         # Now, we need to make sure that these stores have the right issues
         # --- as in, the store is missing a flush or fence
-        print('TODO: check for multiple matching')
-        assert(len(matching_stores) == 1)
+        # assert (len(matching_stores) == 1), f'TODO: check for multiple matching: {matching_stores}'
 
         # idx = pmemcheck_trace.index(matching_stores[0]) + 1
         # Just put them at the end if there aren't multiple matching traces.
         idx = len(pmemcheck_trace)
-        pmemcheck_trace.insert(idx, (matching_stores[0][0], ['BUG', state, addr, size], filepath, line))
+        new_ts = pmemcheck_trace[-1][0] + 1
+        pmemcheck_trace.insert(idx, (new_ts, ['BUG', state, addr, size], filepath, line))
 
     # Now we can assemble the trace.
     report = BugReport(output_file)
