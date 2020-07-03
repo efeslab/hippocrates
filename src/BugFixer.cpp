@@ -32,7 +32,12 @@ Instruction *GenericFixGenerator::insertFlush(Instruction *i) {
         IRBuilder<> builder(i->getNextNode());
 
         // 2) Find and insert a clwb.
+        #if 0
         Function *clwb = module_.getFunction("llvm.x86.clwb");
+        #else 
+        Function *clwb = Intrinsic::getDeclaration(&module_, Intrinsic::x86_clwb,
+            {Type::getInt8PtrTy(module_.getContext())});
+        #endif
         assert(clwb && "could not find clwb!");
         // This magically recreates an ArrayRef<Value*>.
         CallInst *clwbCall = builder.CreateCall(clwb, {addrExpr});
