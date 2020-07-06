@@ -125,6 +125,7 @@ private:
     // Trace data.
     // -- indices where bugs live
     std::list<int> bugs_; 
+    // -- the actual events
     std::vector<TraceEvent> events_;
 
     // Metadata. For stuff like which fix generator to use.

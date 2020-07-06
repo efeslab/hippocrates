@@ -189,7 +189,38 @@ Instruction *PMTestFixGenerator::insertFence(Instruction *i) {
 
 #pragma region BugFixer
 
-bool BugFixer::fixBug(FixGenerator *fixer, const TraceEvent &te, int bug_index) {
+bool BugFixer::addFixToMapping(Instruction *i, FixType t) {
+    if (!fixMap_.count(i)) {
+        errs() << "DING\n";
+        fixMap_[i] = t;
+        return true;
+    } else if (fixMap_[i] == t) {
+        errs() << "DONG\n";
+        return false;
+    }
+    errs() << "NOPE\n";
+
+    if (fixMap_[i] == ADD_FLUSH_ONLY && t == ADD_FENCE_ONLY) {
+        fixMap_[i] = ADD_FLUSH_AND_FENCE;
+        return true;
+    } else if (fixMap_[i] == ADD_FENCE_ONLY && t == ADD_FLUSH_ONLY) {
+        fixMap_[i] = ADD_FLUSH_AND_FENCE;
+        return true;
+    }
+
+    if (fixMap_[i] == REMOVE_FLUSH_ONLY && t == REMOVE_FENCE_ONLY) {
+        fixMap_[i] = REMOVE_FLUSH_AND_FENCE;
+        return true;
+    } else if (fixMap_[i] == REMOVE_FENCE_ONLY && t == REMOVE_FLUSH_ONLY) {
+        fixMap_[i] = REMOVE_FLUSH_AND_FENCE;
+        return true;
+    }
+
+    assert(false && "what");
+    return false;
+}
+
+bool BugFixer::computeAndAddFix(const TraceEvent &te, int bug_index) {
     assert(te.isBug && "Can't fix a not-a-bug!");
 
     if (te.type == TraceEvent::ASSERT_PERSISTED) {
@@ -257,24 +288,25 @@ bool BugFixer::fixBug(FixGenerator *fixer, const TraceEvent &te, int bug_index) 
         const TraceEvent &last = trace_[lastOpIndex];
         errs() << "\t\tLocation : " << last.location.str() << "\n";
         assert(mapper_[last.location].size() && "can't have no instructions!");
+        bool added = false;
         for (Instruction *i : mapper_[last.location]) {
             assert(i && "can't be null!");
             errs() << "\t\tInstruction : " << *i << "\n";
-
-            if (missingFlush) {
-                i = fixer->insertFlush(i);
-                if (i) errs() << "\t\t\tFlush inserted:" << *i << '\n';
+            
+            bool res = false;
+            if (missingFlush && missingFence) {
+                res = addFixToMapping(i, ADD_FLUSH_AND_FENCE);
+            } else if (missingFlush) {
+                res = addFixToMapping(i, ADD_FLUSH_ONLY);
+            } else if (missingFence) {
+                res = addFixToMapping(i, ADD_FENCE_ONLY);
             }
 
-            if (missingFence && i) {
-                i = fixer->insertFence(i);
-                if (i) errs() << "\t\t\tFence inserted:" << *i << '\n';
-            }
-
-            if (nullptr == i) return false;
+            // Have to do it this way, otherwise it short-circuits.
+            added = res || added;
         }
         
-        return true;            
+        return added;            
     } else {
         errs() << "Not yet supported: " << te.typeString << "\n";
         return false;
@@ -282,6 +314,35 @@ bool BugFixer::fixBug(FixGenerator *fixer, const TraceEvent &te, int bug_index) 
 
     errs() << "Fallthrough!!!\n";
     return false;
+}
+
+bool BugFixer::fixBug(FixGenerator *fixer, Instruction *i, FixType ft) {
+    switch (ft) {
+        case ADD_FLUSH_ONLY: {
+            Instruction *n = fixer->insertFlush(i);
+            assert(n && "could not ADD_FLUSH_ONLY");
+            break;
+        }
+        case ADD_FENCE_ONLY: {
+            Instruction *n = fixer->insertFence(i);
+            assert(n && "could not ADD_FENCE_ONLY");
+            break;
+        }
+        case ADD_FLUSH_AND_FENCE: {
+            Instruction *n = fixer->insertFlush(i);
+            assert(n && "could not add flush of FLUSH_AND_FENCE");
+            n = fixer->insertFence(n);
+            assert(n && "could not add fence of FLUSH_AND_FENCE");
+            errs() << "BOOM\n";
+            break;
+        }
+        default: {
+            errs() << "UNSUPPORTED: " << ft << "\n";
+            assert(false && "not handled!");
+        }
+    }
+
+    return true;
 }
 
 bool BugFixer::doRepair(void) {
@@ -305,15 +366,24 @@ bool BugFixer::doRepair(void) {
         exit(-1);
     }
 
+    /**
+     * Now, we find all the fixes.
+     */
     for (int bug_index : trace_.bugs()) {
         errs() << "Bug Index: " << bug_index << "\n";
-        bool res = fixBug(fixer, trace_[bug_index], bug_index);
-        if (!res) {
-            errs() << "\tFailed to fix!\n";
+        bool addedFix = computeAndAddFix(trace_[bug_index], bug_index);
+        if (addedFix) {
+            errs() << "\tAdded a fix!\n";
         } else {
-            errs() << "\tFixed!\n";
+            errs() << "\tDid not add a fix!\n";
         }
+    }
 
+    /**
+     * Now, we actually do the fixing.
+     */
+    for (auto &p : fixMap_) {
+        bool res = fixBug(fixer, p.first, p.second);
         modified = modified || res;
     }
 
