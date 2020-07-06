@@ -169,11 +169,23 @@ def parse_pmemcheck(input_file, output_file):
     # List of tuples; (time, event, file, line). Time is an arbitrary int
     # --- In this version, line can None
     # --- Event is also either a single string or a list
+
+    class TraceEvent:
+        def __init__(self, original=None, **kwargs):
+            if original is not None:
+                assert(isinstance(original, type(self))), 'Wat'
+                self.__dict__.update(original.__dict__)
+            self.__dict__.update(
+                {k: v for k, v in kwargs.items() if v is not None})
+
     pmemcheck_trace = []
 
-    def insert_trace_event(event, fn_name, filepath, line):
+    def insert_trace_event(event, fn_name, filepath, line, 
+                           addr=None, val=None, sz=None):
         nonlocal pmemcheck_trace, timestamp
-        pmemcheck_trace += [(timestamp, event, fn_name, filepath, line)]
+        te = TraceEvent(timestamp=timestamp, event=event, address=addr,
+                        size=sz, fn=fn_name, filepath=filepath, line=line)
+        pmemcheck_trace += [te]
         timestamp += 1
 
     trace_event_re = re.compile(r' (.+) \((.+):(\d+)\)')
@@ -197,9 +209,14 @@ def parse_pmemcheck(input_file, output_file):
                 insert_trace_event(event_type, fn_name, filepath, line)
             elif 'STORE' in event or 'FLUSH' in event:
                 parts = event.split(':', 1)
-                # # -- Removes the code address from the end, which is unimportant
-                # embed()
-                # addr = int(parts[0].split(';')[0:-1], base=16)
+                # -- Removes the code address from the end, which is unimportant   
+                # 
+                # For STORE, 4 items, [STORE, ADDR, VAL, SZ]
+                # For FLUSH, 3 items, [FLUSH, ADDR, SZ]           
+                mod_info = parts[0].split(';')[0:-1]
+                event_type = mod_info[0]
+                addr = int(mod_info[1], base=16)
+                sz = int(mod_info[-1], base=16)
 
                 matches = trace_event_re.match(parts[1])
                 assert matches, f'regex did not match "{parts[1]}"'
@@ -208,7 +225,8 @@ def parse_pmemcheck(input_file, output_file):
                 filepath = matches.group(2)
                 line = int(matches.group(3))
 
-                insert_trace_event(event_type, fn_name, filepath, line)
+                insert_trace_event(event_type, fn_name, filepath, line, 
+                                   addr=addr, sz=sz)
             elif 'REGISTER_FILE':
                 # We really don't care
                 pass
@@ -260,8 +278,8 @@ def parse_pmemcheck(input_file, output_file):
                 st = 1
                 frames = []
                 while 'by' in lines[i+st]:
-                    # TODO: We want to capture this stack information.
-                    sf = lines[i+st].split('by')[-1]
+                    # We want to capture this stack information.
+                    sf = lines[i+st].split('by')[-1].split(':', 1)[-1]
                     matches = trace_event_re.match(sf)
                     assert (matches is not None), f'"{sf}" does not conform!'
                     fn_name = matches.group(1)
@@ -279,7 +297,11 @@ def parse_pmemcheck(input_file, output_file):
                 addr = int(matches.group(4), base=16)
                 size = int(matches.group(5))
                 state = matches.group(6)
-                bugs += [(state, addr, size, fn_name, filepath, int(line), frames)]
+                bug = TraceEvent(state=state, address=addr, event='BUG', size=size, 
+                                 fn=fn_name, timestamp=timestamp,
+                                 filepath=filepath, line=int(line), stackframe=frames)
+                pmemcheck_trace += [bug]
+                timestamp += 1
 
                 if bug_no != last_bug_no + 1:
                     print(f'{bug_no} != {last_bug_no + 1}')
@@ -291,46 +313,25 @@ def parse_pmemcheck(input_file, output_file):
                 # End of interesting stuff.
                 break
             i += 1
-    
-    # Now, we need to insert these bugs in the right place in the trace.
-    # Ian: I think this should always be at the end, right? Because PMEMCheck
-    # verifies if something is flushed/fenced at the end.
-    for state, addr, size, fn, filepath, line, frames in bugs:
-        new_ts = pmemcheck_trace[-1][0] + 1
-        event = ['BUG', state, addr, size, frames]
-        trace_event = (new_ts, event, fn, filepath, line)
-        pmemcheck_trace += [trace_event]
 
     # Now we can assemble the trace.
     report = BugReport(output_file)
     report.set_source(BugReportSource.GENERIC)
 
-    for ts, event, fn, filepath, line in pmemcheck_trace:
-        if isinstance(event, str):
-            print(f'str {event}')
-            if event == 'FENCE':
-                report.add_pm_fence(ts, filepath, line, fn=fn)
-            else: 
-                raise Exception(f'Bad event! {event}')
-        elif isinstance(event, list):
-            event_type = event[0]
-            print(f'list {event_type}')
-            if event_type == 'FLUSH':
-                address = int(event[1], base=16)
-                length = int(event[2], base=16)
-                report.add_pm_flush(ts, address, length, filepath, line, fn=fn)
-            elif event_type == 'STORE':
-                address = int(event[1], base=16)
-                #data = int(event[1], base=16) # unused data field
-                length = int(event[3], base=16)
-                report.add_pm_update(ts, address, length, filepath, line, fn=fn)
-            elif event_type == 'BUG':
-                report.add_pm_is_persist(ts, event[2], event[3], False, 
-                                         filepath, line, fn=fn, stack=event[4])
-            else:
-                raise Exception(f'Bad event type! {event_type}')
+    for te in pmemcheck_trace:
+        if te.event == 'FENCE':
+            report.add_pm_fence(te.timestamp, te.filepath, te.line, fn=te.fn)
+        elif te.event == 'FLUSH':
+            report.add_pm_flush(te.timestamp, te.address, te.size, 
+                                te.filepath, te.line, fn=te.fn)
+        elif te.event == 'STORE':
+            report.add_pm_update(te.timestamp, te.address, te.size, 
+                                 te.filepath, te.line, fn=te.fn)
+        elif te.event == 'BUG':
+            report.add_pm_is_persist(te.timestamp, te.address, te.size, False, 
+                                     te.filepath, te.line, fn=te.fn, stack=te.stackframe)
         else:
-            raise Exception(f'Unsure how to handle event {str(event)} of type {type(event)}')
+            raise Exception(f'Bad event type! {te.event}')
 
     return report
 
