@@ -4,6 +4,7 @@
  */
 
 #include <cstdint>
+#include <list>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -38,6 +39,7 @@ struct AddressInfo {
  * Just a wrapper for source code location information.
  */
 struct LocationInfo {
+    std::string function;
     std::string file;
     uint64_t line;
 
@@ -48,24 +50,32 @@ struct LocationInfo {
         // We only want to hash the last part of the file to avoid 
         // hash issues when the directories differ.
         uint64_t operator()(const LocationInfo &li) const {
-            return std::hash<std::string>{}(li.getFilename()) ^ 
+            return std::hash<std::string>{}(li.function) ^
+                   std::hash<std::string>{}(li.getFilename()) ^ 
                    std::hash<uint64_t>{}(li.line);
         }
     };
 
     bool operator==(const LocationInfo &other) const;
+
+    std::string str() const;
 };
 
 /**
  * Creates a map of source code location -> LLVM IR location. Then allows lookups
  * so that bugs can be mapped from trace info (which are at source level) to
  * somewhere in the IR so we can start fixing bugs.
+ * 
+ * Sometimes, there are multiple locations that map to the same line of source
+ * code---not just multiple assembly instructions, but multiple locations. The
+ * solution I think is just apply fixes to both locations. The instructions 
+ * should be identical.
  */
 class BugLocationMapper {
 private:
 
     std::unordered_map<LocationInfo, 
-                       llvm::Instruction*, 
+                       std::list<llvm::Instruction*>, 
                        LocationInfo::Hash> locMap_;
 
     void insertMapping(llvm::Instruction *i);
@@ -75,7 +85,7 @@ private:
 public:
     BugLocationMapper(llvm::Module &m) { createMappings(m); }
 
-    llvm::Instruction *operator[](const LocationInfo &li) const 
+    const std::list<llvm::Instruction*> &operator[](const LocationInfo &li) const 
         { return locMap_.at(li); }
 };
 

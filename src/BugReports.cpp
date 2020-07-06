@@ -8,6 +8,7 @@
 
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Instruction.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/Support/raw_ostream.h"
@@ -44,6 +45,7 @@ std::string LocationInfo::getFilename(void) const {
 }
 
 bool LocationInfo::operator==(const LocationInfo &other) const {
+    if (function != other.function) return false;
     if (line != other.line) return false;
 
     // We want more of a partial match, since the file name strings (directories)
@@ -55,7 +57,20 @@ bool LocationInfo::operator==(const LocationInfo &other) const {
         pos = file.find(other.file);
     }
 
+    // if (pos != string::npos && "memset_mov_sse2_empty" == function) {
+    //     errs() << "EQ: " << str() << " == " << other.str() << "\n";
+    // }
+
     return pos != string::npos;
+}
+
+std::string LocationInfo::str() const {
+    std::stringstream buffer;
+
+    buffer << "<LocationInfo: " << function << " @ ";
+    buffer << file << ":" << line << ">";
+
+    return buffer.str();
 }
 
 #pragma endregion
@@ -70,18 +85,32 @@ void BugLocationMapper::insertMapping(Instruction *i) {
 
     if (DILocation *di = dyn_cast<DILocation>(i->getMetadata("dbg"))) {
         LocationInfo li;
+        li.function = i->getFunction()->getName();
         li.line = di->getLine();
 
         DILocalScope *ls = di->getScope();
         DIFile *df = ls->getFile();
         li.file = df->getFilename();
 
-        // Now, there may already be a mapping, but it should be the previous 
-        // instruction.
-        locMap_[li] = i;
+        // if ("memset_mov_sse2_empty" == li.function) {
+        //     errs() << "DBG: " << li.str() << " ===== " << *i << '\n';
+        // }
 
-        // errs() << "Mapping:\n\tLocation: " << li.file << ":" << li.line;
-        // errs() << "\n\tInst:" << *i << "\n"; 
+        // Now, there may already be a mapping, but it should be the previous 
+        // instruction. They aren't guaranteed to be in the same basic block, 
+        // but everything should be in the right function context.
+        // if (locMap_.count(li)) {
+        //     if (locMap_[li]->getParent() != i->getParent()) {
+        //         errs() << "ERROR\n";
+        //         errs() << li.str() << '\n';
+        //         errs() << "Old: " << *locMap_[li] << "\n";
+        //         errs() << "New: " << *i << "\n";
+        //         errs() << "Context: " << *i->getFunction() << "\n";
+        //     }
+        //     assert(locMap_[li]->getParent() == i->getParent() && 
+        //            "Assumptions violated, instructions not in same basic block!");
+        // }
+        locMap_[li].push_back(i);
     }
 }
 
@@ -89,6 +118,8 @@ void BugLocationMapper::createMappings(Module &m) {
     for (Function &f : m) {
         for (BasicBlock &b : f) {
             for (Instruction &i : b) {
+                // Ignore instructions we don't care too much about.
+                if (!isa<StoreInst>(&i) && !isa<CallBase>(&i)) continue;
                 insertMapping(&i);
             }
         }
@@ -128,7 +159,8 @@ std::string TraceEvent::str() const {
 
     buffer << "Event (time=" << timestamp << ")\n";
     buffer << "\tType: " << typeString << '\n';
-    buffer << "\tLocation: " << location.file << ":" << location.line << '\n';
+    buffer << "\tLocation: " << location.function << " @ " << 
+        location.file << ":" << location.line << '\n';
     if (addresses.size()) {
         buffer << "\tAddress Info:\n";
         for (const auto &ai : addresses) {
@@ -176,6 +208,7 @@ void TraceInfoBuilder::processEvent(TraceInfo &ti, YAML::Node event) {
     
     e.type = event_type;
     e.timestamp = event["timestamp"].as<uint64_t>();
+    e.location.function = event["function"].as<string>();
     e.location.file = event["file"].as<string>();
     e.location.line = event["line"].as<uint64_t>();
     e.isBug = event["is_bug"].as<bool>();

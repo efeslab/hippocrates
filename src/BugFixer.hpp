@@ -14,12 +14,17 @@ namespace pmfix {
 /**
  * Subclasses of FixGenerator insert and/or perform fixes for the various types
  * of bugs.
+ * 
+ * This contains some helper functions as well, like getting the right function
+ * definitions for flush and fence functions.
  */
 class FixGenerator {
 private:
 
 protected:
     llvm::Module &module_;
+
+    llvm::Function *getClwbDefinition() const;
 
 public:
     FixGenerator(llvm::Module &m) : module_(m) {}

@@ -7,6 +7,18 @@
 using namespace pmfix;
 using namespace llvm;
 
+#pragma region FixGenerator
+
+llvm::Function *FixGenerator::getClwbDefinition() const {
+    // Function *clwb = Intrinsic::getDeclaration(&module_, Intrinsic::x86_clwb, {ptrTy});
+    // -- the above appends extra type specifiers that cause it not to generate.
+    Function *clwb = Intrinsic::getDeclaration(&module_, Intrinsic::x86_clwb);
+    assert(clwb && "could not find clwb!");
+    return clwb;
+}
+
+#pragma endregion
+
 #pragma region FixGenerators
 
 /**
@@ -42,13 +54,8 @@ Instruction *GenericFixGenerator::insertFlush(Instruction *i) {
         }
 
         // 3) Find and insert a clwb.
-        // Function *clwb = Intrinsic::getDeclaration(&module_, Intrinsic::x86_clwb, {ptrTy});
-        // -- the above appends extra type specifiers that cause it not to generate.
-        Function *clwb = Intrinsic::getDeclaration(&module_, Intrinsic::x86_clwb);
-        assert(clwb && "could not find clwb!");
         // This magically recreates an ArrayRef<Value*>.
-        errs() << "\t====>" << *clwb << "\n";
-        CallInst *clwbCall = builder.CreateCall(clwb, {addrExpr});
+        CallInst *clwbCall = builder.CreateCall(getClwbDefinition(), {addrExpr});
 
         return clwbCall;
     }
@@ -120,12 +127,7 @@ Instruction *PMTestFixGenerator::insertFlush(Instruction *i) {
         IRBuilder<> builder(i->getNextNode());
 
         // 2) Find and insert a clwb.
-        Function *clwb = module_.getFunction("llvm.x86.clwb");
-        assert(clwb && "could not find clwb!");
-        // -- Need to assemble an ArrayRef<Value>
-        // Value* clwbArgs[1] = {addrExpr};
-        // ArrayRef<Value*> clwbArgRef(clwbArgs);
-        CallInst *clwbCall = builder.CreateCall(clwb, {addrExpr});
+        CallInst *clwbCall = builder.CreateCall(getClwbDefinition(), {addrExpr});
 
         // 3) Find and insert a trace instruction.
         Function *trace = module_.getFunction("C_createMetadata_Flush");
@@ -253,20 +255,26 @@ bool BugFixer::fixBug(FixGenerator *fixer, const TraceEvent &te, int bug_index) 
 
         // Find where the last operation was.
         const TraceEvent &last = trace_[lastOpIndex];
-        errs() << "\t\tLocation : " << last.location.file << ":" << last.location.line << "\n";
-        Instruction *i = mapper_[last.location];
-        assert(i && "can't be null!");
-        errs() << "\t\tInstruction : " << *i << "\n";
+        errs() << "\t\tLocation : " << last.location.str() << "\n";
+        assert(mapper_[last.location].size() && "can't have no instructions!");
+        for (Instruction *i : mapper_[last.location]) {
+            assert(i && "can't be null!");
+            errs() << "\t\tInstruction : " << *i << "\n";
 
-        if (missingFlush) {
-            i = fixer->insertFlush(i);
+            if (missingFlush) {
+                i = fixer->insertFlush(i);
+                if (i) errs() << "\t\t\tFlush inserted:" << *i << '\n';
+            }
+
+            if (missingFence && i) {
+                i = fixer->insertFence(i);
+                if (i) errs() << "\t\t\tFence inserted:" << *i << '\n';
+            }
+
+            if (nullptr == i) return false;
         }
-
-        if (missingFence) {
-            i = fixer->insertFence(i);
-        } 
-
-        return nullptr != i;            
+        
+        return true;            
     } else {
         errs() << "Not yet supported: " << te.typeString << "\n";
         return false;
