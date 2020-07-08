@@ -9,6 +9,7 @@ import os
 import shlex
 import subprocess
 import sys
+import yaml
 
 def get_linker_strings():
     # iangneal: inserted by CMAKE
@@ -69,6 +70,8 @@ def run_pass_and_compile(bitcode_file, bug_report, output_file, keep_files):
         ret = subprocess.run(shlex.split(clang_arg_str_fn(asm_path)))
         ret.check_returncode()
         assert(output_file.exists())
+
+
 
 def main(): 
     parser = ArgumentParser(description='Apply the pm-bug-fixer LLVM pass to a given binary.')

@@ -38,3 +38,10 @@ add_test_executable(TARGET 002_MissingFlushAndFence_PMEMCheck
                     INCLUDE ${PMCHK_INCLUDE}
                     DEPENDS PMEMCHECK
                     TOOL PMEMCHECK)
+
+add_test_executable(TARGET 003_ExtraFlush_PMTest
+                    SOURCES 003_extra_flush_pmtest.c
+                    INCLUDE ${PMTEST_INCLUDE}
+                    EXTRA_LIBS pmtest pthread
+                    DEPENDS PMTEST
+                    TOOL PMTEST)

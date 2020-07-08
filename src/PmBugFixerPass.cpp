@@ -26,6 +26,9 @@ using namespace std;
 namespace pmfix {
 
 cl::opt<std::string> TraceFile("trace-file", cl::desc("<trace file>"));
+cl::opt<bool> WeakClflush("weak-clflush", 
+                          cl::desc("Whether or not we should require explicit "
+                                   "fences after clflush (required for old CPUs)"));
 
 struct PmBugFixerPass : public ModulePass {
     static char ID; // For LLVM purposes.
@@ -42,6 +45,10 @@ struct PmBugFixerPass : public ModulePass {
         YAML::Node trace_info_doc = YAML::LoadFile(TraceFile);
         TraceInfo ti = TraceInfoBuilder(trace_info_doc).build();
         errs() << "TraceInfo string:\n" << ti.str() << '\n';
+
+        if (WeakClflush) {
+            errs() << "Err: --weak-clflush set, but nothing to do!\n";
+        }
     
         // Construct bug fixer
         BugFixer fixer(m, ti);

@@ -23,6 +23,8 @@ function(add_test_executable)
     target_link_libraries(${FN_ARGS_TARGET} ${FN_ARGS_EXTRA_LIBS})
     # Turning off optimizations is important to avoid line-combining.
     target_compile_options(${FN_ARGS_TARGET} PUBLIC "-g;-march=native;-O0")
+    # We want to get symbols at runtime (backtrace, execinfo.h)
+    set_target_properties(${FN_ARGS_TARGET} PROPERTIES ENABLE_EXPORTS TRUE)
 
     foreach(DEPENDENCY IN LISTS FN_ARGS_DEPENDS)
         if (TARGET ${DEPENDENCY})
