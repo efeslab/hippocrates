@@ -61,6 +61,12 @@ class TraceEvent(collections.abc.Mapping):
         assert hasattr(self, 'file') and isinstance(self.file, str)
         assert hasattr(self, 'line') and isinstance(self.line, int)
         assert hasattr(self, 'is_bug') and isinstance(self.is_bug, bool)
+        assert hasattr(self, 'stack') and isinstance(self.stack, list)
+        for sf in self.stack:
+            assert isinstance(sf, dict)
+            assert 'function' in sf and isinstance(sf['function'], str)
+            assert 'file' in sf and isinstance(sf['file'], str)
+            assert 'line' in sf and isinstance(sf['line'], int)
 
         if self.event == self.EventType.STORE or \
                 self.event == self.EventType.FLUSH or \

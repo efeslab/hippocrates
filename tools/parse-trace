@@ -3,8 +3,11 @@
 from argparse import ArgumentParser
 from enum import Enum, auto
 from pathlib import Path
+from subprocess import PIPE, STDOUT
 
 import re
+import shlex
+import subprocess
 import yaml
 
 from IPython import embed
@@ -16,15 +19,65 @@ from Reports import *
 
 class TraceParser:
 
-    def _parse_pmtest_stacktrace(self, stack_trace):
-        return None
+    # binary_file(func+offset) [byte address]
+    PMTEST_STACK_RE = re.compile(r'(.+)\((\w+)\+(\w+)\) \[(\w+)\]')
+    READELF_RE = re.compile(r'\d+: (\w+)\s+\w+\s+\w+\s+\w+\s+\w+\s+\w+\s*(\w*)')
+    def _parse_pmtest_stack(self, stack_trace):
+
+        stack_entries = []
+        entries = stack_trace.split(';')
+        for e in entries:
+            matches = self.PMTEST_STACK_RE.match(e)
+            binary_file = Path(matches.group(1))
+            func_name = matches.group(2)
+            offset = int(matches.group(3), base=16)
+            # addr = matches.group(4)
+            addr = None
+            
+            assert binary_file.exists(), f'File {binary_file} does not exist!'
+
+            # Given the function and offset, we need to find the real address.
+            # This is because of dynamic linking.
+            readelf_args = shlex.split(f'readelf -s {binary_file}')
+            proc = subprocess.run(readelf_args, stdout=PIPE, stderr=STDOUT)
+            proc.check_returncode()
+            outlines = [x.strip() for x in proc.stdout.decode().strip().split('\n')]
+            for l in outlines:
+                matches = self.READELF_RE.match(l)
+                if matches is None:
+                    continue
+                check_fn_name = matches.group(2)
+                if check_fn_name == func_name:
+                    addr = int(matches.group(1), base=16) + offset
+                    break
+
+            assert addr is not None, f'Could not find symbol {func_name}!!!'
+            
+            addr_arg_str = f'addr2line --exe={binary_file} --functions {hex(addr)}'
+            addr_args = shlex.split(addr_arg_str)
+            print(addr_arg_str)
+            
+            proc = subprocess.run(addr_args, stdout=PIPE, stderr=STDOUT)
+            proc.check_returncode()
+            check_fn_name, file_line = proc.stdout.decode().strip().split('\n')
+            file_name, line_no = file_line.split(':')
+
+            if line_no == '?':
+                line_no = '-1'      
+
+            assert (check_fn_name == func_name), f'Expected {func_name}, got {check_fn_name}!' 
+
+            entry = {'function': func_name, 'file': file_name, 'line': int(line_no)}
+            stack_entries += [entry]
+
+        return stack_entries
 
     def _parse_pmtest(self):
         '''
             Parse a trace that came from a PMTest instrumented program.
         '''
 
-        # List of tuples; (time, event, line). Time is an arbitrary int
+        # List of tuples; (time, event, line, sf). Time is an arbitrary int
         timestamp = 0
         pmtest_trace = []
 
@@ -45,9 +98,11 @@ class TraceParser:
                 # strip colon from end
                 err = f'{parts[0]} {parts[1][:-1]}'
                 if cmd in pmtest_events:
-                    pmtest_trace += [ (timestamp, cmd, line) ]
+                    pmtest_trace += [ [timestamp, cmd, line, None] ]
                 elif err in pmtest_errors:
-                    pmtest_trace += [ (timestamp, err, line) ]
+                    pmtest_trace += [ [timestamp, err, line, None] ]
+                elif err == 'STACK TRACE':
+                    pmtest_trace[-1][-1] = line.replace('STACK TRACE:', '').strip()
                 timestamp += 1
         
         # Now we can parse the trace.
@@ -55,7 +110,7 @@ class TraceParser:
         report.set_source(BugReportSource.PMTEST)
 
         for i in range(len(pmtest_trace)):
-            timestamp, event, line = pmtest_trace[i]
+            timestamp, event, line, stacktrace = pmtest_trace[i]
             parts = line.split(' ')
 
             if '_ASSIGN' == event:
@@ -63,7 +118,8 @@ class TraceParser:
                 _, addr, sz, func_name, file_name, line_no = parts
                 te = TraceEvent(timestamp=timestamp, event='STORE', 
                     address=int(addr, base=16), length=int(sz), function=func_name,
-                    file=file_name, line=int(line_no), is_bug=False)
+                    file=file_name, line=int(line_no), is_bug=False, 
+                    stack=self._parse_pmtest_stack(stacktrace))
                 report.add_trace_event(te)
 
             elif '_FLUSH' == event:
@@ -71,7 +127,8 @@ class TraceParser:
                 _, addr, sz, func_name, file_name, line_no = parts
                 te = TraceEvent(timestamp=timestamp, event='FLUSH', 
                     address=int(addr, base=16), length=int(sz), function=func_name,
-                    file=file_name, line=int(line_no), is_bug=False)
+                    file=file_name, line=int(line_no), is_bug=False,
+                    stack=self._parse_pmtest_stack(stacktrace))
                 report.add_trace_event(te)
 
             elif '_FENCE' == event:
@@ -79,7 +136,7 @@ class TraceParser:
                 _, func_name, file_name, line_no = parts
                 te = TraceEvent(timestamp=timestamp, event='FENCE', 
                     function=func_name, file=file_name, line=int(line_no), 
-                    is_bug=False)
+                    is_bug=False, stack=self._parse_pmtest_stack(stacktrace))
                 report.add_trace_event(te)
 
             elif '_PERSIST' == event:
@@ -92,7 +149,8 @@ class TraceParser:
                 _, addr, sz, func_name, file_name, line_no = parts
                 te = TraceEvent(timestamp=timestamp, event='ASSERT_PERSISTED', 
                     address=int(addr, base=16), length=int(sz), function=func_name,
-                    file=file_name, line=int(line_no), is_bug=not is_persist)
+                    file=file_name, line=int(line_no), is_bug=not is_persist,
+                    stack=self._parse_pmtest_stack(stacktrace))
                 report.add_trace_event(te)
                 
             elif 'PERSIST ERROR' == event:
@@ -113,7 +171,7 @@ class TraceParser:
                     address_a=int(addr_a, base=16), length_a=int(sz_a),
                     address_b=int(addr_b, base=16), length_b=int(sz_b),
                     function=func_name, file=file_name, line=int(line_no), 
-                    is_bug=not is_ordered)
+                    is_bug=not is_ordered, stack=self._parse_pmtest_stack(stacktrace))
                 report.add_trace_event(te)
 
             elif 'ORDER ERROR' == event:
