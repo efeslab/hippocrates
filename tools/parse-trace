@@ -189,14 +189,81 @@ class TraceParser:
 
         return report
 
-    def _parse_pmemcheck(input_file, output_file):
+    # byte_addr: func_name (file_name:line_no)
+    TRACE_EVENT_RE = re.compile(r'\w+: (.+) \((.+):(\d+)\)')
+
+    def _parse_pmemcheck_stackframe(self, frame):
+        matches = self.TRACE_EVENT_RE.match(frame)
+        if matches is None:
+            # Happens in the linker
+            return None
+        return {'function': matches.group(1), 'file': matches.group(2),
+                'line': int(matches.group(3))}
+
+    def _parse_pmemcheck_events(self, line, timestamp):
+        '''
+            Returns constructed trace event.
+        '''
+        events = [e.strip() for e in line.split('|')]
+        for event in events:
+            if 'START' in event:
+                pass
+            elif 'STOP' in event:
+                break
+            elif 'FENCE' in event:
+                # Splits into the event type and all the stack traces
+                parts = event.split(';')
+                event_type = parts[0]
+                assert event_type == 'FENCE', 'Error in parsing!'
+
+                stack = []
+                for frame in parts[1:]:
+                    res = self._parse_pmemcheck_stackframe(frame)
+                    if res is None:
+                        break
+                    stack += [res]
+
+                yield TraceEvent(timestamp=timestamp, event=event_type,
+                                  is_bug=False, stack=stack, **stack[0])
+                timestamp += 1
+            elif 'STORE' in event or 'FLUSH' in event:
+                parts = event.split(';')
+                event_type = parts[0]
+                assert event_type == 'STORE' or event_type == 'FLUSH', 'Error in parsing!'
+                
+                # For STORE, 4 items, [STORE, ADDR, VAL, SZ]
+                # For FLUSH, 3 items, [FLUSH, ADDR, SZ]           
+                addr = int(parts[1], base=16)
+                if event_type == 'STORE':
+                    sz = int(parts[3], base=16)
+                    frames = parts[4:]
+                else:
+                    sz = int(parts[2], base=16)
+                    frames = parts[3:]
+
+                stack = []
+                for frame in frames:
+                    res = self._parse_pmemcheck_stackframe(frame)
+                    if res is None:
+                        break
+                    stack += [res]
+
+                yield TraceEvent(timestamp=timestamp, event=event_type, address=addr, 
+                                 length=sz, stack=stack, is_bug=False, **stack[0])
+                timestamp += 1
+            elif 'REGISTER_FILE':
+                # We really don't care
+                pass
+            else:
+                raise Exception(f'Unsure how to parse event "{event}"')
+
+    def _parse_pmemcheck(self):
         '''
             First, we need to parse the event trace. Then, we have to parse the list
             of detected errors.
 
             It's a little annoying that pmemcheck doesn't support as many options
         '''
-        parse_common(input_file, output_file)
 
         timestamp = 0
         # List of tuples; (time, event, file, line). Time is an arbitrary int
@@ -204,59 +271,6 @@ class TraceParser:
         # --- Event is also either a single string or a list
 
         pmemcheck_trace = []
-
-        def insert_trace_event(event, fn_name, filepath, line, 
-                            addr=None, val=None, sz=None):
-            nonlocal pmemcheck_trace, timestamp
-            te = TraceEvent(timestamp=timestamp, event=event, address=addr,
-                            size=sz, fn=fn_name, filepath=filepath, line=line)
-            pmemcheck_trace += [te]
-            timestamp += 1
-
-        trace_event_re = re.compile(r' (.+) \((.+):(\d+)\)')
-        def parse_trace(line):
-            events = [e.strip() for e in line.split('|')]
-            for event in events:
-                if 'START' in event:
-                    pass
-                elif 'STOP' in event:
-                    break
-                elif 'FENCE' in event:
-                    parts = event.split(':', 1)
-                    event_type = parts[0].split(';')[0]
-                    matches = trace_event_re.match(parts[1])
-                    assert matches, f'regex did not match "{parts[1]}"'
-                    # the function name is arguably the more important part.
-                    fn_name = matches.group(1)
-                    filepath = matches.group(2)
-                    line = int(matches.group(3))
-
-                    insert_trace_event(event_type, fn_name, filepath, line)
-                elif 'STORE' in event or 'FLUSH' in event:
-                    parts = event.split(':', 1)
-                    # -- Removes the code address from the end, which is unimportant   
-                    # 
-                    # For STORE, 4 items, [STORE, ADDR, VAL, SZ]
-                    # For FLUSH, 3 items, [FLUSH, ADDR, SZ]           
-                    mod_info = parts[0].split(';')[0:-1]
-                    event_type = mod_info[0]
-                    addr = int(mod_info[1], base=16)
-                    sz = int(mod_info[-1], base=16)
-
-                    matches = trace_event_re.match(parts[1])
-                    assert matches, f'regex did not match "{parts[1]}"'
-                    # the function name is arguably the more important part.
-                    fn_name = matches.group(1)
-                    filepath = matches.group(2)
-                    line = int(matches.group(3))
-
-                    insert_trace_event(event_type, fn_name, filepath, line, 
-                                    addr=addr, sz=sz)
-                elif 'REGISTER_FILE':
-                    # We really don't care
-                    pass
-                else:
-                    raise Exception(f'Unsure how to parse event "{event}"')
 
         start_trace = False
         stop_trace = False
@@ -266,27 +280,33 @@ class TraceParser:
         nbugs_remaining = None
         last_bug_no = -1
 
-        bug_re = re.compile(r'==\d+==\s+\[(\d+)\]\s+ at \w+: (\w+) \((\S+)\) ==\d+==\s+Address: (\w+)\s+size: (\d+)\s+state: (\w+)')
+        bug_re = re.compile(r'==\d+==\s+\[(\d+)\]\s+ at \w+: \w+ \(\S+\) ==\d+==\s+Address: (\w+)\s+size: (\d+)\s+state: (\w+)')
 
         # We want to insert these in specific places
         # (addr, size, fn, file, line) describes the original assignment
         # (state) describes the kind of bug
         # --- (state, addr, size, fn, file, line)
-        bugs = []
 
-        with input_file.open() as f:
+        report = BugReport(self.output_file)
+        report.set_source(BugReportSource.GENERIC)
+
+        with self.input_file.open() as f:
             lines = f.readlines()
             i = 0
             while i < len(lines):
                 if not start_trace:
                     if 'START|' in lines[i]:
                         start_trace = True
-                        parse_trace(lines[i])
+                        for te in self._parse_pmemcheck_events(lines[i], timestamp):
+                            report.add_trace_event(te)
+                            timestamp += 1
                 elif start_trace and not stop_trace:
                     if '|STOP' in lines[i]:
                         stop_trace = True
                     else:
-                        parse_trace(lines[i])
+                        for te in self._parse_pmemcheck_events(lines[i], timestamp):
+                            report.add_trace_event(te)
+                            timestamp += 1
                 elif start_trace and stop_trace and nbugs_total is None:
                     # Parse the bug reports themselves.
                     matches = nbugs_re.match(lines[i])
@@ -300,32 +320,30 @@ class TraceParser:
                     # Add another one, end of function does the rest
                     print(f'R: {nbugs_remaining}/{nbugs_total}')
 
-                    st = 1
+                    st = 0
                     frames = []
-                    while 'by' in lines[i+st]:
+                    while 'by' in lines[i+st] or st == 0:
                         # We want to capture this stack information.
-                        sf = lines[i+st].split('by')[-1].split(':', 1)[-1]
-                        matches = trace_event_re.match(sf)
-                        assert (matches is not None), f'"{sf}" does not conform!'
-                        fn_name = matches.group(1)
-                        filepath = matches.group(2)
-                        line = int(matches.group(3))
-                        frames += [ [fn_name, filepath, line] ]
-                        st += 1
+                        split_word = 'at' if st == 0 else 'by'
+                        sf_raw = lines[i+st].split(split_word)[-1].strip()
+                        m = self.TRACE_EVENT_RE.match(sf_raw)
+                        assert (m is not None), f'"{sf_raw}" does not conform!'
+                        sf = {'function': m.group(1), 'file': m.group(2), 'line': int(m.group(3))}
+                        frames += [sf]; st += 1
+
                     bug_report = f'{lines[i].strip()} {lines[i+st].strip()}'
                     i += st
                     matches = bug_re.match(bug_report)
                     assert (matches is not None), f'"{bug_report}" does not match "{bug_re}"'
                     bug_no = int(matches.group(1))
-                    fn_name = matches.group(2)
-                    filepath, line = matches.group(3).split(':')
-                    addr = int(matches.group(4), base=16)
-                    size = int(matches.group(5))
-                    state = matches.group(6)
-                    bug = TraceEvent(state=state, address=addr, event='BUG', size=size, 
-                                    fn=fn_name, timestamp=timestamp,
-                                    filepath=filepath, line=int(line), stackframe=frames)
-                    pmemcheck_trace += [bug]
+                    addr = int(matches.group(2), base=16)
+                    size = int(matches.group(3))
+                    state = matches.group(4)
+
+                    bug = TraceEvent(state=state, address=addr, length=size, 
+                                     event='ASSERT_PERSISTED', timestamp=timestamp,
+                                     is_bug=True, stack=frames, **frames[0])
+                    report.add_trace_event(bug)
                     timestamp += 1
 
                     if bug_no != last_bug_no + 1:
@@ -338,25 +356,6 @@ class TraceParser:
                     # End of interesting stuff.
                     break
                 i += 1
-
-        # Now we can assemble the trace.
-        report = BugReport(self.output_file)
-        report.set_source(BugReportSource.GENERIC)
-
-        for te in pmemcheck_trace:
-            if te.event == 'FENCE':
-                report.add_pm_fence(te.timestamp, te.filepath, te.line, fn=te.fn)
-            elif te.event == 'FLUSH':
-                report.add_pm_flush(te.timestamp, te.address, te.size, 
-                                    te.filepath, te.line, fn=te.fn)
-            elif te.event == 'STORE':
-                report.add_pm_update(te.timestamp, te.address, te.size, 
-                                    te.filepath, te.line, fn=te.fn)
-            elif te.event == 'BUG':
-                report.add_pm_is_persist(te.timestamp, te.address, te.size, False, 
-                                        te.filepath, te.line, fn=te.fn, stack=te.stackframe)
-            else:
-                raise Exception(f'Bad event type! {te.event}')
 
         return report
 
