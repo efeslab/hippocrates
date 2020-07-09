@@ -1,3 +1,8 @@
+/**
+ * This is a basic performance microbenchmark.
+ * 
+ * TODO: move this out of the tests directory
+ */
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -14,6 +19,8 @@
 #include <sys/time.h>
 
 #include <libpmem.h>
+
+
 
 void do_gettimeofday(struct timeval *tv) {
     int ret = gettimeofday(tv, NULL);

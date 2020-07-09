@@ -23,7 +23,7 @@ class TraceParser:
     PMTEST_STACK_RE = re.compile(r'(.+)\((\w+)\+(\w+)\) \[(\w+)\]')
     READELF_RE = re.compile(r'\d+: (\w+)\s+\w+\s+\w+\s+\w+\s+\w+\s+\w+\s*(\w*)')
     def _parse_pmtest_stack(self, stack_trace):
-
+        assert stack_trace is not None
         stack_entries = []
         entries = stack_trace.split(';')
         for e in entries:
@@ -55,7 +55,6 @@ class TraceParser:
             
             addr_arg_str = f'addr2line --exe={binary_file} --functions {hex(addr)}'
             addr_args = shlex.split(addr_arg_str)
-            print(addr_arg_str)
             
             proc = subprocess.run(addr_args, stdout=PIPE, stderr=STDOUT)
             proc.check_returncode()

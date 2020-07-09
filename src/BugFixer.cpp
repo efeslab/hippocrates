@@ -7,186 +7,6 @@
 using namespace pmfix;
 using namespace llvm;
 
-#pragma region FixGenerator
-
-llvm::Function *FixGenerator::getClwbDefinition() const {
-    // Function *clwb = Intrinsic::getDeclaration(&module_, Intrinsic::x86_clwb, {ptrTy});
-    // -- the above appends extra type specifiers that cause it not to generate.
-    Function *clwb = Intrinsic::getDeclaration(&module_, Intrinsic::x86_clwb);
-    assert(clwb && "could not find clwb!");
-    return clwb;
-}
-
-#pragma endregion
-
-#pragma region FixGenerators
-
-/**
- * The instruction given should be the store that we need to flush.
- * 
- * TODO: Metadata for inserted instructions?
- * TODO: What kind of flush? Determine on machine stuff I'm sure.
- */
-Instruction *GenericFixGenerator::insertFlush(Instruction *i) {
-
-    if (StoreInst *si = dyn_cast<StoreInst>(i)) {
-        Value *addrExpr = si->getPointerOperand();
-
-        errs() << "Address of assign: " << *addrExpr << "\n";
-
-        // I think we've made the assumption up to this point that len <= 64
-        // and that [addr, addr + len) is within a cacheline. We'll continue
-        // on with that assumption.
-        // TODO: validate size of store (non-temporals) w/ alignment
-
-        // 1) Set up the IR Builder.
-        // -- want AFTER
-        errs() << "After: " << *i->getNextNode() << "\n";
-        IRBuilder<> builder(i->getNextNode());
-
-        // 2) Check the type of addrExpr. If it is not an Int8PtrTy, we need to
-        // insert a bitcast instruction so the function does not become broken
-        // according to LLVM type safety.
-        auto *ptrTy = Type::getInt8PtrTy(module_.getContext());
-        if (ptrTy != addrExpr->getType()) {
-            addrExpr = builder.CreateBitCast(addrExpr, ptrTy);
-            errs() << "\t====>" << *addrExpr << "\n";
-        }
-
-        // 3) Find and insert a clwb.
-        // This magically recreates an ArrayRef<Value*>.
-        CallInst *clwbCall = builder.CreateCall(getClwbDefinition(), {addrExpr});
-
-        return clwbCall;
-    }
-
-    return nullptr;
-}
-
-/**
- * This should insert the fence right after the clwb instruction/fence 
- * instruction.
- * 
- * TODO: Metadata for inserted instructions?
- */
-Instruction *GenericFixGenerator::insertFence(Instruction *i) {
-
-    if (CallInst *ci = dyn_cast<CallInst>(i)) {
-        Function *f = ci->getCalledFunction();
-        
-        // Validate that this is a flush.
-        // TODO: could also be a non temporal store.
-        // (iangneal): getting the intrinsic ID is more type-safe
-        if (f->getIntrinsicID() != Intrinsic::x86_clwb) {
-            assert(false && "must be a clwb!");
-        }
-
-        // 1) Set up the IR Builder.
-        // -- want AFTER
-        IRBuilder<> builder(i->getNextNode());
-
-        // 2) Find and insert an sfence.
-        Function *sfence = module_.getFunction("llvm.x86.sse.sfence");
-        assert(sfence && "could not find sfence!");
- 
-        CallInst *sfenceCall = builder.CreateCall(sfence, {});
-
-        return sfenceCall;
-    }
-
-    return nullptr;
-}
-
-/**
- * So, with the source code mapping, the instruction we have should be a call
- * to the C_createMetadata_Assign function. Arguments 2 and 3 are address and 
- * width, so we can steal that for making the flush and the call to 
- * "C_createMetadata_Flush"
- * 
- * TODO: Metadata for inserted instructions?
- * TODO: What kind of flush? Determine on machine stuff I'm sure.
- */
-Instruction *PMTestFixGenerator::insertFlush(Instruction *i) {
-
-    if (CallInst *ci = dyn_cast<CallInst>(i)) {
-        Function *f = ci->getCalledFunction();
-        assert(f && f->getName() == "C_createMetadata_Assign" && "IDK!");
-
-        Value *addrExpr = ci->getArgOperand(1); // 0-indexed
-        Value *lenExpr  = ci->getArgOperand(2); 
-
-        errs() << "Address of assign: " << *addrExpr << "\n";
-        errs() << "Length of assign:  " << *lenExpr << "\n";
-
-        // I think we've made the assumption up to this point that len <= 64
-        // and that [addr, addr + len) is within a cacheline. We'll continue
-        // on with that assumption.
-
-        // 1) Set up the IR Builder.
-        // -- want AFTER
-        IRBuilder<> builder(i->getNextNode());
-
-        // 2) Find and insert a clwb.
-        CallInst *clwbCall = builder.CreateCall(getClwbDefinition(), {addrExpr});
-
-        // 3) Find and insert a trace instruction.
-        Function *trace = module_.getFunction("C_createMetadata_Flush");
-        assert(trace && "could not find PMTest flush trace!");
-
-        // Should be the same arguments as to the assign call...
-        CallInst *traceCall = builder.CreateCall(trace, {ci->getArgOperand(0),
-            addrExpr, lenExpr, ci->getArgOperand(3), ci->getArgOperand(4)});
-
-        // return clwbCall;
-        return traceCall;
-    }
-
-    return nullptr;
-}
-
-/**
- * So, with the source code mapping, the instruction we have should be a call
- * to the C_createMetadata_Flush function, although it really shouldn't matter
- * too much---our theorem states that it shouldn't matter where we insert the 
- * fence. We just want it to steal the other arguments
- * 
- * "C_createMetadata_Fence" is the function we want to find.
- * 
- * TODO: Metadata for inserted instructions?
- */
-Instruction *PMTestFixGenerator::insertFence(Instruction *i) {
-
-    if (CallInst *ci = dyn_cast<CallInst>(i)) {
-        Function *f = ci->getCalledFunction();
-        assert(f && f->getName() == "C_createMetadata_Flush" && "IDK!");
-
-        // 1) Set up the IR Builder.
-        // -- want AFTER
-        IRBuilder<> builder(i->getNextNode());
-
-        // 2) Find and insert an sfence.
-        Function *sfence = module_.getFunction("llvm.x86.sse.sfence");
-        assert(sfence && "could not find sfence!");
- 
-        CallInst *sfenceCall = builder.CreateCall(sfence, {});
-
-        // 3) Find and insert a trace instruction.
-        Function *trace = module_.getFunction("C_createMetadata_Fence");
-        assert(trace && "could not find PMTest flush trace!");
-
-        // Should be the same arguments as to the flush call...
-        CallInst *traceCall = builder.CreateCall(trace, {ci->getArgOperand(0),
-                                                         ci->getArgOperand(3), 
-                                                         ci->getArgOperand(4)});
-
-        return traceCall;
-    }
-
-    return nullptr;
-}
-
-#pragma endregion
-
 #pragma region BugFixer
 
 bool BugFixer::addFixToMapping(Instruction *i, FixType t) {
@@ -208,112 +28,222 @@ bool BugFixer::addFixToMapping(Instruction *i, FixType t) {
         return true;
     }
 
-    if (fixMap_[i] == REMOVE_FLUSH_ONLY && t == REMOVE_FENCE_ONLY) {
-        fixMap_[i] = REMOVE_FLUSH_AND_FENCE;
-        return true;
-    } else if (fixMap_[i] == REMOVE_FENCE_ONLY && t == REMOVE_FLUSH_ONLY) {
-        fixMap_[i] = REMOVE_FLUSH_AND_FENCE;
-        return true;
+    if ((fixMap_[i] == ADD_FLUSH_ONLY || fixMap_[i] == ADD_FLUSH_AND_FENCE) &&
+        t == REMOVE_FLUSH_ONLY) {
+        assert(false && "conflicting solutions!");
     }
+    // (iangneal): future work
+    // if (fixMap_[i] == REMOVE_FLUSH_ONLY && t == REMOVE_FENCE_ONLY) {
+    //     fixMap_[i] = REMOVE_FLUSH_AND_FENCE;
+    //     return true;
+    // } else if (fixMap_[i] == REMOVE_FENCE_ONLY && t == REMOVE_FLUSH_ONLY) {
+    //     fixMap_[i] = REMOVE_FLUSH_AND_FENCE;
+    //     return true;
+    // }
 
     assert(false && "what");
+    return false;
+}
+
+/**
+ * If something is not persisted, that means one of three things:
+ * 1. It is missing a flush.
+ * - In this case, we need to insert a flush between the ASSIGN and 
+ * it's nearest FENCE.
+ * - Needs to be some check-up operation.
+ * 
+ * 2. It is missing a fence.
+ * - In this case, we need to insert a fence after the ASSIGN and it's 
+ * FLUSH.
+ * 
+ * 3. It is missing a flush AND a fence.
+ */
+bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
+    bool missingFlush = false;
+    bool missingFence = true;
+    // Need this so we know where the eventual fix will go.
+    int lastOpIndex = -1;
+
+    // First, determine which case we are in by going backwards.
+    for (int i = bug_index - 1; i >= 0; i--) {
+        const TraceEvent &event = trace_[i];
+        if (!event.isOperation()) continue;
+
+        assert(event.addresses.size() <= 1 && 
+                "Don't know how to handle more addresses!");
+        if (event.addresses.size()) {
+            errs() << "Address: " << event.addresses.front().address << "\n";
+            errs() << "Length:  " << event.addresses.front().length << "\n";
+            assert(event.addresses.front().isSingleCacheLine() && 
+                    "Don't know how to handle multi-cache line operations!");
+
+            if (event.type == TraceEvent::STORE &&
+                event.addresses.front() == te.addresses.front()) {
+                missingFlush = true;
+                lastOpIndex = i;
+                break;
+            } else if (event.type == TraceEvent::FLUSH &&
+                        event.addresses.front().overlaps(te.addresses.front())) {
+                assert(missingFence == true &&
+                        "Shouldn't be a bug in this case, has flush and fence");
+                lastOpIndex = i;
+                break;
+            }
+        } else if (event.type == TraceEvent::FENCE) {
+            missingFence = false;
+            missingFlush = true;
+        }
+    }
+
+    errs() << "\t\tMissing Flush? : " << missingFlush << "\n";
+    errs() << "\t\tMissing Fence? : " << missingFence << "\n";
+    errs() << "\t\tLast Operation : " << lastOpIndex << "\n";
+
+    assert(lastOpIndex >= 0 && "Has to had been assigned at least!");
+
+    // Find where the last operation was.
+    const TraceEvent &last = trace_[lastOpIndex];
+    errs() << "\t\tLocation : " << last.location.str() << "\n";
+    assert(mapper_[last.location].size() && "can't have no instructions!");
+    bool added = false;
+    for (Instruction *i : mapper_[last.location]) {
+        assert(i && "can't be null!");
+        errs() << "\t\tInstruction : " << *i << "\n";
+        
+        bool res = false;
+        if (missingFlush && missingFence) {
+            res = addFixToMapping(i, ADD_FLUSH_AND_FENCE);
+        } else if (missingFlush) {
+            res = addFixToMapping(i, ADD_FLUSH_ONLY);
+        } else if (missingFence) {
+            res = addFixToMapping(i, ADD_FENCE_ONLY);
+        }
+
+        // Have to do it this way, otherwise it short-circuits.
+        added = res || added;
+    }
+    
+    return added;      
+}
+
+bool BugFixer::handleAssertOrdered(const TraceEvent &te, int bug_index) {
+    errs() << "\tTODO: implement " << __FUNCTION__ << "!\n";
+    return false;
+}
+
+bool BugFixer::handleRequiredFlush(const TraceEvent &te, int bug_index) {
+    /**
+     * Step 1: find the redundant flush and the original flush.
+     */
+
+    int redundantIdx = -1;
+    int originalIdx = -1;
+
+    for (int i = bug_index - 1; i >= 0; i--) {
+        if (redundantIdx != -1 && originalIdx != -1) break;
+        const TraceEvent &event = trace_[i];
+        if (!event.isOperation()) continue;
+
+        assert(event.addresses.size() <= 1 && 
+                "Don't know how to handle more addresses!");
+        if (event.addresses.size()) {
+            errs() << "Address: " << event.addresses.front().address << "\n";
+            errs() << "Length:  " << event.addresses.front().length << "\n";
+            assert(event.addresses.front().isSingleCacheLine() && 
+                    "Don't know how to handle multi-cache line operations!");
+
+            if (event.type == TraceEvent::FLUSH &&
+                event.addresses.front() == te.addresses.front()) {
+                missingFlush = true;
+                lastOpIndex = i;
+                break;
+            } else if (event.type == TraceEvent::FLUSH &&
+                        event.addresses.front().overlaps(te.addresses.front())) {
+                assert(missingFence == true &&
+                        "Shouldn't be a bug in this case, has flush and fence");
+                lastOpIndex = i;
+                break;
+            }
+        } 
+    }
+
+    errs() << "\tRedundant Index : " << missingFlush << "\n";
+    errs() << "\tOriginal Index : " << missingFence << "\n";
+
+    assert(redundantIdx >= 0 && "Has to have a redundant index!");
+    assert(originalIdx >= 0 && "Has to have a redundant index!");
+
+    /**
+     * Step 2: Figure out how we can fix this bug.
+     * 
+     * Options:
+     *  - If the two flushes are in the same function context...
+     *      - If the redundant is dominated by the original, delete the redundant.
+     *      - If the redundant post-dominates the original, delete the original.
+     *      - If there is a common post-dominator, delete both and insert in the
+     *        common post-dominator.
+     * 
+     *  - If the two flushes are NOT in the same function context, then we have
+     *  to do some complicated crap.
+     *      - TODO
+     * 
+     * Otherwise, abort.
+     */
+
+    // Find where the last operation was.
+    const TraceEvent &last = trace_[lastOpIndex];
+    errs() << "\t\tLocation : " << last.location.str() << "\n";
+    assert(mapper_[last.location].size() && "can't have no instructions!");
+    bool added = false;
+    for (Instruction *i : mapper_[last.location]) {
+        assert(i && "can't be null!");
+        errs() << "\t\tInstruction : " << *i << "\n";
+        
+        bool res = false;
+        if (missingFlush && missingFence) {
+            res = addFixToMapping(i, ADD_FLUSH_AND_FENCE);
+        } else if (missingFlush) {
+            res = addFixToMapping(i, ADD_FLUSH_ONLY);
+        } else if (missingFence) {
+            res = addFixToMapping(i, ADD_FENCE_ONLY);
+        }
+
+        // Have to do it this way, otherwise it short-circuits.
+        added = res || added;
+    }
+    
+    return added;  
+
     return false;
 }
 
 bool BugFixer::computeAndAddFix(const TraceEvent &te, int bug_index) {
     assert(te.isBug && "Can't fix a not-a-bug!");
 
-    if (te.type == TraceEvent::ASSERT_PERSISTED) {
-        errs() << "\tPersistence Bug!\n";
-        assert(te.addresses.size() == 1 &&
-               "A persist assertion should only have 1 address!");
-        assert(te.addresses.front().isSingleCacheLine() &&
-               "Don't know how to handle non-standard ranges which cross lines!");
-        /**
-         * If something is not persisted, that means one of three things:
-         * 1. It is missing a flush.
-         * - In this case, we need to insert a flush between the ASSIGN and 
-         * it's nearest FENCE.
-         * - Needs to be some check-up operation.
-         * 
-         * 2. It is missing a fence.
-         * - In this case, we need to insert a fence after the ASSIGN and it's 
-         * FLUSH.
-         * 
-         * 3. It is missing a flush AND a fence.
-         */
-        bool missingFlush = false;
-        bool missingFence = true;
-        // Need this so we know where the eventual fix will go.
-        int lastOpIndex = -1;
-
-        // First, determine which case we are in by going backwards.
-        for (int i = bug_index - 1; i >= 0; i--) {
-            const TraceEvent &event = trace_[i];
-            if (!event.isOperation()) continue;
-
-            assert(event.addresses.size() <= 1 && 
-                    "Don't know how to handle more addresses!");
-            if (event.addresses.size()) {
-                errs() << "Address: " << event.addresses.front().address << "\n";
-                errs() << "Length:  " << event.addresses.front().length << "\n";
-                assert(event.addresses.front().isSingleCacheLine() && 
-                       "Don't know how to handle multi-cache line operations!");
-
-                if (event.type == TraceEvent::STORE &&
-                    event.addresses.front() == te.addresses.front()) {
-                    missingFlush = true;
-                    lastOpIndex = i;
-                    break;
-                } else if (event.type == TraceEvent::FLUSH &&
-                           event.addresses.front().overlaps(te.addresses.front())) {
-                    assert(missingFence == true &&
-                           "Shouldn't be a bug in this case, has flush and fence");
-                    lastOpIndex = i;
-                    break;
-                }
-            } else if (event.type == TraceEvent::FENCE) {
-                missingFence = false;
-                missingFlush = true;
-            }
+    switch(te.type) {
+        case TraceEvent::ASSERT_PERSISTED: {
+            errs() << "\tPersistence Bug (Universal Correctness)!\n";
+            assert(te.addresses.size() == 1 &&
+                "A persist assertion should only have 1 address!");
+            assert(te.addresses.front().isSingleCacheLine() &&
+                "Don't know how to handle non-standard ranges which cross lines!");
+            return handleAssertPersisted(te, bug_index);
         }
-
-        errs() << "\t\tMissing Flush? : " << missingFlush << "\n";
-        errs() << "\t\tMissing Fence? : " << missingFence << "\n";
-        errs() << "\t\tLast Operation : " << lastOpIndex << "\n";
-
-        assert(lastOpIndex >= 0 && "Has to had been assigned at least!");
-
-        // Find where the last operation was.
-        const TraceEvent &last = trace_[lastOpIndex];
-        errs() << "\t\tLocation : " << last.location.str() << "\n";
-        assert(mapper_[last.location].size() && "can't have no instructions!");
-        bool added = false;
-        for (Instruction *i : mapper_[last.location]) {
-            assert(i && "can't be null!");
-            errs() << "\t\tInstruction : " << *i << "\n";
-            
-            bool res = false;
-            if (missingFlush && missingFence) {
-                res = addFixToMapping(i, ADD_FLUSH_AND_FENCE);
-            } else if (missingFlush) {
-                res = addFixToMapping(i, ADD_FLUSH_ONLY);
-            } else if (missingFence) {
-                res = addFixToMapping(i, ADD_FENCE_ONLY);
-            }
-
-            // Have to do it this way, otherwise it short-circuits.
-            added = res || added;
+        case TraceEvent::REQUIRED_FLUSH: {
+            errs() << "\tPersistence Bug (Universal Performance)!\n";
+            assert(te.addresses.size() > 0 &&
+                "A redundant flush assertion needs an address!");
+            assert(te.addresses.size() == 1 &&
+                "A persist assertion should only have 1 address!");
+            assert(te.addresses.front().isSingleCacheLine() &&
+                "Don't know how to handle non-standard ranges which cross lines!");
+            return handleRequiredFlush(te, bug_index);
         }
-        
-        return added;            
-    } else {
-        errs() << "Not yet supported: " << te.typeString << "\n";
-        return false;
+        default: {
+            errs() << "Not yet supported: " << te.typeString << "\n";
+            return false;
+        }
     }
-
-    errs() << "Fallthrough!!!\n";
-    return false;
 }
 
 bool BugFixer::fixBug(FixGenerator *fixer, Instruction *i, FixType ft) {
@@ -333,7 +263,11 @@ bool BugFixer::fixBug(FixGenerator *fixer, Instruction *i, FixType ft) {
             assert(n && "could not add flush of FLUSH_AND_FENCE");
             n = fixer->insertFence(n);
             assert(n && "could not add fence of FLUSH_AND_FENCE");
-            errs() << "BOOM\n";
+            break;
+        }
+        case REMOVE_FLUSH_ONLY: {
+            bool success = fixer->removeFlush(i);
+            assert(success && "could not remove flush of REMOVE_FLUSH_ONLY");
             break;
         }
         default: {
@@ -343,6 +277,11 @@ bool BugFixer::fixBug(FixGenerator *fixer, Instruction *i, FixType ft) {
     }
 
     return true;
+}
+
+bool BugFixer::runFixMapOptimization(void) {
+    errs() << "\tTODO: implement " << __FUNCTION__ << "!\n";
+    return false;
 }
 
 bool BugFixer::doRepair(void) {
@@ -367,6 +306,8 @@ bool BugFixer::doRepair(void) {
     }
 
     /**
+     * Step 1.
+     * 
      * Now, we find all the fixes.
      */
     for (int bug_index : trace_.bugs()) {
@@ -379,8 +320,17 @@ bool BugFixer::doRepair(void) {
         }
     }
 
+    bool couldOpt = runFixMapOptimization();
+    if (couldOpt) {
+        errs() << "Was able to optimize!\n";
+    } else {
+        errs() << "Was not able to perform fix map optimizations!\n";
+    }
+
     /**
-     * Now, we actually do the fixing.
+     * Step 3.
+     * 
+     * The final step. Now, we actually do the fixing.
      */
     for (auto &p : fixMap_) {
         bool res = fixBug(fixer, p.first, p.second);

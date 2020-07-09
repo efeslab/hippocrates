@@ -7,6 +7,7 @@ add_llvm_library(PMFIXER MODULE  # Name of the generated shared library
     PassUtils.cpp                # ... other stuff ...
     BugReports.cpp
     BugFixer.cpp
+    FixGenerator.cpp
     PLUGIN_TOOL
     opt
 )

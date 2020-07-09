@@ -92,7 +92,8 @@ public:
 struct TraceEvent {
     enum Type {
         INVALID = -1,
-        STORE = 0, FLUSH, FENCE, ASSERT_PERSISTED, ASSERT_ORDERED
+        STORE = 0, FLUSH, FENCE, 
+        ASSERT_PERSISTED, ASSERT_ORDERED, REQUIRED_FLUSH
     };
 
     static Type getType(std::string typeString);
@@ -112,7 +113,8 @@ struct TraceEvent {
     bool isOperation(void) const { 
         return type == STORE || type == FLUSH || type == FENCE; }
     bool isAssertion(void) const { 
-        return type == ASSERT_PERSISTED || type == ASSERT_ORDERED; }
+        return type == ASSERT_PERSISTED || type == ASSERT_ORDERED ||
+               type == REQUIRED_FLUSH; }
 
     std::string str() const;
 };

@@ -140,6 +140,7 @@ TraceEvent::Type TraceEvent::getType(string typeString) {
     if (typeString == "fence") return TraceEvent::FENCE;
     if (typeString == "assert_persisted") return TraceEvent::ASSERT_PERSISTED;
     if (typeString == "assert_ordered") return TraceEvent::ASSERT_ORDERED;
+    if (typeString == "required_flush") return TraceEvent::REQUIRED_FLUSH;
     
     return TraceEvent::INVALID;
 }
@@ -217,6 +218,7 @@ void TraceInfoBuilder::processEvent(TraceInfo &ti, YAML::Node event) {
         case TraceEvent::STORE:
         case TraceEvent::FLUSH:
         case TraceEvent::ASSERT_PERSISTED:
+        case TraceEvent::REQUIRED_FLUSH:
             AddressInfo ai;
             ai.address = event["address"].as<uint64_t>();
             ai.length = event["length"].as<uint64_t>();
