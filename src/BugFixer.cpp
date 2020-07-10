@@ -154,21 +154,16 @@ bool BugFixer::handleRequiredFlush(const TraceEvent &te, int bug_index) {
 
             if (event.type == TraceEvent::FLUSH &&
                 event.addresses.front() == te.addresses.front()) {
-                missingFlush = true;
-                lastOpIndex = i;
                 break;
             } else if (event.type == TraceEvent::FLUSH &&
                         event.addresses.front().overlaps(te.addresses.front())) {
-                assert(missingFence == true &&
-                        "Shouldn't be a bug in this case, has flush and fence");
-                lastOpIndex = i;
                 break;
             }
         } 
     }
 
-    errs() << "\tRedundant Index : " << missingFlush << "\n";
-    errs() << "\tOriginal Index : " << missingFence << "\n";
+    errs() << "\tRedundant Index : " << redundantIdx << "\n";
+    errs() << "\tOriginal Index : " << originalIdx << "\n";
 
     assert(redundantIdx >= 0 && "Has to have a redundant index!");
     assert(originalIdx >= 0 && "Has to have a redundant index!");
@@ -191,28 +186,28 @@ bool BugFixer::handleRequiredFlush(const TraceEvent &te, int bug_index) {
      */
 
     // Find where the last operation was.
-    const TraceEvent &last = trace_[lastOpIndex];
-    errs() << "\t\tLocation : " << last.location.str() << "\n";
-    assert(mapper_[last.location].size() && "can't have no instructions!");
-    bool added = false;
-    for (Instruction *i : mapper_[last.location]) {
-        assert(i && "can't be null!");
-        errs() << "\t\tInstruction : " << *i << "\n";
-        
-        bool res = false;
-        if (missingFlush && missingFence) {
-            res = addFixToMapping(i, ADD_FLUSH_AND_FENCE);
-        } else if (missingFlush) {
-            res = addFixToMapping(i, ADD_FLUSH_ONLY);
-        } else if (missingFence) {
-            res = addFixToMapping(i, ADD_FENCE_ONLY);
-        }
+    //const TraceEvent &last = trace_[lastOpIndex];
+    //errs() << "\t\tLocation : " << last.location.str() << "\n";
+    //assert(mapper_[last.location].size() && "can't have no instructions!");
+    //bool added = false;
+    //for (Instruction *i : mapper_[last.location]) {
+    //    assert(i && "can't be null!");
+    //    errs() << "\t\tInstruction : " << *i << "\n";
+    //    
+    //    bool res = false;
+    //    if (missingFlush && missingFence) {
+    //        res = addFixToMapping(i, ADD_FLUSH_AND_FENCE);
+    //    } else if (missingFlush) {
+    //        res = addFixToMapping(i, ADD_FLUSH_ONLY);
+    //    } else if (missingFence) {
+    //        res = addFixToMapping(i, ADD_FENCE_ONLY);
+    //    }
 
-        // Have to do it this way, otherwise it short-circuits.
-        added = res || added;
-    }
-    
-    return added;  
+    //    // Have to do it this way, otherwise it short-circuits.
+    //    added = res || added;
+    //}
+    //
+    //return added;  
 
     return false;
 }
