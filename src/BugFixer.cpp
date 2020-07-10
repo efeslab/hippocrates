@@ -1,4 +1,5 @@
 #include "BugFixer.hpp"
+#include "FlowAnalyzer.hpp"
 
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/DebugInfoMetadata.h"
@@ -154,9 +155,14 @@ bool BugFixer::handleRequiredFlush(const TraceEvent &te, int bug_index) {
 
             if (event.type == TraceEvent::FLUSH &&
                 event.addresses.front() == te.addresses.front()) {
-                break;
+                if (redundantIdx == -1) redundantIdx = i;
+                else {
+                    originalIdx = i;
+                    break;
+                }
             } else if (event.type == TraceEvent::FLUSH &&
                         event.addresses.front().overlaps(te.addresses.front())) {
+                assert(false && "wat");
                 break;
             }
         } 
@@ -184,6 +190,23 @@ bool BugFixer::handleRequiredFlush(const TraceEvent &te, int bug_index) {
      * 
      * Otherwise, abort.
      */
+
+    const TraceEvent &orig = trace_[originalIdx];
+    const TraceEvent &redt = trace_[redundantIdx];
+
+    errs() << "Original: " << orig.str() << "\n";
+    errs() << "Redundant: " << redt.str() << "\n";
+
+    // Are they in the same context?
+    if (TraceEvent::callStacksEqual(orig, redt)) {
+        errs() << "\teq stack!\n";
+    } else {
+        errs() << "\tneq!!\n";
+    }
+
+    FnContext *octx = FnContext::create(mapper_, orig);
+    errs() << "OG CTX: " << octx->str() << "\n";
+    delete octx;
 
     // Find where the last operation was.
     //const TraceEvent &last = trace_[lastOpIndex];

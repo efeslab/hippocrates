@@ -41,7 +41,8 @@ struct AddressInfo {
 struct LocationInfo {
     std::string function;
     std::string file;
-    uint64_t line;
+    // -1 represents unknown
+    int64_t line;
 
     // Returns just the file name, trims directory information.
     std::string getFilename(void) const;
@@ -52,11 +53,13 @@ struct LocationInfo {
         uint64_t operator()(const LocationInfo &li) const {
             return std::hash<std::string>{}(li.function) ^
                    std::hash<std::string>{}(li.getFilename()) ^ 
-                   std::hash<uint64_t>{}(li.line);
+                   std::hash<int64_t>{}(li.line);
         }
     };
 
     bool operator==(const LocationInfo &other) const;
+
+    bool valid(void) const {return line > 0;}
 
     std::string str() const;
 };
@@ -104,6 +107,7 @@ struct TraceEvent {
     std::vector<AddressInfo> addresses;
     LocationInfo location;
     bool isBug;
+    std::vector<LocationInfo> callstack;
 
     // Debug
     std::string typeString;
@@ -115,6 +119,8 @@ struct TraceEvent {
     bool isAssertion(void) const { 
         return type == ASSERT_PERSISTED || type == ASSERT_ORDERED ||
                type == REQUIRED_FLUSH; }
+
+    static bool callStacksEqual(const TraceEvent &a, const TraceEvent &b);
 
     std::string str() const;
 };

@@ -1,4 +1,7 @@
 add_subdirectory(andersen)
+set(ANDERSEN_INCLUDE ${CMAKE_CURRENT_SOURCE_DIR}/andersen/include CACHE INTERNAL "")
+set(ANDERSEN_LIB ${CMAKE_CURRENT_BINARY_DIR}/andersen/lib CACHE INTERNAL "")
+
 add_subdirectory(pmtest)
 
 set(BUILD_SHARED_LIBS ON)

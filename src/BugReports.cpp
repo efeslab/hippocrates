@@ -160,8 +160,7 @@ std::string TraceEvent::str() const {
 
     buffer << "Event (time=" << timestamp << ")\n";
     buffer << "\tType: " << typeString << '\n';
-    buffer << "\tLocation: " << location.function << " @ " << 
-        location.file << ":" << location.line << '\n';
+    buffer << "\tLocation: " << location.str() << '\n';
     if (addresses.size()) {
         buffer << "\tAddress Info:\n";
         for (const auto &ai : addresses) {
@@ -169,8 +168,31 @@ std::string TraceEvent::str() const {
             buffer << "\t\tLength: " << ai.length << '\n';
         }
     }
+    buffer << "\tCall Stack:\n";
+    int i = 0;
+    for (const LocationInfo &li : callstack) {
+        buffer << "[" << i << "] " << li.str() << '\n';
+        i++;
+    }
 
     return buffer.str();
+}
+
+bool TraceEvent::callStacksEqual(const TraceEvent &a, const TraceEvent &b) {
+    if (a.callstack.size() != b.callstack.size()) {
+        return false;
+    }
+
+    for (int i = 0; i < a.callstack.size(); i++) {
+        const LocationInfo &la = a.callstack[i];
+        const LocationInfo &lb = b.callstack[i];
+        errs() << "\t\t" << la.str() << " ?= " << lb.str() << '\n';
+        if (la.function != lb.function) return false;
+        if (la.file != lb.file) return false;
+        if (i > 0 && la.line != lb.line) return false;
+    }
+
+    return true;
 }
 
 #pragma endregion
@@ -211,8 +233,18 @@ void TraceInfoBuilder::processEvent(TraceInfo &ti, YAML::Node event) {
     e.timestamp = event["timestamp"].as<uint64_t>();
     e.location.function = event["function"].as<string>();
     e.location.file = event["file"].as<string>();
-    e.location.line = event["line"].as<uint64_t>();
+    e.location.line = event["line"].as<int64_t>();
     e.isBug = event["is_bug"].as<bool>();
+
+    assert(event["stack"].IsSequence() && "Don't know what to do!");
+    for (size_t i = 0; i < event["stack"].size(); ++i) {
+        YAML::Node sf = event["stack"][i];
+        LocationInfo li;
+        li.function = sf["function"].as<string>();
+        li.file = sf["file"].as<string>();
+        li.line = sf["line"].as<int64_t>();
+        e.callstack.emplace_back(li);
+    }
 
     switch (e.type) {
         case TraceEvent::STORE:

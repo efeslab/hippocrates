@@ -8,6 +8,7 @@ add_llvm_library(PMFIXER MODULE  # Name of the generated shared library
     BugReports.cpp
     BugFixer.cpp
     FixGenerator.cpp
+    FlowAnalyzer.cpp
     PLUGIN_TOOL
     opt
 )
@@ -15,6 +16,7 @@ add_llvm_library(PMFIXER MODULE  # Name of the generated shared library
 set(LLVM_PASS_PATH ${CMAKE_CURRENT_BINARY_DIR}/PMFIXER.so CACHE INTERNAL 
     "Path to ${CMAKE_PROJECT_NAME} compiled pass.")
 
-target_include_directories(PMFIXER PUBLIC ${YAMLCPP_INCLUDE})
-target_link_libraries(PMFIXER PUBLIC yaml-cpp -Wl,-rpath=${YAMLCPP_LIBS})
+target_include_directories(PMFIXER PUBLIC ${YAMLCPP_INCLUDE} ${ANDERSEN_INCLUDE})
+target_link_libraries(PMFIXER PUBLIC yaml-cpp -Wl,-rpath=${YAMLCPP_LIBS} 
+                                     Andersen -Wl,-rpath=${ANDERSEN_LIB})
 target_compile_options(PMFIXER PUBLIC "-fPIC")
