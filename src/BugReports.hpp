@@ -88,6 +88,8 @@ private:
 public:
     BugLocationMapper(llvm::Module &m) { createMappings(m); }
 
+    bool contains(const LocationInfo &li) const { return locMap_.count(li); }
+
     const std::list<llvm::Instruction*> &operator[](const LocationInfo &li) const 
         { return locMap_.at(li); }
 };

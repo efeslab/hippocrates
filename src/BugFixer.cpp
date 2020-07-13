@@ -206,31 +206,13 @@ bool BugFixer::handleRequiredFlush(const TraceEvent &te, int bug_index) {
 
     FnContext *octx = FnContext::create(mapper_, orig);
     errs() << "OG CTX: " << octx->str() << "\n";
+    FnContext *rctx = FnContext::create(mapper_, redt);
+    errs() << "RE CTX: " << rctx->str() << "\n";
+
+    ContextGraph<bool> graph(*octx, *rctx);
+
     delete octx;
-
-    // Find where the last operation was.
-    //const TraceEvent &last = trace_[lastOpIndex];
-    //errs() << "\t\tLocation : " << last.location.str() << "\n";
-    //assert(mapper_[last.location].size() && "can't have no instructions!");
-    //bool added = false;
-    //for (Instruction *i : mapper_[last.location]) {
-    //    assert(i && "can't be null!");
-    //    errs() << "\t\tInstruction : " << *i << "\n";
-    //    
-    //    bool res = false;
-    //    if (missingFlush && missingFence) {
-    //        res = addFixToMapping(i, ADD_FLUSH_AND_FENCE);
-    //    } else if (missingFlush) {
-    //        res = addFixToMapping(i, ADD_FLUSH_ONLY);
-    //    } else if (missingFence) {
-    //        res = addFixToMapping(i, ADD_FENCE_ONLY);
-    //    }
-
-    //    // Have to do it this way, otherwise it short-circuits.
-    //    added = res || added;
-    //}
-    //
-    //return added;  
+    delete rctx;
 
     return false;
 }

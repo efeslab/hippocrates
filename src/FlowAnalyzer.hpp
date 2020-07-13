@@ -51,6 +51,7 @@ namespace pmfix {
         void addKnownPMValue(llvm::Value *pmv);
 
         bool pointsToPM(llvm::Value *val);
+
     };
 
     /**
@@ -62,17 +63,41 @@ namespace pmfix {
     struct FnContext {
     private:
         FnContext() = delete;
-        FnContext(FnContext *parent, llvm::BasicBlock *curr);
+        // For calls.
+        FnContext(FnContext *parent, llvm::BasicBlock *current);
+
+        /**
+         * This gets the successors based purely off of the intra-procedural
+         * control flow, or returns.
+         */
+        std::list<FnContext*> nextSuccessors(void) const;
     public:
+
+        FnContext(const FnContext &fctx) = default;
+
         std::list<FnContext*> callStack;
         llvm::BasicBlock *current;
 
-        static FnContext *create(const BugLocationMapper &mapper, const TraceEvent &te);
+        static FnContext *create(const BugLocationMapper &mapper, 
+                                 const TraceEvent &te);
 
+        /**
+         *
+         * TODO: Handle exception semantics. 
+         */
         std::list<FnContext*> next(void);
 
-        bool operator==(const FnContext &f) const;
+        /**
+         * Returns true if this leads to program termination.
+         */
+        bool isTerminator(void) const;
 
+        bool operator==(const FnContext &f) const;
+        bool operator!=(const FnContext &f) const { return !(*this == f); }
+
+        /**
+         * Debug: create a string representation
+         */
         std::string str() const;
     };
 
@@ -82,12 +107,17 @@ namespace pmfix {
     template <typename T>
     struct ContextGraph {
     private:
-        void construct(void);
+        void construct(FnContext &end);
     public:
         struct Node {
             FnContext *ctx;
             std::list<Node*> children;
             T metadata;
+
+            Node(FnContext &fc) : ctx(new FnContext(fc)) {}
+            Node(FnContext *fc) : ctx(fc) {}
+
+            void addChild(Node *c) { children.push_back(c); }
         };
 
         Node *root;
