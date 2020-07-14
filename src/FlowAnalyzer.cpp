@@ -12,9 +12,9 @@ using namespace llvm;
 using namespace pmfix;
 using namespace std;
 
-#pragma region PMDesc
+#pragma region PmDesc
 
-bool PMDesc::getPointsToSet(const llvm::Value *v,                                  
+bool PmDesc::getPointsToSet(const llvm::Value *v,                                  
                             std::unordered_set<const llvm::Value *> &ptsSet) {
     /**                                                                            
      * Using a cache for this dramatically reduces the amount of time spent here,  
@@ -22,25 +22,25 @@ bool PMDesc::getPointsToSet(const llvm::Value *v,
      * data structures to construct the set.                                       
      */                                                                            
     bool ret = true;                                                               
-    if (!cache_.count(v)) {                                                
+    if (!cache_->count(v)) {                                                
         std::vector<const Value*> rawSet;                                            
-        ret = anders_.getResult().getPointsToSet(v, rawSet);                      
+        ret = anders_->getResult().getPointsToSet(v, rawSet);                      
         if (ret) { 
             ptsSet.insert(rawSet.begin(), rawSet.end());                                                                         
-            cache_[v] = ptsSet;                                              
+            (*cache_)[v] = ptsSet;                                              
         }                                                                            
     } else {                                                                       
-        ptsSet = cache_[v];                                                
+        ptsSet = (*cache_)[v];                                                
     }                                                                              
                                                                                    
     return ret;
 }
 
-PMDesc::PMDesc(Module &m) {
-    assert(!anders_.runOnModule(m) && "failed!");
+PmDesc::PmDesc(Module &m) {
+    assert(!anders_->runOnModule(m) && "failed!");
 }
 
-void PMDesc::addKnownPMValue(Value *pmv) {
+void PmDesc::addKnownPmValue(Value *pmv) {
     std::unordered_set<const llvm::Value *> ptsSet;
     assert(getPointsToSet(pmv, ptsSet) && "could not get!");
 
@@ -48,13 +48,13 @@ void PMDesc::addKnownPMValue(Value *pmv) {
     else pm_locals_.insert(ptsSet.begin(), ptsSet.end());
 }
 
-bool PMDesc::pointsToPM(llvm::Value *pmv) {
+bool PmDesc::pointsToPm(llvm::Value *pmv) {
     std::unordered_set<const llvm::Value *> ptsSet;
     assert(getPointsToSet(pmv, ptsSet) && "could not get!");
 
     std::unordered_set<const llvm::Value *> pm_values;
-    pm_values.insert(pm_locals_.begin(), pm_locals.end());
-    pm_values.insert(pm_globals_.begin(), pm_globals.end());
+    pm_values.insert(pm_locals_.begin(), pm_locals_.end());
+    pm_values.insert(pm_globals_.begin(), pm_globals_.end());
 
     std::vector<const Value*> inter;
 
@@ -63,7 +63,7 @@ bool PMDesc::pointsToPM(llvm::Value *pmv) {
     return !inter.empty();
 }
 
-bool isSubsetOf(const PmDesc &possSuper) {
+bool PmDesc::isSubsetOf(const PmDesc &possSuper) {
     // They are subsets if the intersection is equal to the smaller set.
     std::vector<const Value*> gi, li;
     
@@ -84,21 +84,21 @@ bool isSubsetOf(const PmDesc &possSuper) {
 
 #pragma region FnContext
 
-FnContextPtr doCall(llvm::Function *f, llvm::CallBase *cb) {
+FnContext::Shared FnContext::doCall(Function *f, CallBase *cb) {
     if (callBaseCache_->count(cb)) {
         return callBaseCache_->at(cb);
     }
 
     // Copy, basic setup
-    FnContextPtr nctx = std::make_shared(*this);
+    FnContext::Shared nctx = std::make_shared<FnContext>(*this);
     nctx->parent_ = shared_from_this();
     nctx->callStack_.push_back(cb);
 
     return nctx;
 }
 
-FnContextPtr FnContext::doReturn(ReturnInst *ri) {
-    FnContextPtr p = parent_;
+FnContext::Shared FnContext::doReturn(ReturnInst *ri) {
+    FnContext::Shared p = parent_;
     // Propagate up PM values
     if (Value *v = ri->getReturnValue()) {
         if (pm_.pointsToPm(v)) {
@@ -114,9 +114,8 @@ FnContextPtr FnContext::doReturn(ReturnInst *ri) {
 
 #pragma region ContextNode
 
-template <typename T>
-ContextNodePtr ContextNode::create(const BugLocationMapper &mapper, 
-                                   const TraceEvent &te) {
+ContextBlock::Shared ContextBlock::create(const BugLocationMapper &mapper, 
+                                          const TraceEvent &te) {
     // Start from the top down.
     FnContext::Shared parent = FnContext::create(mapper.module());
     // [0] is the current location, which we use to set up the node itself.
@@ -139,7 +138,7 @@ ContextNodePtr ContextNode::create(const BugLocationMapper &mapper,
         assert(possibleCallSites.size() == 1 && "don't know how to handle!");
 
         Instruction *possible = possibleCallSites.front();
-        CallBase *callInst = dyn_cast<CallBase(possible);
+        CallBase *callInst = dyn_cast<CallBase>(possible);
         assert(callInst && "don't know how to handle a non-call!");
 
         Function *f = callInst->getCalledFunction();
@@ -148,7 +147,7 @@ ContextNodePtr ContextNode::create(const BugLocationMapper &mapper,
         }
         assert(f && "don't know what's going on!!");
         
-        FnContext::shared curr = parent->doCall(f, cb);
+        FnContext::Shared curr = parent->doCall(f, callInst);
         
         parent = curr;
     }
@@ -156,7 +155,7 @@ ContextNodePtr ContextNode::create(const BugLocationMapper &mapper,
     /**
      * Now, we set up the node!
      */ 
-    ContextNode<T>::Shared node = std::make_shared();
+    ContextBlock::Shared node = std::make_shared<ContextBlock>();
     node->ctx = parent;
 
     const LocationInfo &curr = te.callstack[0];
@@ -169,21 +168,23 @@ ContextNodePtr ContextNode::create(const BugLocationMapper &mapper,
     assert(possibleLocs.size() == 1 && "don't know how to handle!");
 
     Instruction *possible = possibleLocs.front();
-    first = possible;
-    last = possible;
+    node->first = possible;
+    node->last = possible;
     // -- Scroll forward to find the first instruction.
-    while (Instruction *tmp = first->getPrevNonDebugInstruction()) {
-        if (auto *cb = dyn_cast<CallBase>(tmp)) {
-            if (!cb->isDeclaration() && !cb->isIntrinsic()) break;
+    while (Instruction *tmp = node->first->getPrevNonDebugInstruction()) {
+        if (CallBase *cb = dyn_cast<CallBase>(tmp)) {
+            Function *f = cb->getCalledFunction();
+            if (f && !f->isDeclaration() && !f->isIntrinsic()) break;
         }
-        first = tmp;
+        node->first = tmp;
     }
     // -- Scroll down to find the last instruction.
-    while (Instruction *tmp = last->getNextNonDebugInstruction()) {
-        if (auto *cb = dyn_cast<CallBase>(tmp)) {
-            if (!cb->isDeclaration() && !cb->isIntrinsic()) break;
+    while (Instruction *tmp = node->last->getNextNonDebugInstruction()) {
+        if (CallBase *cb = dyn_cast<CallBase>(tmp)) {
+            Function *f = cb->getCalledFunction();
+            if (f && !f->isDeclaration() && !f->isIntrinsic()) break;
         }
-        last = tmp;
+        node->last = tmp;
     }
 
     // We also use the trace event itself to initialize some PM values.
@@ -310,73 +311,75 @@ ContextNodePtr ContextNode::create(const BugLocationMapper &mapper,
 
 template <typename T>
 void ContextGraph<T>::construct(FnContext &end) {
-    std::deque<Node*> frontier;
-    frontier.push_back(root);
+    // std::deque<Node*> frontier;
+    // frontier.push_back(root);
 
-    size_t nnodes = 1;
-    /**
-     * For each node:
-     * 1. Get the successing function contexts
-     * 2. Construct nodes for each child context
-     * 3. Add as children if conditions work.
-     */
-    while (frontier.size()) {
-        Node *n = frontier.front();
-        frontier.pop_front();
+    // size_t nnodes = 1;
+    // /**
+    //  * For each node:
+    //  * 1. Get the successing function contexts
+    //  * 2. Construct nodes for each child context
+    //  * 3. Add as children if conditions work.
+    //  */
+    // while (frontier.size()) {
+    //     Node *n = frontier.front();
+    //     frontier.pop_front();
 
-        // Pre-check
-        errs() << "------\n";
-        if (*n->ctx == end) {
-            errs() << "End traversal\n";
-            leaves.push_back(n);
-            errs() << "------\n";
-            continue;
-        } else {
-            errs() << "NE " << end.str() << "\n";
-        }
+    //     // Pre-check
+    //     errs() << "------\n";
+    //     if (*n->ctx == end) {
+    //         errs() << "End traversal\n";
+    //         leaves.push_back(n);
+    //         errs() << "------\n";
+    //         continue;
+    //     } else {
+    //         errs() << "NE " << end.str() << "\n";
+    //     }
 
-        // Construct successors.
-        n->ctx->constructSuccessors();
+    //     // Construct successors.
+    //     n->ctx->constructSuccessors();
 
-        errs() << "Traverse " << n->ctx->str() << "\n";
+    //     errs() << "Traverse " << n->ctx->str() << "\n";
 
-        for (FnContext *child_ctx : n->ctx->successors()) {
-            errs() << "\t child: \n" << child_ctx->str() << "\n";
-            nnodes++;
-            Node *child = new Node(child_ctx);
-            n->addChild(child);
+    //     for (FnContext *child_ctx : n->ctx->successors()) {
+    //         errs() << "\t child: \n" << child_ctx->str() << "\n";
+    //         nnodes++;
+    //         Node *child = new Node(child_ctx);
+    //         n->addChild(child);
 
-            frontier.push_back(child);
-        }
+    //         frontier.push_back(child);
+    //     }
 
-        if (n->children.empty()) {
-            errs() << "no kids!\n";
-            leaves.push_back(n);
-        }
+    //     if (n->children.empty()) {
+    //         errs() << "no kids!\n";
+    //         leaves.push_back(n);
+    //     }
 
-        errs() << "------\n";
-    }
+    //     errs() << "------\n";
+    // }
 
-    errs() << "<<< Created " << nnodes << " nodes! >>>\n";
-    errs() << "<<< Have " << leaves.size() << " leaves! >>>\n";
+    // errs() << "<<< Created " << nnodes << " nodes! >>>\n";
+    // errs() << "<<< Have " << leaves.size() << " leaves! >>>\n";
 }
 
 template <typename T>
-ContextGraph<T>::ContextGraph(FnContext &start, FnContext &end) {
+ContextGraph<T>::ContextGraph(const BugLocationMapper &mapper, 
+                              const TraceEvent &start, 
+                              const TraceEvent &end) {
     errs() << "CONSTRUCT ME\n";
-    root = new Node(start);
+    // root = new Node(start);
 
-    construct(end);
+    // construct(end);
 
-    // Validate that the leaf nodes are all what we expect them to be.
-    assert(leaves.size() >= 1 && "Did not construct leaves!");
-    for (Node *n : leaves) {
-        if (*n->ctx != end && !n->ctx->isTerminator()) {
-            errs() << (*n->ctx != end) << " && " << 
-                (!n->ctx->isTerminator()) << "\n";
-            assert(false && "wat");
-        }
-    }
+    // // Validate that the leaf nodes are all what we expect them to be.
+    // assert(leaves.size() >= 1 && "Did not construct leaves!");
+    // for (Node *n : leaves) {
+    //     if (*n->ctx != end && !n->ctx->isTerminator()) {
+    //         errs() << (*n->ctx != end) << " && " << 
+    //             (!n->ctx->isTerminator()) << "\n";
+    //         assert(false && "wat");
+    //     }
+    // }
 }
 
 template struct pmfix::ContextGraph<bool>;
@@ -385,6 +388,5 @@ template struct pmfix::ContextGraph<bool>;
 
 #pragma region FlowAnalyzer
 
-FlowAnalyzer::FlowAnalyzer()
 
 #pragma endregion

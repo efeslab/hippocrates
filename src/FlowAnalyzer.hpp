@@ -130,7 +130,7 @@ namespace pmfix {
         FnContextPtr doReturn(llvm::ReturnInst *ri);
 
         static FnContextPtr create(llvm::Module &m) {
-            return std::make_shared<FnContext>(m);
+            return std::shared_ptr<FnContext>(new FnContext(m));
         }
 
         bool operator==(const FnContext &f) const;
@@ -163,8 +163,8 @@ namespace pmfix {
         llvm::Instruction *first = nullptr;
         llvm::Instruction *last = nullptr;
 
-        static ContextNodePtr create<T>(const BugLocationMapper &mapper, 
-                                        const TraceEvent &te);
+        static ContextBlockPtr create(const BugLocationMapper &mapper, 
+                                      const TraceEvent &te);
     };
 
     /**
@@ -177,18 +177,26 @@ namespace pmfix {
     public:
 
         struct Node {
-            typedef std::shared_ptr<Node> NodePtr;
             typedef std::shared_ptr<Node> Shared;
+            typedef std::shared_ptr<Node> NodePtr;
 
             ContextBlock block;
+            std::unordered_set<NodePtr> parents;
+            std::unordered_set<NodePtr> children;
+            T metadata;
         };
-
         
+        /**
+         * We give multiple the option of having multiple root nodes in case 
+         * we have a one-to-many debug info mapping.
+         */
 
-        NodePtr root;
-        std::list<NodePtr> leaves;
+        std::list<std::shared_ptr<Node>> roots;
+        std::list<std::shared_ptr<Node>> leaves;
 
-        ContextGraph(FnContext &start, FnContext &end);
+        ContextGraph(const BugLocationMapper &mapper, 
+                     const TraceEvent &start, 
+                     const TraceEvent &end);
     };
 
     /**

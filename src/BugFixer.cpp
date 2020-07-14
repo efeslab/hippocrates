@@ -204,15 +204,7 @@ bool BugFixer::handleRequiredFlush(const TraceEvent &te, int bug_index) {
         errs() << "\tneq!!\n";
     }
 
-    FnContext *octx = FnContext::create(mapper_, orig);
-    errs() << "OG CTX: " << octx->str() << "\n";
-    FnContext *rctx = FnContext::create(mapper_, redt);
-    errs() << "RE CTX: " << rctx->str() << "\n";
-
-    ContextGraph<bool> graph(*octx, *rctx);
-
-    delete octx;
-    delete rctx;
+    ContextGraph<bool> graph(mapper_, orig, redt);
 
     return false;
 }

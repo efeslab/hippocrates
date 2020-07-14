@@ -77,7 +77,7 @@ struct LocationInfo {
 class BugLocationMapper {
 private:
 
-    mutable llvm::Module &m_;
+    llvm::Module &m_;
 
     std::unordered_map<LocationInfo, 
                        std::list<llvm::Instruction*>, 
