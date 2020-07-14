@@ -75,7 +75,7 @@ namespace pmfix {
 
         FnContext() = delete;
         // For calls.
-        FnContext(FnContext *parent, llvm::Instruction *first);
+        FnContext(FnContext *parent, llvm::Instruction *last);
         // For returns
         FnContext(std::list<FnContext*> cs, llvm::Instruction *f) 
             : callStack_(cs), first_(f) {}

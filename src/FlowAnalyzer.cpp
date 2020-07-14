@@ -67,8 +67,19 @@ FnContext::FnContext(FnContext *p, Instruction *l) : last_(l) {
                           p->callStack_.begin(), p->callStack_.end());
         callStack_.push_back(p);
     }
-    // Assumption: this is okay
-    first_ = &last_->getFunction()->getEntryBlock().front();
+    /**
+     * To get the "first" instruction, we work backwards from the last instruction
+     * until we get to another call or the beginning of a basic block
+     */
+    first_ = last_->getPrevNonDebugInstruction();
+    while (Instruction *tmp = first_->getPrevNonDebugInstruction()) {
+        if (auto *cb = dyn_cast<CallBase>(tmp)) {
+            Function *fn = cb->getCalledFunction();
+            if (!fn && !fn->isDeclaration() && !fn->isIntrinsic()) break;
+        }
+
+        first_ = tmp;
+    }
 }
 
 FnContext* FnContext::create(const BugLocationMapper &mapper, const TraceEvent &te) {
@@ -207,7 +218,17 @@ std::string FnContext::str() const {
 }
 
 bool FnContext::operator==(const FnContext &f) const {
-    return first_ == f.first_ && callStack_ == f.callStack_;
+    if (first_ != f.first_) return false;
+    if (callStack_.size() != f.callStack_.size()) return false;
+
+    auto ai = callStack_.begin();
+    auto bi = f.callStack_.begin();
+    for (; ai != callStack_.end() && bi != f.callStack_.end();
+         ++ai, ++bi) {
+        if ((*ai)->first_ != (*bi)->first_) return false;
+    }
+    
+    return true;
 }
 
 #pragma endregion
@@ -231,10 +252,14 @@ void ContextGraph<T>::construct(FnContext &end) {
         frontier.pop_front();
 
         // Pre-check
+        errs() << "------\n";
         if (*n->ctx == end) {
             errs() << "End traversal\n";
             leaves.push_back(n);
+            errs() << "------\n";
             continue;
+        } else {
+            errs() << "NE " << end.str() << "\n";
         }
 
         // Construct successors.
@@ -255,9 +280,12 @@ void ContextGraph<T>::construct(FnContext &end) {
             errs() << "no kids!\n";
             leaves.push_back(n);
         }
+
+        errs() << "------\n";
     }
 
     errs() << "<<< Created " << nnodes << " nodes! >>>\n";
+    errs() << "<<< Have " << leaves.size() << " leaves! >>>\n";
 }
 
 template <typename T>
