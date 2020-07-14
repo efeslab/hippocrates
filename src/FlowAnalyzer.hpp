@@ -56,41 +56,60 @@ namespace pmfix {
 
     /**
      * Describes the current context.
-     * We do this as basic blocks.
      * 
-     * EG call site, stack. Also current instruction.
+     * I would prefer to do this as basic blocks, but to track function calls,
+     * etc, you need to do it at the instruction level.
+     * 
+     * Need to track the first and last instruction in the context so we know
+     * the range of the program covered.
      */
-    struct FnContext {
+    class FnContext {
     private:
+
+        std::list<FnContext*> callStack_;
+        llvm::Instruction *first_ = nullptr;
+        llvm::Instruction *last_ = nullptr;
+        std::list<FnContext*> successors_;
+
+        bool constructed_ = false;
+
         FnContext() = delete;
         // For calls.
-        FnContext(FnContext *parent, llvm::BasicBlock *current);
+        FnContext(FnContext *parent, llvm::Instruction *first);
+        // For returns
+        FnContext(std::list<FnContext*> cs, llvm::Instruction *f) 
+            : callStack_(cs), first_(f) {}
 
-        /**
-         * This gets the successors based purely off of the intra-procedural
-         * control flow, or returns.
-         */
-        std::list<FnContext*> nextSuccessors(void) const;
     public:
 
         FnContext(const FnContext &fctx) = default;
 
-        std::list<FnContext*> callStack;
-        llvm::BasicBlock *current;
+        void constructSuccessors(void);
+
+        std::list<FnContext*> &callStack() { return callStack_; }
+        llvm::Instruction *first() { return first_; }
+
+        llvm::Instruction *last() { 
+            assert(constructed_ && "must construct first!");
+            return last_; 
+        }
+        
+        std::list<FnContext*> &successors() {
+            assert(constructed_ && "must construct first!");
+            return successors_;
+        }
 
         static FnContext *create(const BugLocationMapper &mapper, 
                                  const TraceEvent &te);
 
         /**
-         *
-         * TODO: Handle exception semantics. 
-         */
-        std::list<FnContext*> next(void);
-
-        /**
          * Returns true if this leads to program termination.
          */
-        bool isTerminator(void) const;
+        bool isTerminator(void) const { 
+            assert(constructed_ && "must construct first!");
+            return successors_.empty(); 
+        }
+        
 
         bool operator==(const FnContext &f) const;
         bool operator!=(const FnContext &f) const { return !(*this == f); }
@@ -102,7 +121,7 @@ namespace pmfix {
     };
 
     /**
-     * 
+     * Represents the
      */
     template <typename T>
     struct ContextGraph {

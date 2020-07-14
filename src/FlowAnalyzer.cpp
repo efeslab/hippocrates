@@ -61,67 +61,57 @@ bool PMDesc::pointsToPM(llvm::Value *pmv) {
 
 #pragma region FnContext 
 
-FnContext::FnContext(FnContext *p, BasicBlock *c) : current(c) {
+FnContext::FnContext(FnContext *p, Instruction *l) : last_(l) {
     if (p) {
-        callStack.insert(callStack.end(), p->callStack.begin(), p->callStack.end());
-        callStack.push_back(p);
+        callStack_.insert(callStack_.end(), 
+                          p->callStack_.begin(), p->callStack_.end());
+        callStack_.push_back(p);
     }
+    // Assumption: this is okay
+    first_ = &last_->getFunction()->getEntryBlock().front();
 }
 
 FnContext* FnContext::create(const BugLocationMapper &mapper, const TraceEvent &te) {
     // Start from the top down.
     FnContext *parent = nullptr;
     for (int i = te.callstack.size() - 1; i >= 0; --i) {
+        // const LocationInfo &caller = te.callstack[i];
         const LocationInfo &li = te.callstack[i];
         if (!li.valid() || !mapper.contains(li)) {
-            errs() << "Abort " << li.str() << "\n";
             if (!parent) continue;
             else assert(false && "wat");
         }
 
-        std::unordered_set<BasicBlock*> possibleBBs;
+        errs() << "VALID: " << li.str() << "\n";
+        // errs() << "\t called by " << caller.str() << "\n";
+
+        std::list<Instruction*> possibleCallSites;
         for (auto *inst : mapper[li]) {
-            possibleBBs.insert(inst->getParent());
+            possibleCallSites.push_back(inst);
         }
 
-        assert(possibleBBs.size() > 0 && "don't know how to handle!");
-        assert(possibleBBs.size() == 1 && "don't know how to handle!");
+        assert(possibleCallSites.size() > 0 && "don't know how to handle!");
+        assert(possibleCallSites.size() == 1 && "don't know how to handle!");
 
-        BasicBlock *callsite = *possibleBBs.begin();
-        FnContext *curr = new FnContext(parent, callsite);
+        Instruction *possible = possibleCallSites.front();
+
+        if (parent) {
+            errs() << "\t\t\tparent!\n";
+        }
+
+        FnContext *curr = new FnContext(parent, possible);
+        
         parent = curr;
-        errs() << "FC " << li.str() << " @ BB " << callsite << "\n";
     }
 
+    errs() << "\t\tRET: " << *parent->last_ << "\n";
     return parent;
 }
 
-std::list<FnContext*> FnContext::nextSuccessors(void) const {
-    std::list<FnContext*> children;
+void FnContext::constructSuccessors(void) {
+    assert(!constructed_ && "double call!");
+    constructed_ = true;
 
-    for (Instruction &i : *current) {
-        if (ReturnInst *ri = dyn_cast<ReturnInst>(&i)) {
-            if (callStack.back()) {
-                return callStack.back()->next();
-            } else {
-                return children;
-            }
-        }
-    } 
-    
-    /**
-     * Now, we get the successor basic block.
-     */
-    for (BasicBlock *succ : successors(current)) {
-        FnContext *sctx = new FnContext(*this);
-        sctx->current = succ;
-        children.push_back(sctx);
-    }
-
-    return children;
-}
-
-std::list<FnContext*> FnContext::next(void) {
     /**
      * Normally, a basic block has it's own branching successors. However,
      * we also want to capture function calls. So, we will split basic blocks
@@ -129,64 +119,86 @@ std::list<FnContext*> FnContext::next(void) {
      * 
      * We also want to capture return instructions.
      */
-    llvm::CallBase *cb = nullptr;
-    for (Instruction &i : *current) {
-        if ((cb = dyn_cast<CallBase>(&i))) {
+    Instruction *i = first_;
+    while ((i = i->getNextNonDebugInstruction())) {
+        if (CallBase *cb = dyn_cast<CallBase>(i)) {
             Function *fn = cb->getCalledFunction();
+
             if (fn && fn->isIntrinsic()) continue;
             else if (fn && fn->isDeclaration()) continue;
-
-            Instruction *split_inst = cb->getNextNonDebugInstruction();
-            // If null, then we don't need to split
-            if (split_inst) {
-                BasicBlock *nb = current->splitBasicBlock(split_inst, "split_for_call");
-                assert(nb && "failed to split!");
+            else if (fn == first_->getFunction()) {
+                // TODO: recursion protection;
+                assert(false && "TODO RECURSE");
             }
-            break;
-        }
-    }
 
-    std::list<FnContext*> children = nextSuccessors();
-
-    if (cb) {
-        // TODO: recursion protection
-        Function *calledFn = cb->getCalledFunction();
-        if (!calledFn) {
-            // Must be a function pointer.
-            assert(false && "TODO!!!");
-        }
-        if (calledFn == current->getParent()) {
-            assert(false && "recursion!");
+            // this sets the last, and the successor is the call.
+            last_ = cb;
+            Instruction *fnFirst = &fn->getEntryBlock().front();
+            FnContext *called = new FnContext(this, fnFirst);
+            successors_.push_back(called);
+            return;
         }
 
-        FnContext *cctx = new FnContext(this, &calledFn->getEntryBlock());
-        errs() << "Hmm curr=" << cctx->current << "\n";
-        errs() << "CallBase: " << calledFn->getName() << "\n";
-        children.push_back(cctx);
+        if (ReturnInst *ri = dyn_cast<ReturnInst>(i)) {
+            last_ = ri;
+            // This would mean that we're returning past the end of our scope.
+            // Remember, it's a limited graph.
+            FnContext *parent = callStack_.back();
+            if (!parent) {
+                return;
+            }
+
+            assert(parent->last_ && "last not set!!!");
+
+            /**
+             * We want essentially set the parent as the successor, but
+             * make sure to move the "first" instruction cursor so that
+             * we don't loop over this too much.
+             */
+            if (callStack_.back()) {
+                
+                Instruction *ni = parent->last_->getNextNonDebugInstruction();
+                if (!ni) {
+                    assert(false && "TODO! Likely need to do something here.");
+                }
+                auto *rchild = new FnContext(parent->callStack_, ni);
+                successors_.push_back(rchild);
+            }
+
+            // No successors.
+            return;
+        }
     }
     
-
-    return children;
-}
-
-// TODO: recursion
-bool FnContext::isTerminator(void) const {
-    for (BasicBlock *bb : successors(current)) return false;
-    errs() << "IS TERM: " << current << "\n";
-    for (Instruction &i : *current) {
-        if (isa<ReturnInst>(&i)) return false;
+    /**
+     * Now, we get the successor basic block.
+     */
+    last_ = first_->getParent()->getTerminator();
+    for (BasicBlock *succ : llvm::successors(first_->getParent())) {
+        FnContext *sctx = new FnContext(callStack_, succ->getFirstNonPHI());
+        successors_.push_back(sctx);
     }
-
-    return true;
 }
 
 std::string FnContext::str() const {
-    std::stringstream buffer;
+    std::string tmp;
+    llvm::raw_string_ostream buffer(tmp);
     int n = 1;
-    buffer << "<FnContext curr=" << current << ">\n";
-    buffer << "\t[0] " << current->getParent()->getName().data() << "\n";
-    for (auto iter = callStack.rbegin(); iter != callStack.rend(); ++iter) {
-        buffer << "\t[" << n << "] " << (*iter)->current->getParent()->getName().data() << "\n";
+    errs() << __PRETTY_FUNCTION__ << " INST PTR: " << first_ << "\n";
+    errs() << __PRETTY_FUNCTION__ << " INST: " << *first_ << "\n";
+
+    if (constructed_) {
+        buffer << "<FnContext first=" << first_ << " (" << *first_ 
+            << "), last=(" << *last_ << ")>\n";
+    } else {
+        buffer << "<FnContext first=" << first_ << " (" << *first_ 
+            << "), last=(unconstructed)>\n";
+    }
+    
+    buffer << "\t[0] " << first_->getFunction()->getName().data() << "\n";
+    for (auto iter = callStack_.rbegin(); iter != callStack_.rend(); ++iter) {
+        buffer << "\t[" << n << "] " << 
+            (*iter)->first_->getFunction()->getName().data() << "\n";
         n++;
     }
     buffer << "</FnContext>";
@@ -195,7 +207,7 @@ std::string FnContext::str() const {
 }
 
 bool FnContext::operator==(const FnContext &f) const {
-    return current == f.current && callStack == f.callStack;
+    return first_ == f.first_ && callStack_ == f.callStack_;
 }
 
 #pragma endregion
@@ -217,16 +229,20 @@ void ContextGraph<T>::construct(FnContext &end) {
     while (frontier.size()) {
         Node *n = frontier.front();
         frontier.pop_front();
+
         // Pre-check
-        if (*n->ctx == end || n->ctx->isTerminator()) {
+        if (*n->ctx == end) {
             errs() << "End traversal\n";
             leaves.push_back(n);
             continue;
         }
 
+        // Construct successors.
+        n->ctx->constructSuccessors();
+
         errs() << "Traverse " << n->ctx->str() << "\n";
 
-        for (FnContext *child_ctx : n->ctx->next()) {
+        for (FnContext *child_ctx : n->ctx->successors()) {
             errs() << "\t child: \n" << child_ctx->str() << "\n";
             nnodes++;
             Node *child = new Node(child_ctx);
