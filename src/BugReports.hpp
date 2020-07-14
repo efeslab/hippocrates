@@ -77,6 +77,8 @@ struct LocationInfo {
 class BugLocationMapper {
 private:
 
+    mutable llvm::Module &m_;
+
     std::unordered_map<LocationInfo, 
                        std::list<llvm::Instruction*>, 
                        LocationInfo::Hash> locMap_;
@@ -86,12 +88,14 @@ private:
     void createMappings(llvm::Module &m);
 
 public:
-    BugLocationMapper(llvm::Module &m) { createMappings(m); }
+    BugLocationMapper(llvm::Module &m) : m_(m) { createMappings(m); }
 
     bool contains(const LocationInfo &li) const { return locMap_.count(li); }
 
     const std::list<llvm::Instruction*> &operator[](const LocationInfo &li) const 
         { return locMap_.at(li); }
+
+    llvm::Module &module() const { return m_; }
 };
 
 struct TraceEvent {

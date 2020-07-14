@@ -29,13 +29,20 @@ namespace pmfix {
      * Given the input from traces as seeds, we figure out what other memory
      * in the system can point to persistent memory.
      */
-    class PMDesc {
+    class PmDesc {
     private:
-        AndersenAAWrapperPass anders_;
-        AndersenCache cache_;
+        SharedAndersen anders_;
+        SharedAndersenCache cache_;
 
-        std::unordered_set<const llvm::Value *> pm_values_;
-
+        /**
+         * There should be no need to clear/reset anything, only on a return when
+         * the locals are implicitly forgotten.
+         * 
+         * The globals, however, should be copied.
+         */
+        std::unordered_set<const llvm::Value *> pm_locals_;
+        std::unordered_set<const llvm::Value *> pm_globals_;
+        
         /**
          * Goes through the cache.
          */
@@ -43,73 +50,88 @@ namespace pmfix {
                             std::unordered_set<const llvm::Value *> &ptsSet);
 
     public:
-        PMDesc(llvm::Module &m);
+        PmDesc(llvm::Module &m);
 
         /** 
          * Add a known PM value.
+         * 
+         * We don't really want to remove anything, part of the conservative
+         * analysis.
          */
-        void addKnownPMValue(llvm::Value *pmv);
+        void addKnownPmValue(llvm::Value *pmv);
 
-        bool pointsToPM(llvm::Value *val);
+        bool pointsToPm(llvm::Value *val);
+
+        void doReturn(const PmDesc &d) { pm_globals_ = d.pm_globals_; }
+
+        /**
+         * Returns true if this is subset of possSuper
+         */
+        bool isSubsetOf(const PmDesc &possSuper);
 
     };
 
     /**
-     * Describes the current context.
+     * Describes the current function context.
      * 
      * I would prefer to do this as basic blocks, but to track function calls,
      * etc, you need to do it at the instruction level.
      * 
      * Need to track the first and last instruction in the context so we know
      * the range of the program covered.
+     * 
      */
-    class FnContext {
+    class FnContext : public std::enable_shared_from_this<FnContext> {
+    public:
+        typedef std::shared_ptr<FnContext> FnContextPtr;
+        typedef std::shared_ptr<FnContext> Shared;
     private:
 
-        std::list<FnContext*> callStack_;
-        llvm::Instruction *first_ = nullptr;
-        llvm::Instruction *last_ = nullptr;
-        std::list<FnContext*> successors_;
+        /**
+         * A stack is representable by who called it. A single CallBase
+         * instruction gives us all the information we need.
+         */
+        std::list<llvm::CallBase*> callStack_;
+        // Allows us to reuse contexts.
+        FnContextPtr parent_;
+        // Tracks PM state at the context level.
+        PmDesc pm_;
 
-        bool constructed_ = false;
+        /**
+         * We should also cache the called contexts for all the callsites in
+         * this function.
+         */
+        std::shared_ptr<
+            std::unordered_map<llvm::CallBase*, FnContextPtr>
+        > callBaseCache_;
 
-        FnContext() = delete;
-        // For calls.
-        FnContext(FnContext *parent, llvm::Instruction *last);
-        // For returns
-        FnContext(std::list<FnContext*> cs, llvm::Instruction *f) 
-            : callStack_(cs), first_(f) {}
+        FnContext(llvm::Module &m) 
+            : callBaseCache_(new std::unordered_map<llvm::CallBase*, FnContextPtr>), 
+              callStack_(), parent_(nullptr), pm_(m) {}
 
     public:
 
+
         FnContext(const FnContext &fctx) = default;
-
-        void constructSuccessors(void);
-
-        std::list<FnContext*> &callStack() { return callStack_; }
-        llvm::Instruction *first() { return first_; }
-
-        llvm::Instruction *last() { 
-            assert(constructed_ && "must construct first!");
-            return last_; 
-        }
         
-        std::list<FnContext*> &successors() {
-            assert(constructed_ && "must construct first!");
-            return successors_;
-        }
-
-        static FnContext *create(const BugLocationMapper &mapper, 
-                                 const TraceEvent &te);
+        /**
+         * Also handles propagation of PM.
+         * 
+         * To check for recursion, we want to see if any of the call base
+         * instructions in the stack are the same. If so, we 
+         *
+         * With explicit call.
+         */
+        FnContextPtr doCall(llvm::Function *f, llvm::CallBase *cb);
 
         /**
-         * Returns true if this leads to program termination.
+         * Also handles propagation of PM back
          */
-        bool isTerminator(void) const { 
-            assert(constructed_ && "must construct first!");
-            return successors_.empty(); 
+        FnContextPtr doReturn(llvm::ReturnInst *ri);
+
+        static FnContextPtr create(llvm::Module &m) {
+            return std::make_shared<FnContext>(m);
         }
-        
 
         bool operator==(const FnContext &f) const;
         bool operator!=(const FnContext &f) const { return !(*this == f); }
@@ -121,6 +143,31 @@ namespace pmfix {
     };
 
     /**
+     * Like a basic block, but smaller.
+     * 
+     * All the successor and parent stuff will be handled in the graph
+     */
+    struct ContextBlock {
+        typedef std::shared_ptr<ContextBlock> ContextBlockPtr;
+        typedef std::shared_ptr<ContextBlock> Shared;
+    // private:
+    //     std::shared_ptr<
+    //         std::unordered_map<
+    //             llvm::Instruction*,
+    //             ContextBlockPtr
+    //         >
+    //     > existing_;
+
+    public:
+        FnContext::Shared ctx;
+        llvm::Instruction *first = nullptr;
+        llvm::Instruction *last = nullptr;
+
+        static ContextNodePtr create<T>(const BugLocationMapper &mapper, 
+                                        const TraceEvent &te);
+    };
+
+    /**
      * Represents the
      */
     template <typename T>
@@ -128,19 +175,18 @@ namespace pmfix {
     private:
         void construct(FnContext &end);
     public:
+
         struct Node {
-            FnContext *ctx;
-            std::list<Node*> children;
-            T metadata;
+            typedef std::shared_ptr<Node> NodePtr;
+            typedef std::shared_ptr<Node> Shared;
 
-            Node(FnContext &fc) : ctx(new FnContext(fc)) {}
-            Node(FnContext *fc) : ctx(fc) {}
-
-            void addChild(Node *c) { children.push_back(c); }
+            ContextBlock block;
         };
 
-        Node *root;
-        std::list<Node*> leaves;
+        
+
+        NodePtr root;
+        std::list<NodePtr> leaves;
 
         ContextGraph(FnContext &start, FnContext &end);
     };
@@ -153,7 +199,7 @@ namespace pmfix {
         llvm::Module &m_;
 
     public:
-        FlowAnalyzer(llvm::Module &m);
+        FlowAnalyzer(llvm::Module &m) : m_(m) {}
 
 
     };  
