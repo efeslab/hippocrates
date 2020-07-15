@@ -69,6 +69,7 @@ namespace pmfix {
          */
         bool isSubsetOf(const PmDesc &possSuper);
 
+        std::string str(int indent=0) const;
     };
 
     /**
@@ -111,7 +112,6 @@ namespace pmfix {
 
     public:
 
-
         FnContext(const FnContext &fctx) = default;
         
         /**
@@ -139,7 +139,7 @@ namespace pmfix {
         /**
          * Debug: create a string representation
          */
-        std::string str() const;
+        std::string str(int indent=0) const;
     };
 
     /**
@@ -150,13 +150,6 @@ namespace pmfix {
     struct ContextBlock {
         typedef std::shared_ptr<ContextBlock> ContextBlockPtr;
         typedef std::shared_ptr<ContextBlock> Shared;
-    // private:
-    //     std::shared_ptr<
-    //         std::unordered_map<
-    //             llvm::Instruction*,
-    //             ContextBlockPtr
-    //         >
-    //     > existing_;
 
     public:
         FnContext::Shared ctx;
@@ -165,6 +158,16 @@ namespace pmfix {
 
         static ContextBlockPtr create(const BugLocationMapper &mapper, 
                                       const TraceEvent &te);
+
+        std::string str(int indent=0) const;
+
+        bool operator==(const ContextBlock &c) const {
+            return first == c.first && last == c.last && *ctx == *c.ctx;
+        }
+
+        bool operator!=(const ContextBlock &c) const {
+            return !this->operator==(c);
+        }
     };
 
     /**
@@ -172,27 +175,49 @@ namespace pmfix {
      */
     template <typename T>
     struct ContextGraph {
+
+        struct GraphNode {
+            typedef std::shared_ptr<GraphNode> Shared;
+
+            ContextBlock::Shared block;
+            std::unordered_set<Shared> parents;
+            std::unordered_set<Shared> children;
+            T metadata;
+
+            GraphNode(ContextBlock::Shared b) : block(b) {}
+
+            bool isTerminator() const { return children.empty(); }
+        };
+
+        typedef std::shared_ptr<GraphNode> GraphNodePtr;
+
     private:
-        void construct(FnContext &end);
+        /**
+         * A cache of:
+         * 
+         * function context -> { instruction start -> Node }
+         */
+        std::unordered_map<
+            FnContext::Shared,
+            std::unordered_map<
+                llvm::Instruction*,
+                GraphNodePtr
+            >
+        > nodeCache_;
+
+        std::list<GraphNodePtr> constructSuccessors(GraphNodePtr node);
+
+        void construct(ContextBlock::Shared end);
+
     public:
 
-        struct Node {
-            typedef std::shared_ptr<Node> Shared;
-            typedef std::shared_ptr<Node> NodePtr;
-
-            ContextBlock block;
-            std::unordered_set<NodePtr> parents;
-            std::unordered_set<NodePtr> children;
-            T metadata;
-        };
-        
         /**
          * We give multiple the option of having multiple root nodes in case 
          * we have a one-to-many debug info mapping.
          */
 
-        std::list<std::shared_ptr<Node>> roots;
-        std::list<std::shared_ptr<Node>> leaves;
+        std::list<GraphNodePtr> roots;
+        std::list<GraphNodePtr> leaves;
 
         ContextGraph(const BugLocationMapper &mapper, 
                      const TraceEvent &start, 

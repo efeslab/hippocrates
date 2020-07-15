@@ -36,7 +36,8 @@ bool PmDesc::getPointsToSet(const llvm::Value *v,
     return ret;
 }
 
-PmDesc::PmDesc(Module &m) {
+PmDesc::PmDesc(Module &m) : anders_(new AndersenAAWrapperPass()),
+                            cache_(new AndersenCache()) {
     assert(!anders_->runOnModule(m) && "failed!");
 }
 
@@ -80,6 +81,21 @@ bool PmDesc::isSubsetOf(const PmDesc &possSuper) {
     return gs == pm_globals_ && ls == pm_locals_;
 }
 
+std::string PmDesc::str(int indent) const {
+    std::string tmp;
+    llvm::raw_string_ostream buffer(tmp);
+
+    std::string istr = "";
+    for (int i = 0; i < indent; ++i) istr += "\t";
+
+    buffer << istr << "<PmDesc>\n";
+    buffer << istr << "\tNum Locals:  " << pm_locals_.size() << "\n";
+    buffer << istr << "\tNum Globals: " << pm_globals_.size() << "\n";
+    buffer << istr << "</PmDesc>";
+
+    return buffer.str();
+}
+
 #pragma endregion
 
 #pragma region FnContext
@@ -110,6 +126,37 @@ FnContext::Shared FnContext::doReturn(ReturnInst *ri) {
     return p;
 }
 
+bool FnContext::operator==(const FnContext &f) const {
+    // if (first_ != f.first_) return false;
+    // if (callStack_.size() != f.callStack_.size()) return false;
+
+    // auto ai = callStack_.begin();
+    // auto bi = f.callStack_.begin();
+    // for (; ai != callStack_.end() && bi != f.callStack_.end();
+    //      ++ai, ++bi) {
+    //     if ((*ai)->first_ != (*bi)->first_) return false;
+    // }
+    
+    // return true;
+    // return false;
+    return callStack_ == f.callStack_;
+}
+
+std::string FnContext::str(int indent) const {
+    std::string tmp;
+    llvm::raw_string_ostream buffer(tmp);
+
+    std::string istr = "";
+    for (int i = 0; i < indent; ++i) istr += "\t";
+
+    buffer << istr << "<FnContext>\n";
+    buffer << istr << "\tEntries: " << callStack_.size() << "\n";
+    buffer << pm_.str(indent + 1) << "\n";
+    buffer << istr << "</FnContext>";
+
+    return buffer.str();
+}
+
 #pragma endregion
 
 #pragma region ContextNode
@@ -123,7 +170,10 @@ ContextBlock::Shared ContextBlock::create(const BugLocationMapper &mapper,
         const LocationInfo &caller = te.callstack[i];
         const LocationInfo &callee = te.callstack[i-1];
 
-        if (!callee.valid() || !mapper.contains(callee)) {
+        // errs() << "CALLER: " << caller.str() << "\n";
+        // errs() << "CALLEE: " << callee.str() << "\n";
+
+        if (!caller.valid() || !mapper.contains(caller)) {
             continue;
         }
 
@@ -193,193 +243,192 @@ ContextBlock::Shared ContextBlock::create(const BugLocationMapper &mapper,
     return node;
 }
 
-// void FnContext::constructSuccessors(void) {
-//     assert(!constructed_ && "double call!");
-//     constructed_ = true;
+std::string ContextBlock::str(int indent) const {
+    std::string tmp;
+    llvm::raw_string_ostream buffer(tmp);
 
-//     /**
-//      * Normally, a basic block has it's own branching successors. However,
-//      * we also want to capture function calls. So, we will split basic blocks
-//      * at calls.
-//      * 
-//      * We also want to capture return instructions.
-//      */
-//     Instruction *i = first_;
-//     while ((i = i->getNextNonDebugInstruction())) {
-//         if (CallBase *cb = dyn_cast<CallBase>(i)) {
-//             Function *fn = cb->getCalledFunction();
+    std::string istr = "";
+    for (int i = 0; i < indent; ++i) istr += "\t";
 
-//             if (fn && fn->isIntrinsic()) continue;
-//             else if (fn && fn->isDeclaration()) continue;
-//             else if (fn == first_->getFunction()) {
-//                 // TODO: recursion protection;
-//                 assert(false && "TODO RECURSE");
-//             }
+    buffer << istr << "<ContextBlock>\n";
+    buffer << istr << "\tFirst: " << *first << "\n";
+    buffer << istr << "\tLast:  " << *last << "\n";
+    buffer << ctx->str(indent + 1) << "\n";
+    buffer << istr << "</ContextBlock>";
 
-//             // this sets the last, and the successor is the call.
-//             last_ = cb;
-//             Instruction *fnFirst = &fn->getEntryBlock().front();
-//             FnContext *called = new FnContext(this, fnFirst);
-//             successors_.push_back(called);
-//             return;
-//         }
-
-//         if (ReturnInst *ri = dyn_cast<ReturnInst>(i)) {
-//             last_ = ri;
-//             // This would mean that we're returning past the end of our scope.
-//             // Remember, it's a limited graph.
-//             FnContext *parent = callStack_.back();
-//             if (!parent) {
-//                 return;
-//             }
-
-//             assert(parent->last_ && "last not set!!!");
-
-//             /**
-//              * We want essentially set the parent as the successor, but
-//              * make sure to move the "first" instruction cursor so that
-//              * we don't loop over this too much.
-//              */
-//             if (callStack_.back()) {
-                
-//                 Instruction *ni = parent->last_->getNextNonDebugInstruction();
-//                 if (!ni) {
-//                     assert(false && "TODO! Likely need to do something here.");
-//                 }
-//                 auto *rchild = new FnContext(parent->callStack_, ni);
-//                 successors_.push_back(rchild);
-//             }
-
-//             // No successors.
-//             return;
-//         }
-//     }
-    
-//     /**
-//      * Now, we get the successor basic block.
-//      */
-//     last_ = first_->getParent()->getTerminator();
-//     for (BasicBlock *succ : llvm::successors(first_->getParent())) {
-//         FnContext *sctx = new FnContext(callStack_, succ->getFirstNonPHI());
-//         successors_.push_back(sctx);
-//     }
-// }
-
-// std::string FnContext::str() const {
-//     std::string tmp;
-//     llvm::raw_string_ostream buffer(tmp);
-//     int n = 1;
-//     errs() << __PRETTY_FUNCTION__ << " INST PTR: " << first_ << "\n";
-//     errs() << __PRETTY_FUNCTION__ << " INST: " << *first_ << "\n";
-
-//     if (constructed_) {
-//         buffer << "<FnContext first=" << first_ << " (" << *first_ 
-//             << "), last=(" << *last_ << ")>\n";
-//     } else {
-//         buffer << "<FnContext first=" << first_ << " (" << *first_ 
-//             << "), last=(unconstructed)>\n";
-//     }
-    
-//     buffer << "\t[0] " << first_->getFunction()->getName().data() << "\n";
-//     for (auto iter = callStack_.rbegin(); iter != callStack_.rend(); ++iter) {
-//         buffer << "\t[" << n << "] " << 
-//             (*iter)->first_->getFunction()->getName().data() << "\n";
-//         n++;
-//     }
-//     buffer << "</FnContext>";
-
-//     return buffer.str();
-// }
-
-// bool FnContext::operator==(const FnContext &f) const {
-//     if (first_ != f.first_) return false;
-//     if (callStack_.size() != f.callStack_.size()) return false;
-
-//     auto ai = callStack_.begin();
-//     auto bi = f.callStack_.begin();
-//     for (; ai != callStack_.end() && bi != f.callStack_.end();
-//          ++ai, ++bi) {
-//         if ((*ai)->first_ != (*bi)->first_) return false;
-//     }
-    
-//     return true;
-// }
+    return buffer.str();
+}
 
 #pragma endregion
 
 #pragma region ContextGraph
 
+// template <typename T>
+// std::list<
+//     std::shared_ptr<ContextGraph<T>::GraphNode>
+// > 
+// ContextGraph<T>::constructSuccessors(ContextGraph<T>::GraphNodePtr node) {
+//     std::list<ContextGraph::GraphNodePtr> successors;
+//     return successors;
+// }
+
 template <typename T>
-void ContextGraph<T>::construct(FnContext &end) {
-    // std::deque<Node*> frontier;
-    // frontier.push_back(root);
+std::list<typename ContextGraph<T>::GraphNodePtr> 
+ContextGraph<T>::constructSuccessors(ContextGraph<T>::GraphNodePtr node) {
+    std::list<ContextGraph::GraphNodePtr> successors;
 
-    // size_t nnodes = 1;
-    // /**
-    //  * For each node:
-    //  * 1. Get the successing function contexts
-    //  * 2. Construct nodes for each child context
-    //  * 3. Add as children if conditions work.
-    //  */
-    // while (frontier.size()) {
-    //     Node *n = frontier.front();
-    //     frontier.pop_front();
+    /**
+     * Normally, a basic block has it's own branching successors. However,
+     * we also want to capture function calls. So, we will split basic blocks
+     * at calls.
+     * 
+     * We also want to capture return instructions.
+     */
+    Instruction *i = node->block->first;
+    while ((i = i->getNextNonDebugInstruction())) {
+        if (CallBase *cb = dyn_cast<CallBase>(i)) {
+            Function *fn = cb->getCalledFunction();
 
-    //     // Pre-check
-    //     errs() << "------\n";
-    //     if (*n->ctx == end) {
-    //         errs() << "End traversal\n";
-    //         leaves.push_back(n);
-    //         errs() << "------\n";
-    //         continue;
-    //     } else {
-    //         errs() << "NE " << end.str() << "\n";
-    //     }
+            if (fn && fn->isIntrinsic()) continue;
+            else if (fn && fn->isDeclaration()) continue;
+            else if (fn == first_->getFunction()) {
+                // TODO: recursion protection;
+                assert(false && "TODO RECURSE");
+            }
 
-    //     // Construct successors.
-    //     n->ctx->constructSuccessors();
+            // this sets the last, and the successor is the call.
+            last_ = cb;
+            Instruction *fnFirst = &fn->getEntryBlock().front();
+            FnContext *called = new FnContext(this, fnFirst);
+            successors_.push_back(called);
+            return;
+        }
 
-    //     errs() << "Traverse " << n->ctx->str() << "\n";
+        if (ReturnInst *ri = dyn_cast<ReturnInst>(i)) {
+            last_ = ri;
+            // This would mean that we're returning past the end of our scope.
+            // Remember, it's a limited graph.
+            FnContext *parent = callStack_.back();
+            if (!parent) {
+                return;
+            }
 
-    //     for (FnContext *child_ctx : n->ctx->successors()) {
-    //         errs() << "\t child: \n" << child_ctx->str() << "\n";
-    //         nnodes++;
-    //         Node *child = new Node(child_ctx);
-    //         n->addChild(child);
+            assert(parent->last_ && "last not set!!!");
 
-    //         frontier.push_back(child);
-    //     }
+            /**
+             * We want essentially set the parent as the successor, but
+             * make sure to move the "first" instruction cursor so that
+             * we don't loop over this too much.
+             */
+            if (callStack_.back()) {
+                
+                Instruction *ni = parent->last_->getNextNonDebugInstruction();
+                if (!ni) {
+                    assert(false && "TODO! Likely need to do something here.");
+                }
+                auto *rchild = new FnContext(parent->callStack_, ni);
+                successors_.push_back(rchild);
+            }
 
-    //     if (n->children.empty()) {
-    //         errs() << "no kids!\n";
-    //         leaves.push_back(n);
-    //     }
+            // No successors.
+            return;
+        }
+    }
+    
+    /**
+     * Now, we get the successor basic block.
+     */
+    last_ = first_->getParent()->getTerminator();
+    for (BasicBlock *succ : llvm::successors(first_->getParent())) {
+        FnContext *sctx = new FnContext(callStack_, succ->getFirstNonPHI());
+        successors_.push_back(sctx);
+    }
+    
+    return successors;
+}
 
-    //     errs() << "------\n";
-    // }
+template <typename T>
+void ContextGraph<T>::construct(ContextBlock::Shared end) {
+    std::deque<std::shared_ptr<GraphNode>> frontier(roots.begin(), roots.end());
 
-    // errs() << "<<< Created " << nnodes << " nodes! >>>\n";
-    // errs() << "<<< Have " << leaves.size() << " leaves! >>>\n";
+    size_t nnodes = roots.size();
+    /**
+     * For each node:
+     * 1. Get the successing function contexts
+     * 2. Construct nodes for each child context
+     * 3. Add as children if conditions work.
+     */
+    while (frontier.size()) {
+        ContextGraph::GraphNodePtr n = frontier.front();
+        frontier.pop_front();
+
+        // Pre-check
+        errs() << "------\n";
+        if (*n->block == *end) {
+            errs() << "End traversal\n";
+            leaves.push_back(n);
+            errs() << "------\n";
+            continue;
+        } else {
+            errs() << "NE:\n" << end->str() << "\nEND NE\n";
+        }
+
+        // Construct successors.
+        // n->ctx->constructSuccessors();
+
+        // errs() << "Traverse " << n->ctx->str() << "\n";
+
+        // for (FnContext *child_ctx : n->ctx->successors()) {
+        //     errs() << "\t child: \n" << child_ctx->str() << "\n";
+        //     nnodes++;
+        //     Node *child = new Node(child_ctx);
+        //     n->addChild(child);
+
+        //     frontier.push_back(child);
+        // }
+
+        // if (n->children.empty()) {
+        //     errs() << "no kids!\n";
+        //     leaves.push_back(n);
+        // }
+
+        // errs() << "------\n";
+    }
+
+    errs() << "<<< Created " << nnodes << " nodes! >>>\n";
+    errs() << "<<< Have " << leaves.size() << " leaves! >>>\n";
 }
 
 template <typename T>
 ContextGraph<T>::ContextGraph(const BugLocationMapper &mapper, 
                               const TraceEvent &start, 
                               const TraceEvent &end) {
-    errs() << "CONSTRUCT ME\n";
+    errs() << "CONSTRUCT ME\n\n";
+
+    ContextBlock::Shared sblk = ContextBlock::create(mapper, start);
+    ContextBlock::Shared eblk = ContextBlock::create(mapper, end);
+    errs() << sblk->str() << "\n";
+    errs() << eblk->str() << "\n";
+
+    assert(*sblk == *eblk);
+
+    errs() << "\nEND CONSTRUCT\n";
     // root = new Node(start);
 
-    // construct(end);
+    auto root = std::make_shared<ContextGraph::GraphNode>(sblk);
+    roots.push_back(root);
 
-    // // Validate that the leaf nodes are all what we expect them to be.
-    // assert(leaves.size() >= 1 && "Did not construct leaves!");
-    // for (Node *n : leaves) {
-    //     if (*n->ctx != end && !n->ctx->isTerminator()) {
-    //         errs() << (*n->ctx != end) << " && " << 
-    //             (!n->ctx->isTerminator()) << "\n";
-    //         assert(false && "wat");
-    //     }
-    // }
+    construct(eblk);
+
+    // Validate that the leaf nodes are all what we expect them to be.
+    assert(leaves.size() >= 1 && "Did not construct leaves!");
+    for (ContextGraph::GraphNodePtr n : leaves) {
+        if (*n->block != *eblk && !n->isTerminator()) {
+            errs() << (*n->block != *eblk) << " && " << 
+                (!n->isTerminator()) << "\n";
+            assert(false && "wat");
+        }
+    }
 }
 
 template struct pmfix::ContextGraph<bool>;
