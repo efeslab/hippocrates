@@ -195,9 +195,69 @@ bool TraceEvent::callStacksEqual(const TraceEvent &a, const TraceEvent &b) {
     return true;
 }
 
+std::list<Value*> TraceEvent::pmValues(const BugLocationMapper &mapper) const {
+    std::list<Value*> pmAddrs;
+
+    // if (location != callstack[0]) {
+    //     errs() << str() << "\n";
+    // }
+    // assert(location == callstack[0] && "wat");
+    assert(mapper.contains(location) && "wat");
+    assert(type != INVALID && type != FENCE && "doesn't make sense!");
+
+    for (Instruction *i : mapper[location]) {
+        switch (source) {
+            case PMTEST: {
+                switch (type) {
+                    case STORE:
+                    case FLUSH: {
+                        auto *cb = dyn_cast<CallBase>(i);
+                        assert(cb && "bad trace!");
+                        Function *f = cb->getCalledFunction();
+                        assert(f && "bad trace!");
+                        assert(f->getName() == "C_createMetadata_Flush" ||
+                               f->getName() == "C_createMetadata_Assign");
+                        // The second operand is the address.
+                        pmAddrs.push_back(cb->getArgOperand(1));
+                        break;
+                    }
+                    default:
+                        assert(false && "wat");
+                }
+                break;
+            }
+            case GENERIC: {
+                switch (type) {
+                    case STORE:
+                    case FLUSH:
+                    default:
+                        assert(false && "wat");
+                        break;
+                }
+                break;
+            }
+            default: {
+                assert(false && "wat");
+                break;
+            }
+        }
+    }
+
+    return pmAddrs;
+}
+
 #pragma endregion
 
 #pragma region TraceInfo
+
+TraceInfo::TraceInfo(YAML::Node m) : meta_(m), source_(TraceEvent::UNKNOWN) {
+    std::string bugReportSrc = getMetadata<std::string>("source");
+    if ("PMTEST" == bugReportSrc) {
+        source_ = TraceEvent::PMTEST;
+    } else if ("GENERIC" == bugReportSrc) {
+        source_ = TraceEvent::GENERIC;
+    }
+}
 
 void TraceInfo::addEvent(TraceEvent &&event) {
     if (event.isBug) {
@@ -223,6 +283,7 @@ std::string TraceInfo::str(void) const {
 
 void TraceInfoBuilder::processEvent(TraceInfo &ti, YAML::Node event) {
     TraceEvent e;
+    e.source = ti.getSource();
     e.typeString = event["event"].as<string>();
 
     TraceEvent::Type event_type = TraceEvent::getType(e.typeString);

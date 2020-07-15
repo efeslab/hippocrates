@@ -35,12 +35,20 @@ private:
      * (iangneal): There is no way to infer the safety of removing a fence, as 
      * it can effect the safety of concurrent memory modifications.
      * - Future work could be to combine with concurrency bug fixers?
+     * 
+     * (iangneal): Sometimes, to remove a flush, it needs to be conditioned on
+     * some global variables.
+     * 
      */
     enum FixType {
-        ADD_FLUSH_ONLY,
+        NO_FIX = -1,
+        ADD_FLUSH_ONLY = 0,
         ADD_FENCE_ONLY,
         ADD_FLUSH_AND_FENCE,
-        REMOVE_FLUSH_ONLY
+        REMOVE_FLUSH_ONLY,
+
+        ADD_FLUSH_CONDITION,
+        REMOVE_FLUSH_CONDITIONAL,
         // ,
         // REMOVE_FENCE_ONLY,
         // REMOVE_FLUSH_AND_FENCE
@@ -56,13 +64,22 @@ private:
      *      post-dominate this.
      */
     struct FixDesc {
-        FixType fixType;
-        llvm::Instruction *fixLoc;
-        llvm::Instruction *orderedAfter;
-        llvm::Instruction *orderedBefore;
+        FixType type;
+        llvm::Instruction *depends;
+
+        FixDesc() : type(NO_FIX), depends(nullptr) {}
+        FixDesc(FixType t, llvm::Instruction *d) : type(t), depends(d) {}
+
+        bool operator==(const FixDesc &f) const {
+            return type == f.type && depends == f.depends;
+        }
+
+        bool operator!=(const FixDesc &f) const {
+            return !(*this == f);
+        }
     };
 
-    std::unordered_map<llvm::Instruction*, FixType> fixMap_;
+    std::unordered_map<llvm::Instruction*, FixDesc> fixMap_;
 
     /**
      * Utility to update the fix map. This provides basic fix coalescing (i.e.,
@@ -71,8 +88,9 @@ private:
      * Returns true if a new fix was added, false if the fix would be redundant.
      * 
      * (iangneal): return value mostly for debugging.
+     * (iangneal): Add some dependent fixes.
      */
-    bool addFixToMapping(llvm::Instruction *i, FixType type);
+    bool addFixToMapping(llvm::Instruction *i, FixDesc desc);
 
     /**
      * Handle fix generation for a missing persist call.
@@ -111,7 +129,7 @@ private:
     /**
      * Run the fix generator to fix the specified bug.
      */
-    bool fixBug(FixGenerator *fixer, llvm::Instruction *i, FixType fixType);
+    bool fixBug(FixGenerator *fixer, llvm::Instruction *i, FixDesc desc);
 
 public:
     BugFixer(llvm::Module &m, TraceInfo &ti) 

@@ -58,6 +58,7 @@ struct LocationInfo {
     };
 
     bool operator==(const LocationInfo &other) const;
+    bool operator!=(const LocationInfo &li) const { return !(*this == li); }
 
     bool valid(void) const {return line > 0;}
 
@@ -96,18 +97,30 @@ public:
         { return locMap_.at(li); }
 
     llvm::Module &module() const { return m_; }
+
 };
 
 struct TraceEvent {
+    /**
+     * The type of event, i.e. the kind of operation.
+     */
     enum Type {
         INVALID = -1,
         STORE = 0, FLUSH, FENCE, 
         ASSERT_PERSISTED, ASSERT_ORDERED, REQUIRED_FLUSH
     };
 
+    /**
+     * Which bug finder the source came from.
+     */
+    enum Source {
+        UNKNOWN = -1, PMTEST = 0, GENERIC = 1
+    };
+
     static Type getType(std::string typeString);
 
     // Event data.
+    Source source;
     Type type;
     uint64_t timestamp;
     std::vector<AddressInfo> addresses;
@@ -129,6 +142,11 @@ struct TraceEvent {
     static bool callStacksEqual(const TraceEvent &a, const TraceEvent &b);
 
     std::string str() const;
+
+    /**
+     * Get the values of the PM pointers associated with the events.
+     */
+    std::list<llvm::Value*> pmValues(const BugLocationMapper &mapper) const;
 };
 
 
@@ -141,6 +159,8 @@ private:
     std::list<int> bugs_; 
     // -- the actual events
     std::vector<TraceEvent> events_;
+    // -- the source of the trace
+    TraceEvent::Source source_;
 
     // Metadata. For stuff like which fix generator to use.
     YAML::Node meta_;
@@ -150,7 +170,7 @@ private:
 
     void addEvent(TraceEvent &&event);
 
-    TraceInfo(YAML::Node m) : meta_(m) {}
+    TraceInfo(YAML::Node m);
 
 public:
 
@@ -162,6 +182,8 @@ public:
 
     template<typename T>
     T getMetadata(const char *key) const { return meta_[key].as<T>(); }
+
+    TraceEvent::Source getSource() const { return source_; }
 };
 
 /**

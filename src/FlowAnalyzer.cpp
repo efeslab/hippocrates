@@ -15,6 +15,9 @@ using namespace std;
 
 #pragma region PmDesc
 
+SharedAndersen PmDesc::anders_(nullptr);
+SharedAndersenCache PmDesc::cache_(nullptr);
+
 bool PmDesc::getPointsToSet(const llvm::Value *v,                                  
                             std::unordered_set<const llvm::Value *> &ptsSet) {
     /**                                                                            
@@ -37,14 +40,20 @@ bool PmDesc::getPointsToSet(const llvm::Value *v,
     return ret;
 }
 
-PmDesc::PmDesc(Module &m) : anders_(new AndersenAAWrapperPass()),
-                            cache_(new AndersenCache()) {
-    assert(!anders_->runOnModule(m) && "failed!");
+PmDesc::PmDesc(Module &m) {
+    if (!anders_) {
+        anders_ = std::make_shared<AndersenAAWrapperPass>();
+        assert(!anders_->runOnModule(m) && "failed!");
+    }
+    if (!cache_) {
+        cache_ = std::make_shared<AndersenCache>();
+    }
 }
 
 void PmDesc::addKnownPmValue(Value *pmv) {
     std::unordered_set<const llvm::Value *> ptsSet;
     assert(getPointsToSet(pmv, ptsSet) && "could not get!");
+    assert(ptsSet.size() && "no points to!");
 
     if (isa<GlobalValue>(pmv)) pm_globals_.insert(ptsSet.begin(), ptsSet.end());
     else pm_locals_.insert(ptsSet.begin(), ptsSet.end());
@@ -163,7 +172,8 @@ std::string FnContext::str(int indent) const {
 #pragma region ContextNode
 
 ContextBlock::Shared ContextBlock::create(FnContext::Shared ctx, 
-                                          llvm::Instruction *first) {
+                                          llvm::Instruction *first,
+                                          llvm::Instruction *trace) {
     /**
      * Now, we set up the node!
      */ 
@@ -171,6 +181,7 @@ ContextBlock::Shared ContextBlock::create(FnContext::Shared ctx,
     node->ctx = ctx;
     node->first = first;
     node->last = first;
+    node->traceInst = trace;
 
     // -- Scroll down to find the last instruction.
     while (Instruction *tmp = node->last->getNextNonDebugInstruction()) {
@@ -181,8 +192,9 @@ ContextBlock::Shared ContextBlock::create(FnContext::Shared ctx,
         node->last = tmp;
     }
 
-    // We also use the trace event itself to initialize some PM values.
-    errs() << "\t\tTODO DO ME\n";
+    errs() << "------\n";
+    errs() << node->str() << "\n";
+    errs() << "------\n";
 
     return node;
 }
@@ -242,8 +254,19 @@ ContextBlock::Shared ContextBlock::create(const BugLocationMapper &mapper,
     assert(possibleLocs.size() == 1 && "don't know how to handle!");
 
     Instruction *nodeFirst = possibleLocs.front();
+    Instruction *traceInst = nodeFirst;
 
-    // -- Scroll forward to find the first instruction.
+    /**
+     * Set up the PmDesc in the FnContext
+     */
+    auto pmVals = te.pmValues(mapper);
+    assert(pmVals.size() > 0 && "wat");
+    for (Value *pmVal : pmVals) {
+        errs() << "Add:" << *pmVal << "\n";
+        parent->pm().addKnownPmValue(pmVal);
+    }
+
+    // -- Scroll back to find the first instruction.
     while (Instruction *tmp = nodeFirst->getPrevNonDebugInstruction()) {
         if (CallBase *cb = dyn_cast<CallBase>(tmp)) {
             Function *f = cb->getCalledFunction();
@@ -252,7 +275,7 @@ ContextBlock::Shared ContextBlock::create(const BugLocationMapper &mapper,
         nodeFirst = tmp;
     }
 
-    return create(parent, nodeFirst);
+    return create(parent, nodeFirst, traceInst);
 }
 
 std::string ContextBlock::str(int indent) const {
@@ -274,15 +297,6 @@ std::string ContextBlock::str(int indent) const {
 #pragma endregion
 
 #pragma region ContextGraph
-
-// template <typename T>
-// std::list<
-//     std::shared_ptr<ContextGraph<T>::GraphNode>
-// > 
-// ContextGraph<T>::constructSuccessors(ContextGraph<T>::GraphNodePtr node) {
-//     std::list<ContextGraph::GraphNodePtr> successors;
-//     return successors;
-// }
 
 template <typename T>
 std::list<typename ContextGraph<T>::GraphNodePtr> 
@@ -354,7 +368,7 @@ ContextGraph<T>::constructSuccessors(ContextGraph<T>::GraphNodePtr node) {
             finalSuccessors.push_back(nodeCache_[st.first][st.second]);
         } else {
             // Need a new context block
-            auto newCtx = ContextBlock::create(st.first, st.second);
+            auto newCtx = ContextBlock::create(st.first, st.second, st.second);
             auto newNode = std::make_shared<ContextGraph::GraphNode>(newCtx);
             finalSuccessors.push_back(newNode);
             nodeCache_[st.first][st.second] = newNode;
@@ -383,6 +397,8 @@ void ContextGraph<T>::construct(ContextBlock::Shared end) {
         errs() << "------\n";
         if (*n->block == *end) {
             errs() << "End traversal\n";
+            // Update the trace instruction too
+            n->block->traceInst = end->traceInst;
             leaves.push_back(n);
             errs() << "------\n";
             continue;
@@ -435,7 +451,6 @@ ContextGraph<T>::ContextGraph(const BugLocationMapper &mapper,
     assert(*sblk == *eblk);
 
     errs() << "\nEND CONSTRUCT\n";
-    // root = new Node(start);
 
     auto root = std::make_shared<ContextGraph::GraphNode>(sblk);
     roots.push_back(root);
@@ -454,10 +469,87 @@ ContextGraph<T>::ContextGraph(const BugLocationMapper &mapper,
 }
 
 template struct pmfix::ContextGraph<bool>;
+template struct pmfix::ContextGraph<pmfix::FlowAnalyzer::Info>;
 
 #pragma endregion
 
 #pragma region FlowAnalyzer
 
+bool FlowAnalyzer::interpret(ContextGraph<Info>::GraphNodePtr node,
+                             Instruction *start, Instruction *end) {
+    Info &info = node->metadata;
+    PmDesc &pm = node->block->ctx->pm();
+    assert(start->getParent() == end->getParent() && "not in same BB!");
+
+    Instruction *i = start;
+    bool isStillRedt = true;
+    // We do != end + 1 since end is inclusive
+    while (i != end->getNextNonDebugInstruction()) {
+        if (auto *si = dyn_cast<StoreInst>(i)) {
+            Value *v = si->getPointerOperand();
+            if (pm.pointsToPm(v)) {
+                /**
+                 * TODO: if there's a flush which flushes this exactly, we're 
+                 * okay, otherwise there's no hope.
+                 */
+                isStillRedt = false;
+            }
+        } else if (auto *cb = dyn_cast<CallBase>(i)) {
+            assert(false && "TODO");
+        }
+
+        i = i->getNextNonDebugInstruction();
+    }
+
+    info.isNotRedundant = !isStillRedt;
+    info.updated = true;
+
+    return isStillRedt;
+}
+
+bool FlowAnalyzer::alwaysRedundant() {
+    bool redundant = true;
+    for (auto nptr : graph_.roots) {
+        
+        // For each child, we need to traverse, interpret, and so on.
+
+        // -- Special case. For one node, it's always redundant.
+        if (nptr->children.empty()) {
+            continue;
+        }
+
+        bool r = interpret(nptr, nptr->block->traceInst, nptr->block->last);
+        assert(r && "doesn't make sense!");
+
+        std::deque<ContextGraph<Info>::GraphNodePtr> frontier;
+        frontier.insert(frontier.end(), nptr->children.begin(), nptr->children.end());
+
+        while (frontier.size()) {
+            auto node = frontier.front();
+            frontier.pop_front();
+
+            // Loop check
+            if (node->metadata.updated) continue;
+
+            // For leaves, we interpret just to trace end
+            if (node->children.empty()) {
+                bool r = interpret(node, node->block->first, node->block->traceInst);
+                assert(r && "doesn't make sense!");
+            } else {
+                bool r = interpret(node, node->block->first, node->block->last);
+                redundant = r && redundant;
+                frontier.insert(frontier.end(), node->children.begin(), node->children.end());
+            }
+        }
+    }
+
+    return redundant;
+}
+
+std::list<Instruction*> FlowAnalyzer::redundantPaths() {
+    std::list<Instruction*> points;
+    assert(false && "implement me!!!");
+    return points;
+}
 
 #pragma endregion

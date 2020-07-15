@@ -211,23 +211,37 @@ Instruction *PMTestFixGenerator::insertFence(Instruction *i) {
  * basic block as the flush, in all likelihood.
  */
 bool PMTestFixGenerator::removeFlush(Instruction *i) {
-    errs() << "TODO: implement " << __FUNCTION__ << "\n";
-    return false; 
+    assert(i && "must be non-null!");
+    // We need to first find the flush and assertion.
+
+    CallBase *flushCb=nullptr, *assertCb=nullptr;
+
+    Function *assertFn = module_.getFunction("C_createMetadata_Flush");
+    assert(assertFn && "could not find!");
     
-    if (CallInst *ci = dyn_cast<CallInst>(i)) {
-        Function *f = ci->getCalledFunction();
-        
-        // Validate that this is a flush.
-        // (iangneal): getting the intrinsic ID is more type-safe
-        if (f->getIntrinsicID() != Intrinsic::x86_clwb) {
-            assert(false && "must be a clwb!");
+    Instruction *tmp = i;
+    do {
+        if (auto *cb = dyn_cast<CallBase>(tmp)) {
+            Function *f = cb->getCalledFunction();
+            if (!assertCb && f && f == assertFn) {
+                assertCb = cb;
+            } else if (!flushCb && f && f->getIntrinsicID() == Intrinsic::x86_clwb) {
+                flushCb = cb;
+            }
         }
+        if (assertCb && flushCb) break;
+    } while ((tmp = tmp->getPrevNonDebugInstruction()));
 
-        i->eraseFromParent();
-        return true;
-    }
+    assert(flushCb && assertCb && "can't find both the flush and assertion!");
 
-    return false;
+    // errs() << __FUNCTION__ << "  flushCb:" << *flushCb << "\n";
+    // errs() << __FUNCTION__ << " assertCb:" << *assertCb << "\n";
+
+    // This unlinks and deletes. Remove just unlinks.
+    flushCb->eraseFromParent();
+    assertCb->eraseFromParent();
+
+    return true;
 }
 
 #pragma endregion

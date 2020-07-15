@@ -31,8 +31,8 @@ namespace pmfix {
      */
     class PmDesc {
     private:
-        SharedAndersen anders_;
-        SharedAndersenCache cache_;
+        static SharedAndersen anders_;
+        static SharedAndersenCache cache_;
 
         /**
          * There should be no need to clear/reset anything, only on a return when
@@ -131,6 +131,8 @@ namespace pmfix {
 
         llvm::CallBase *caller(void) const { return callStack_.back(); }
 
+        PmDesc &pm(void) { return pm_; }
+
         static FnContextPtr create(llvm::Module &m) {
             return std::shared_ptr<FnContext>(new FnContext(m));
         }
@@ -155,9 +157,14 @@ namespace pmfix {
 
     public:
         FnContext::Shared ctx;
+        // Defines the starting boundary of the block (inclusive)
         llvm::Instruction *first = nullptr;
+        // Defines the ending boundary of the block (inclusive)
         llvm::Instruction *last = nullptr;
-
+        // Sometimes, the trace starts in the middle of one of these. So, we
+        // want to indicate the interpretation start/end as well.
+        llvm::Instruction *traceInst = nullptr;
+ 
         static ContextBlockPtr create(const BugLocationMapper &mapper, 
                                       const TraceEvent &te);
 
@@ -165,7 +172,8 @@ namespace pmfix {
          * Just finds the last instruction.
          */
         static ContextBlockPtr create(FnContext::Shared ctx, 
-                                      llvm::Instruction *first);
+                                      llvm::Instruction *first,
+                                      llvm::Instruction *trace);
 
         std::string str(int indent=0) const;
 
@@ -234,15 +242,53 @@ namespace pmfix {
     };
 
     /**
-     * We want to keep the branch points
+     * Analyze the flow between two points and figure out if we can remove 
+     * a redundant operation along some paths.
+     * 
+     * TODO: make more generic.
      */
     class FlowAnalyzer {
     private:
+        /** 
+         * The general idea is that we want to find the highest point at which
+         * we know the operation is redundant, and instrument that block.
+         */
+        struct Info {
+            bool updated = false;
+            bool isNotRedundant = false;
+        };
+
         llvm::Module &m_;
+        const BugLocationMapper &mapper_;
+        const TraceEvent &start_;
+        const TraceEvent &end_;
+        ContextGraph<Info> graph_;
+
+        /**
+         * This "interprets" a node to determine if a flush would still be 
+         * considered redundant at the end.
+         * 
+         * Returns true if the flush is still redundant, false if not provable.
+         */
+        bool interpret(ContextGraph<Info>::GraphNodePtr node,
+                       llvm::Instruction *start, llvm::Instruction *end);
 
     public:
-        FlowAnalyzer(llvm::Module &m) : m_(m) {}
+        FlowAnalyzer(llvm::Module &m, 
+                     const BugLocationMapper &mapper, 
+                     const TraceEvent &start, 
+                     const TraceEvent &end) 
+            : m_(m), mapper_(mapper), start_(start), end_(end),
+              graph_(mapper, start, end) {}
 
+        /**
+         * Return true if the end event is redundant across all paths.
+         */
+        bool alwaysRedundant();
 
+        /**
+         * Return instructions on the paths where the end event is redundant.
+         */
+        std::list<llvm::Instruction*> redundantPaths();
     };  
 }

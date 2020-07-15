@@ -10,27 +10,27 @@ using namespace llvm;
 
 #pragma region BugFixer
 
-bool BugFixer::addFixToMapping(Instruction *i, FixType t) {
+bool BugFixer::addFixToMapping(Instruction *i, FixDesc desc) {
     if (!fixMap_.count(i)) {
         errs() << "DING\n";
-        fixMap_[i] = t;
+        fixMap_[i] = desc;
         return true;
-    } else if (fixMap_[i] == t) {
+    } else if (fixMap_[i] == desc) {
         errs() << "DONG\n";
         return false;
     }
     errs() << "NOPE\n";
 
-    if (fixMap_[i] == ADD_FLUSH_ONLY && t == ADD_FENCE_ONLY) {
-        fixMap_[i] = ADD_FLUSH_AND_FENCE;
+    if (fixMap_[i].type == ADD_FLUSH_ONLY && desc.type == ADD_FENCE_ONLY) {
+        fixMap_[i].type = ADD_FLUSH_AND_FENCE;
         return true;
-    } else if (fixMap_[i] == ADD_FENCE_ONLY && t == ADD_FLUSH_ONLY) {
-        fixMap_[i] = ADD_FLUSH_AND_FENCE;
+    } else if (fixMap_[i].type == ADD_FENCE_ONLY && desc.type == ADD_FLUSH_ONLY) {
+        fixMap_[i].type = ADD_FLUSH_AND_FENCE;
         return true;
     }
 
-    if ((fixMap_[i] == ADD_FLUSH_ONLY || fixMap_[i] == ADD_FLUSH_AND_FENCE) &&
-        t == REMOVE_FLUSH_ONLY) {
+    if ((fixMap_[i].type == ADD_FLUSH_ONLY || fixMap_[i].type == ADD_FLUSH_AND_FENCE) &&
+        desc.type == REMOVE_FLUSH_ONLY) {
         assert(false && "conflicting solutions!");
     }
     // (iangneal): future work
@@ -112,12 +112,16 @@ bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
         errs() << "\t\tInstruction : " << *i << "\n";
         
         bool res = false;
+        FixDesc desc;
         if (missingFlush && missingFence) {
-            res = addFixToMapping(i, ADD_FLUSH_AND_FENCE);
+            desc.type = ADD_FLUSH_AND_FENCE;
+            res = addFixToMapping(i, desc);
         } else if (missingFlush) {
-            res = addFixToMapping(i, ADD_FLUSH_ONLY);
+            desc.type = ADD_FLUSH_ONLY;
+            res = addFixToMapping(i, desc);
         } else if (missingFence) {
-            res = addFixToMapping(i, ADD_FENCE_ONLY);
+            desc.type = ADD_FENCE_ONLY;
+            res = addFixToMapping(i, desc);
         }
 
         // Have to do it this way, otherwise it short-circuits.
@@ -204,9 +208,37 @@ bool BugFixer::handleRequiredFlush(const TraceEvent &te, int bug_index) {
         errs() << "\tneq!!\n";
     }
 
-    ContextGraph<bool> graph(mapper_, orig, redt);
+    // ContextGraph<bool> graph(mapper_, orig, redt);
+    FlowAnalyzer f(module_, mapper_, orig, redt);
+    errs() << "Always redundant? " << f.alwaysRedundant() << "\n";
 
-    return false;
+    // Then we can just remove the redundant flush.
+    bool res = false;
+    for (Instruction *i : mapper_[redt.location]) {
+        if (f.alwaysRedundant()) {
+            FixDesc desc;
+            desc.type = REMOVE_FLUSH_ONLY;
+            res = addFixToMapping(i, desc);
+        } else {
+            std::list<Instruction*> redundantPaths = f.redundantPaths();
+            if (redundantPaths.size()) {
+                // Set dependent of the real fix
+                Instruction *prev = i;
+                for (Instruction *a : redundantPaths) {
+                    FixDesc d(ADD_FLUSH_CONDITION, prev);
+                    bool ret = addFixToMapping(a, d);
+                    assert(ret && "wat");
+                    prev = a; 
+                }
+
+                FixDesc remove(REMOVE_FLUSH_CONDITIONAL, prev);
+                bool ret = addFixToMapping(i, remove);
+                res = res || ret;
+            }
+        }
+    }
+
+    return res;
 }
 
 bool BugFixer::computeAndAddFix(const TraceEvent &te, int bug_index) {
@@ -238,8 +270,8 @@ bool BugFixer::computeAndAddFix(const TraceEvent &te, int bug_index) {
     }
 }
 
-bool BugFixer::fixBug(FixGenerator *fixer, Instruction *i, FixType ft) {
-    switch (ft) {
+bool BugFixer::fixBug(FixGenerator *fixer, Instruction *i, FixDesc desc) {
+    switch (desc.type) {
         case ADD_FLUSH_ONLY: {
             Instruction *n = fixer->insertFlush(i);
             assert(n && "could not ADD_FLUSH_ONLY");
@@ -263,7 +295,7 @@ bool BugFixer::fixBug(FixGenerator *fixer, Instruction *i, FixType ft) {
             break;
         }
         default: {
-            errs() << "UNSUPPORTED: " << ft << "\n";
+            errs() << "UNSUPPORTED: " << desc.type << "\n";
             assert(false && "not handled!");
         }
     }
@@ -285,16 +317,21 @@ bool BugFixer::doRepair(void) {
      * everything else.
      */
     FixGenerator *fixer = nullptr;
-    std::string bugReportSrc = trace_.getMetadata<std::string>("source");
-    if ("PMTEST" == bugReportSrc) {
-        PMTestFixGenerator pmtestFixer(module_);
-        fixer = &pmtestFixer;
-    } else if ("GENERIC" == bugReportSrc) {
-        GenericFixGenerator genericFixer(module_);
-        fixer = &genericFixer;
-    } else {
-        errs() << "unsupported!\n";
-        exit(-1);
+    switch (trace_.getSource()) {
+        case TraceEvent::PMTEST: {
+            PMTestFixGenerator pmtestFixer(module_);
+            fixer = &pmtestFixer;
+            break;
+        }
+        case TraceEvent::GENERIC: {
+            GenericFixGenerator genericFixer(module_);
+            fixer = &genericFixer;
+            break;
+        }
+        default: {
+            errs() << "unsupported!\n";
+            exit(-1);
+        }
     }
 
     /**
