@@ -129,6 +129,8 @@ namespace pmfix {
          */
         FnContextPtr doReturn(llvm::ReturnInst *ri);
 
+        llvm::CallBase *caller(void) const { return callStack_.back(); }
+
         static FnContextPtr create(llvm::Module &m) {
             return std::shared_ptr<FnContext>(new FnContext(m));
         }
@@ -159,6 +161,12 @@ namespace pmfix {
         static ContextBlockPtr create(const BugLocationMapper &mapper, 
                                       const TraceEvent &te);
 
+        /** 
+         * Just finds the last instruction.
+         */
+        static ContextBlockPtr create(FnContext::Shared ctx, 
+                                      llvm::Instruction *first);
+
         std::string str(int indent=0) const;
 
         bool operator==(const ContextBlock &c) const {
@@ -182,11 +190,12 @@ namespace pmfix {
             ContextBlock::Shared block;
             std::unordered_set<Shared> parents;
             std::unordered_set<Shared> children;
+            bool constructed = false;
             T metadata;
 
             GraphNode(ContextBlock::Shared b) : block(b) {}
 
-            bool isTerminator() const { return children.empty(); }
+            bool isTerminator() const { return children.empty() && constructed; }
         };
 
         typedef std::shared_ptr<GraphNode> GraphNodePtr;

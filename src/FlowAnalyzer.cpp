@@ -3,6 +3,7 @@
 #include <iomanip>
 #include <sstream>
 #include <deque>
+#include <utility>
 
 #include "llvm/IR/CFG.h"
 
@@ -161,6 +162,31 @@ std::string FnContext::str(int indent) const {
 
 #pragma region ContextNode
 
+ContextBlock::Shared ContextBlock::create(FnContext::Shared ctx, 
+                                          llvm::Instruction *first) {
+    /**
+     * Now, we set up the node!
+     */ 
+    ContextBlock::Shared node = std::make_shared<ContextBlock>();
+    node->ctx = ctx;
+    node->first = first;
+    node->last = first;
+
+    // -- Scroll down to find the last instruction.
+    while (Instruction *tmp = node->last->getNextNonDebugInstruction()) {
+        if (CallBase *cb = dyn_cast<CallBase>(tmp)) {
+            Function *f = cb->getCalledFunction();
+            if (f && !f->isDeclaration() && !f->isIntrinsic()) break;
+        }
+        node->last = tmp;
+    }
+
+    // We also use the trace event itself to initialize some PM values.
+    errs() << "\t\tTODO DO ME\n";
+
+    return node;
+}
+
 ContextBlock::Shared ContextBlock::create(const BugLocationMapper &mapper, 
                                           const TraceEvent &te) {
     // Start from the top down.
@@ -203,10 +229,8 @@ ContextBlock::Shared ContextBlock::create(const BugLocationMapper &mapper,
     }
 
     /**
-     * Now, we set up the node!
+     * Now, we set up arguments so we can call the other create() function.
      */ 
-    ContextBlock::Shared node = std::make_shared<ContextBlock>();
-    node->ctx = parent;
 
     const LocationInfo &curr = te.callstack[0];
     // We use this to figure out the first and last instruction in the window.
@@ -217,30 +241,18 @@ ContextBlock::Shared ContextBlock::create(const BugLocationMapper &mapper,
     assert(possibleLocs.size() > 0 && "don't know how to handle!");
     assert(possibleLocs.size() == 1 && "don't know how to handle!");
 
-    Instruction *possible = possibleLocs.front();
-    node->first = possible;
-    node->last = possible;
+    Instruction *nodeFirst = possibleLocs.front();
+
     // -- Scroll forward to find the first instruction.
-    while (Instruction *tmp = node->first->getPrevNonDebugInstruction()) {
+    while (Instruction *tmp = nodeFirst->getPrevNonDebugInstruction()) {
         if (CallBase *cb = dyn_cast<CallBase>(tmp)) {
             Function *f = cb->getCalledFunction();
             if (f && !f->isDeclaration() && !f->isIntrinsic()) break;
         }
-        node->first = tmp;
-    }
-    // -- Scroll down to find the last instruction.
-    while (Instruction *tmp = node->last->getNextNonDebugInstruction()) {
-        if (CallBase *cb = dyn_cast<CallBase>(tmp)) {
-            Function *f = cb->getCalledFunction();
-            if (f && !f->isDeclaration() && !f->isIntrinsic()) break;
-        }
-        node->last = tmp;
+        nodeFirst = tmp;
     }
 
-    // We also use the trace event itself to initialize some PM values.
-    errs() << "\t\tTODO DO ME\n";
-
-    return node;
+    return create(parent, nodeFirst);
 }
 
 std::string ContextBlock::str(int indent) const {
@@ -275,76 +287,81 @@ std::string ContextBlock::str(int indent) const {
 template <typename T>
 std::list<typename ContextGraph<T>::GraphNodePtr> 
 ContextGraph<T>::constructSuccessors(ContextGraph<T>::GraphNodePtr node) {
-    std::list<ContextGraph::GraphNodePtr> successors;
+    /**
+     * TODO: We can use the caching mechanism as a way of doing loop detection.
+     */
+    std::list<ContextGraph::GraphNodePtr> finalSuccessors;
+    node->constructed = true;
 
     /**
-     * Normally, a basic block has it's own branching successors. However,
-     * we also want to capture function calls. So, we will split basic blocks
-     * at calls.
-     * 
-     * We also want to capture return instructions.
+     * What we want to do here is collect FnContext, Instruction tuples.
+     * If they're in the cache, then we're all good, otherwise we should 
+     * create a new graph node.
      */
-    Instruction *i = node->block->first;
-    while ((i = i->getNextNonDebugInstruction())) {
-        if (CallBase *cb = dyn_cast<CallBase>(i)) {
-            Function *fn = cb->getCalledFunction();
+    typedef std::pair<FnContext::Shared, Instruction*> SuccType;
+    std::list<SuccType> successors;
 
-            if (fn && fn->isIntrinsic()) continue;
-            else if (fn && fn->isDeclaration()) continue;
-            else if (fn == first_->getFunction()) {
-                // TODO: recursion protection;
-                assert(false && "TODO RECURSE");
-            }
+    Instruction *last = node->block->last;
 
-            // this sets the last, and the successor is the call.
-            last_ = cb;
-            Instruction *fnFirst = &fn->getEntryBlock().front();
-            FnContext *called = new FnContext(this, fnFirst);
-            successors_.push_back(called);
-            return;
-        }
-
-        if (ReturnInst *ri = dyn_cast<ReturnInst>(i)) {
-            last_ = ri;
-            // This would mean that we're returning past the end of our scope.
-            // Remember, it's a limited graph.
-            FnContext *parent = callStack_.back();
-            if (!parent) {
-                return;
-            }
-
-            assert(parent->last_ && "last not set!!!");
-
-            /**
-             * We want essentially set the parent as the successor, but
-             * make sure to move the "first" instruction cursor so that
-             * we don't loop over this too much.
-             */
-            if (callStack_.back()) {
-                
-                Instruction *ni = parent->last_->getNextNonDebugInstruction();
-                if (!ni) {
-                    assert(false && "TODO! Likely need to do something here.");
-                }
-                auto *rchild = new FnContext(parent->callStack_, ni);
-                successors_.push_back(rchild);
-            }
-
-            // No successors.
-            return;
-        }
-    }
-    
     /**
-     * Now, we get the successor basic block.
+     * If the last instruction is a return instruction, then the only successor
+     * is the instruction after the call base.
      */
-    last_ = first_->getParent()->getTerminator();
-    for (BasicBlock *succ : llvm::successors(first_->getParent())) {
-        FnContext *sctx = new FnContext(callStack_, succ->getFirstNonPHI());
-        successors_.push_back(sctx);
+
+    if (ReturnInst *ri = dyn_cast<ReturnInst>(last)) {
+        auto newCtx = node->block->ctx->doReturn(ri);
+        // The next instruction isn't too complicated
+        CallBase *cb = node->block->ctx->caller();
+        Instruction *next = cb->getNextNonDebugInstruction();
+        assert(next && "bad assumptions!");
+        successors.emplace_back(newCtx, next);
     }
-    
-    return successors;
+
+    /**
+     * If this is a call instruction, we need to do the call.
+     */
+    else if (CallBase *cb = dyn_cast<CallBase>(last)) {
+        // We just need the function.
+        Function *f = cb->getCalledFunction();
+        assert(f && "don't know how to handle this yet!");
+        auto newCtx = node->block->ctx->doCall(f, cb);
+        Instruction *next = &f->getEntryBlock().front();
+        successors.emplace_back(newCtx, next);
+    }
+
+    /**
+     * If this is the last instruction in the basic block, then we get the 
+     * successors.
+     */
+    else if (last->isTerminator()) {
+        /**
+         * TODO: We need to actually do some processing to propagate PM?
+         */
+        for (BasicBlock *succ : llvm::successors(last->getParent())) {
+            successors.emplace_back(node->block->ctx, succ->getFirstNonPHIOrDbgOrLifetime());
+        }
+    }
+
+    /**
+     * This case doesn't make any sense, so we will fail hard.
+     */
+    else {
+        assert(false && "wat");
+    }
+
+    for (SuccType &st : successors) {
+        if (nullptr != nodeCache_[st.first][st.second]) {
+            finalSuccessors.push_back(nodeCache_[st.first][st.second]);
+        } else {
+            // Need a new context block
+            auto newCtx = ContextBlock::create(st.first, st.second);
+            auto newNode = std::make_shared<ContextGraph::GraphNode>(newCtx);
+            finalSuccessors.push_back(newNode);
+            nodeCache_[st.first][st.second] = newNode;
+        }
+    }
+
+    return finalSuccessors;
 }
 
 template <typename T>
@@ -374,25 +391,30 @@ void ContextGraph<T>::construct(ContextBlock::Shared end) {
         }
 
         // Construct successors.
-        // n->ctx->constructSuccessors();
+        auto successors = constructSuccessors(n);
 
         // errs() << "Traverse " << n->ctx->str() << "\n";
 
-        // for (FnContext *child_ctx : n->ctx->successors()) {
-        //     errs() << "\t child: \n" << child_ctx->str() << "\n";
-        //     nnodes++;
-        //     Node *child = new Node(child_ctx);
-        //     n->addChild(child);
+        for (auto childNode : successors) {
+            nnodes++;
 
-        //     frontier.push_back(child);
-        // }
+            // Set parent-child relations
+            n->children.insert(childNode);
+            childNode->parents.insert(n);
 
-        // if (n->children.empty()) {
-        //     errs() << "no kids!\n";
-        //     leaves.push_back(n);
-        // }
+            /**
+             * If a child has already been constructed, than means we have a 
+             * loop! So, we don't add it back to the frontier.
+             */
+            if (!childNode->constructed) {
+                frontier.push_back(childNode);
+            }
+        }
 
-        // errs() << "------\n";
+        if (n->isTerminator()) {
+            errs() << "no kids!\n";
+            leaves.push_back(n);
+        }
     }
 
     errs() << "<<< Created " << nnodes << " nodes! >>>\n";
