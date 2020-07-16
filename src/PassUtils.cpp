@@ -2,6 +2,21 @@
 
 using namespace pmfix;
 
+#pragma region PMFix
+
+Function *utils::getFlush(CallBase *cb) {
+    Function *f = cb->getCalledFunction();
+    if (!f) return nullptr;
+
+    auto iid = f->getIntrinsicID();
+    if (iid == Intrinsic::x86_clwb || iid == Intrinsic::x86_clflushopt ||
+        iid == Intrinsic::x86_sse2_clflush) return f;
+
+    return nullptr;
+}
+
+#pragma endregion
+
 bool utils::checkInlineAsmEq(const Instruction *iptr...) {
     va_list args;
     va_start(args, iptr);

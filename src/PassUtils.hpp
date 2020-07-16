@@ -36,7 +36,10 @@ namespace utils {
 
     #pragma region PMFix
 
-
+    /**
+     * If this references a kind of flush, return the function, else false.
+     */
+    Function *getFlush(CallBase *cb);
 
     #pragma endregion
 

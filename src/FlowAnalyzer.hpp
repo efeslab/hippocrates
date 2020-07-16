@@ -254,6 +254,7 @@ namespace pmfix {
          * we know the operation is redundant, and instrument that block.
          */
         struct Info {
+            // Use this to cache results
             bool updated = false;
             bool isNotRedundant = false;
         };

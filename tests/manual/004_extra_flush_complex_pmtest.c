@@ -69,6 +69,7 @@ int main(int argc, char *argv[]) {
 	PMTest_START;
 
 	incorrect(p, false);
+	incorrect(p, true);
 
 	PMTest_END;
 	PMTest_getResult(p);

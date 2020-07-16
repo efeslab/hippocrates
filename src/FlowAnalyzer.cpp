@@ -8,6 +8,7 @@
 #include "llvm/IR/CFG.h"
 
 #include "FlowAnalyzer.hpp"
+#include "PassUtils.hpp"
 
 using namespace llvm;
 using namespace pmfix;
@@ -67,11 +68,24 @@ bool PmDesc::pointsToPm(llvm::Value *pmv) {
     pm_values.insert(pm_locals_.begin(), pm_locals_.end());
     pm_values.insert(pm_globals_.begin(), pm_globals_.end());
 
-    std::vector<const Value*> inter;
+    // errs() << "ptsSet size: " << ptsSet.size() << "\n";
+    // errs() << "pm_values size: " << pm_values.size() << "\n";
 
-    (void)std::set_intersection(ptsSet.begin(), ptsSet.end(),
-                                pm_values.begin(), pm_values.end(), inter.begin());
-    return !inter.empty();
+    std::unordered_set<const llvm::Value*> both, intersect;
+    both.insert(pm_values.begin(), pm_values.end());
+    both.insert(ptsSet.begin(), ptsSet.end());
+
+    // a form of set intersection
+    // (void)std::set_intersection(ptsSet.begin(), ptsSet.end(),
+    //                             pm_values.begin(), pm_values.end(), inter.begin());
+
+    for (const Value *v : both) {
+        if (pm_values.count(v) && ptsSet.count(v)) {
+            intersect.insert(v);
+        }
+    }
+
+    return !intersect.empty();
 }
 
 bool PmDesc::isSubsetOf(const PmDesc &possSuper) {
@@ -453,8 +467,6 @@ ContextGraph<T>::ContextGraph(const BugLocationMapper &mapper,
     errs() << sblk->str() << "\n";
     errs() << eblk->str() << "\n";
 
-    assert(*sblk == *eblk);
-
     errs() << "\nEND CONSTRUCT\n";
 
     auto root = std::make_shared<ContextGraph::GraphNode>(sblk);
@@ -486,6 +498,11 @@ bool FlowAnalyzer::interpret(ContextGraph<Info>::GraphNodePtr node,
     PmDesc &pm = node->block->ctx->pm();
     assert(start->getParent() == end->getParent() && "not in same BB!");
 
+    if (info.updated) return !info.isNotRedundant;
+
+    // errs() << "Interpret start: " << *start << "\n";
+    // errs() << "Interpret end:   " << *end << "\n";
+
     Instruction *i = start;
     bool isStillRedt = true;
     // We do != end + 1 since end is inclusive
@@ -498,9 +515,15 @@ bool FlowAnalyzer::interpret(ContextGraph<Info>::GraphNodePtr node,
                  * okay, otherwise there's no hope.
                  */
                 isStillRedt = false;
+                // errs() << "spoiler:" << *v << "\n";
             }
         } else if (auto *cb = dyn_cast<CallBase>(i)) {
-            assert(false && "TODO");
+            Function *flushFn = utils::getFlush(cb);
+            if (flushFn && !isStillRedt) {
+                errs() << *cb << "\n";
+                assert(false && "TODO");
+            }
+            
         }
 
         i = i->getNextNonDebugInstruction();
@@ -527,14 +550,18 @@ bool FlowAnalyzer::alwaysRedundant() {
         assert(r && "doesn't make sense!");
 
         std::deque<ContextGraph<Info>::GraphNodePtr> frontier;
+        std::unordered_set<ContextGraph<Info>::GraphNodePtr> traversed;
+
         frontier.insert(frontier.end(), nptr->children.begin(), nptr->children.end());
+        traversed.insert(nptr);
 
         while (frontier.size()) {
             auto node = frontier.front();
             frontier.pop_front();
 
             // Loop check
-            if (node->metadata.updated) continue;
+            if (traversed.count(node)) continue;
+            traversed.insert(node);
 
             // For leaves, we interpret just to trace end
             if (node->children.empty()) {
