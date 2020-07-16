@@ -112,30 +112,38 @@ class TraceParser:
             timestamp, event, line, stacktrace = pmtest_trace[i]
             parts = line.split(' ')
 
+            common = {
+                'timestamp': timestamp,
+                'function': parts[-3],
+                'file': parts[-2],
+                'line': int(parts[-1]) if parts[-1].isnumeric() else -1,
+                'stack': self._parse_pmtest_stack(stacktrace) if stacktrace is not None else None,
+            }
+            '''
+                Due to some weird bug, we do this now.
+                - addr2line gives use the line AFTER the one we want for PMTest stack
+                trace, but only for the last level? Odd.
+            '''
+            if common['stack'] is not None:
+                common['stack'][0] = {k: common[k] for k in ['function', 'file', 'line']}
+
             if '_ASSIGN' == event:
                 # Operation: store value into PM
-                _, addr, sz, func_name, file_name, line_no = parts
-                te = TraceEvent(timestamp=timestamp, event='STORE', 
-                    address=int(addr, base=16), length=int(sz), function=func_name,
-                    file=file_name, line=int(line_no), is_bug=False, 
-                    stack=self._parse_pmtest_stack(stacktrace))
+                addr, sz = parts[1:3]
+                te = TraceEvent(event='STORE', address=int(addr, base=16), 
+                    length=int(sz), is_bug=False, **common)
                 report.add_trace_event(te)
 
             elif '_FLUSH' == event:
                 # Operation: issue durability barrier in PM
-                _, addr, sz, func_name, file_name, line_no = parts
-                te = TraceEvent(timestamp=timestamp, event='FLUSH', 
-                    address=int(addr, base=16), length=int(sz), function=func_name,
-                    file=file_name, line=int(line_no), is_bug=False,
-                    stack=self._parse_pmtest_stack(stacktrace))
+                addr, sz = parts[1:3]
+                te = TraceEvent(event='FLUSH', address=int(addr, base=16), 
+                    length=int(sz), is_bug=False, **common)
                 report.add_trace_event(te)
 
             elif '_FENCE' == event:
                 # Operation: issue global ordering barrier
-                _, func_name, file_name, line_no = parts
-                te = TraceEvent(timestamp=timestamp, event='FENCE', 
-                    function=func_name, file=file_name, line=int(line_no), 
-                    is_bug=False, stack=self._parse_pmtest_stack(stacktrace))
+                te = TraceEvent(event='FENCE', is_bug=False, **common)
                 report.add_trace_event(te)
 
             elif '_PERSIST' == event:
@@ -145,11 +153,9 @@ class TraceParser:
                         pmtest_trace[i+1][1] == 'PERSIST ERROR':
                     is_persist = False
 
-                _, addr, sz, func_name, file_name, line_no = parts
-                te = TraceEvent(timestamp=timestamp, event='ASSERT_PERSISTED', 
-                    address=int(addr, base=16), length=int(sz), function=func_name,
-                    file=file_name, line=int(line_no), is_bug=not is_persist,
-                    stack=self._parse_pmtest_stack(stacktrace))
+                addr, sz = parts[1:3]
+                te = TraceEvent(event='ASSERT_PERSISTED', address=int(addr, base=16), 
+                    length=int(sz), is_bug=not is_persist, **common)
                 report.add_trace_event(te)
                 
             elif 'PERSIST ERROR' == event:
@@ -165,12 +171,11 @@ class TraceParser:
                         pmtest_trace[i+1][1] == 'ORDER ERROR':
                     is_ordered = False
 
-                _, addr_a, sz_a, addr_b, sz_b, func_name, file_name, line_no = parts
-                te = TraceEvent(timestamp=timestamp, event='ASSERT_ORDERED', 
+                addr_a, sz_a, addr_b, sz_b = parts[1:5]
+                te = TraceEvent(event='ASSERT_ORDERED', 
                     address_a=int(addr_a, base=16), length_a=int(sz_a),
                     address_b=int(addr_b, base=16), length_b=int(sz_b),
-                    function=func_name, file=file_name, line=int(line_no), 
-                    is_bug=not is_ordered, stack=self._parse_pmtest_stack(stacktrace))
+                    is_bug=not is_ordered, **common)
                 report.add_trace_event(te)
 
             elif 'ORDER ERROR' == event:

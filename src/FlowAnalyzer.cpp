@@ -245,6 +245,11 @@ ContextBlock::Shared ContextBlock::create(const BugLocationMapper &mapper,
      */ 
 
     const LocationInfo &curr = te.callstack[0];
+    if (!mapper.contains(curr)) {
+        errs() << "stack[0] " << curr.str() << "\n";
+        errs() << "location " << te.location.str() << "\n";
+        assert(false && "does not contain!!!");
+    }
     // We use this to figure out the first and last instruction in the window.
     std::list<Instruction*> possibleLocs;
     for (auto *inst : mapper[curr]) {

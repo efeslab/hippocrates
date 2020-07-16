@@ -45,3 +45,10 @@ add_test_executable(TARGET 003_ExtraFlush_PMTest
                     EXTRA_LIBS pmtest pthread
                     DEPENDS PMTEST
                     TOOL PMTEST)
+
+add_test_executable(TARGET 004_ExtraFlushComplex_PMTest
+                    SOURCES 004_extra_flush_complex_pmtest.c
+                    INCLUDE ${PMTEST_INCLUDE}
+                    EXTRA_LIBS pmtest pthread
+                    DEPENDS PMTEST
+                    TOOL PMTEST)
