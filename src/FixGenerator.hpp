@@ -6,6 +6,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/GlobalVariable.h"
 
 #include "BugReports.hpp"
 
@@ -24,9 +25,27 @@ private:
 protected:
     llvm::Module &module_;
 
+    /** PURE UTILITY
+     */
+
     llvm::Function *getClwbDefinition() const;
 
     llvm::Function *getSfenceDefinition() const; 
+
+    /** PERF UTILITY
+     * 
+     */
+
+    /**
+     * Creates a new global variable, and inserts an unconditional reset before
+     * resetBefore and an unconditional set at setAt.
+     */
+    llvm::GlobalVariable *createConditionVariable(
+        llvm::Instruction *resetBefore, llvm::Instruction *setAt);
+
+    llvm::Instruction *createConditionalBlock(
+        llvm::Instruction *first, llvm::Instruction *end,
+        std::list<llvm::GlobalVariable*> conditions);
 
 public:
     FixGenerator(llvm::Module &m) : module_(m) {}
@@ -44,7 +63,15 @@ public:
     /** PERFORMANCE
      * Removes an unnecessary flush
      */
+
+    /**
+     * Removes a single flush (at instruction i).
+     */
     virtual bool removeFlush(llvm::Instruction *i) = 0;
+
+    virtual bool removeFlushConditionally(
+        llvm::Instruction *original, llvm::Instruction *redundant,
+        std::list<llvm::Instruction*> pathPoints) = 0;
 };
 
 /**
@@ -62,6 +89,10 @@ public:
     virtual llvm::Instruction *insertFence(llvm::Instruction *i) override;
 
     virtual bool removeFlush(llvm::Instruction *i) override;
+
+    virtual bool removeFlushConditionally(
+        llvm::Instruction *original, llvm::Instruction *redundant,
+        std::list<llvm::Instruction*> pathPoints) override;
 };
 
 /**
@@ -79,6 +110,10 @@ public:
     virtual llvm::Instruction *insertFence(llvm::Instruction *i) override;
 
     virtual bool removeFlush(llvm::Instruction *i) override;
+
+    virtual bool removeFlushConditionally(
+        llvm::Instruction *original, llvm::Instruction *redundant,
+        std::list<llvm::Instruction*> pathPoints) override;
 };
 
 }

@@ -367,11 +367,11 @@ ContextGraph<T>::constructSuccessors(ContextGraph<T>::GraphNodePtr node) {
      * successors.
      */
     else if (last->isTerminator()) {
-        /**
-         * TODO: We need to actually do some processing to propagate PM?
-         */
+        errs() << "LAST TERM " << *last << "\n";
         for (BasicBlock *succ : llvm::successors(last->getParent())) {
-            successors.emplace_back(node->block->ctx, succ->getFirstNonPHIOrDbgOrLifetime());
+            successors.emplace_back(node->block->ctx, 
+                                    succ->getFirstNonPHIOrDbgOrLifetime());
+            errs() << "HEY HEY HEY " << *succ->getFirstNonPHIOrDbgOrLifetime() << "\n";
         }
     }
 
@@ -384,6 +384,7 @@ ContextGraph<T>::constructSuccessors(ContextGraph<T>::GraphNodePtr node) {
 
     for (SuccType &st : successors) {
         if (nullptr != nodeCache_[st.first][st.second]) {
+            errs() << "CACHE HIT BRONT " << *last << "\n";
             finalSuccessors.push_back(nodeCache_[st.first][st.second]);
         } else {
             // Need a new context block
@@ -413,13 +414,22 @@ void ContextGraph<T>::construct(ContextBlock::Shared end) {
         frontier.pop_front();
 
         // Pre-check
-        errs() << "------\n";
+        errs() << "------B\n";
+        errs() << "Traverse " << n->block->str() << "\n";
         if (*n->block == *end) {
-            errs() << "End traversal\n";
-            // Update the trace instruction too
-            n->block->traceInst = end->traceInst;
-            leaves.push_back(n);
-            errs() << "------\n";
+            errs() << "equals end!!! End traversal\n";
+            // This counts as "construction"
+            if (n->constructed) {
+                errs() << "Already constructed! DO NOTHING\n";
+                nnodes--;
+            } else {
+                n->constructed = true;
+                // Update the trace instruction too
+                n->block->traceInst = end->traceInst;
+                leaves.push_back(n);
+            }
+            
+            errs() << "------E\n";
             continue;
         } else {
             errs() << "NE:\n" << end->str() << "\nEND NE\n";
@@ -428,11 +438,7 @@ void ContextGraph<T>::construct(ContextBlock::Shared end) {
         // Construct successors.
         auto successors = constructSuccessors(n);
 
-        // errs() << "Traverse " << n->ctx->str() << "\n";
-
         for (auto childNode : successors) {
-            nnodes++;
-
             // Set parent-child relations
             n->children.insert(childNode);
             childNode->parents.insert(n);
@@ -442,6 +448,7 @@ void ContextGraph<T>::construct(ContextBlock::Shared end) {
              * loop! So, we don't add it back to the frontier.
              */
             if (!childNode->constructed) {
+                nnodes++;
                 frontier.push_back(childNode);
             }
         }
@@ -450,9 +457,11 @@ void ContextGraph<T>::construct(ContextBlock::Shared end) {
             errs() << "no kids!\n";
             leaves.push_back(n);
         }
+        errs() << "------E\n";
     }
 
     errs() << "<<< Created " << nnodes << " nodes! >>>\n";
+    errs() << "<<< Have " << roots.size() << " roots! >>>\n";
     errs() << "<<< Have " << leaves.size() << " leaves! >>>\n";
 }
 
@@ -580,7 +589,161 @@ bool FlowAnalyzer::alwaysRedundant() {
 
 std::list<Instruction*> FlowAnalyzer::redundantPaths() {
     std::list<Instruction*> points;
-    assert(false && "implement me!!!");
+
+#if 1
+    errs() << "incoming debug prints\n";
+    for (auto nptr : graph_.roots) {
+       
+        std::deque<ContextGraph<Info>::GraphNodePtr> frontier;
+        std::unordered_set<ContextGraph<Info>::GraphNodePtr> traversed;
+
+        frontier.insert(frontier.end(), 
+                        nptr->children.begin(), nptr->children.end());
+        traversed.insert(nptr);
+
+        errs() << "++++++++++++++++++++++++++++\n";
+        errs() << "ROOT: " << nptr.get()  << "\n" << nptr->block->str() << "\n";
+        while (frontier.size()) {
+            auto node = frontier.front();
+            frontier.pop_front();
+
+            // Loop check
+            if (traversed.count(node)) continue;
+            traversed.insert(node);
+
+            errs() << "NODE: " << node.get() << "\n" << node->block->str() << "\n";
+            // errs() << "VERDICT (parents): " << "\n";
+
+            frontier.insert(frontier.end(), 
+                            node->children.begin(), node->children.end());
+        }
+        errs() << "++++++++++++++++++++++++++++\n";
+    }
+    errs() << "Back to your regularly scheduled program\n";
+#endif
+
+    /**
+     * The point here is to find the paths along which the flush is still 
+     * redundant. So, we need to find the point at which, if X was the only parent,
+     * would the flush be redundant? This is sort of two way, as we need to
+     * have no spoiling parents and no spoiling children.
+     */
+
+    /**
+     * 1. First, we iterate through top-down for the parents field.
+     */
+    for (auto nptr : graph_.roots) {
+        assert(nptr->metadata.updated && "huh?");
+        // -- Special case. For one node, it's always redundant.
+        assert(!nptr->children.empty() && "not sure why we're here");
+
+        std::deque<ContextGraph<Info>::GraphNodePtr> frontier;
+        std::unordered_set<ContextGraph<Info>::GraphNodePtr> traversed;
+
+        frontier.insert(frontier.end(), 
+                        nptr->children.begin(), nptr->children.end());
+        traversed.insert(nptr);
+
+        while (frontier.size()) {
+            auto node = frontier.front();
+            frontier.pop_front();
+
+            // Loop check
+            if (traversed.count(node)) continue;
+            traversed.insert(node);
+
+            // For leaves, we interpret just to trace end
+            for (auto parent : node->parents) {
+                bool &isRedt = node->metadata.isRedtInParents;
+                Info &pInfo = parent->metadata;
+                // It is redundant if the parent OR grandparents redundant.
+                isRedt = isRedt && (!pInfo.isNotRedundant && pInfo.isRedtInParents);
+            }
+            errs() << "DOWN PROP " << node.get() << " VERDICT " 
+                << node->metadata.isRedtInParents << "\n";
+
+            frontier.insert(frontier.end(), 
+                            node->children.begin(), node->children.end());
+        }
+    }
+
+    /**
+     * 2. We need to do the back-prop part now.
+     */
+    for (auto nptr : graph_.leaves) {
+        assert(nptr->metadata.updated && "huh?");
+        // -- Special case. For one node, it's always redundant.
+        assert(!nptr->parents.empty() && "not sure why we're here");
+
+        std::deque<ContextGraph<Info>::GraphNodePtr> frontier;
+        std::unordered_set<ContextGraph<Info>::GraphNodePtr> traversed;
+
+        assert(!nptr->metadata.isNotRedundant && "???");
+
+        frontier.insert(frontier.end(), nptr->parents.begin(), nptr->parents.end());
+        traversed.insert(nptr);
+
+        while (frontier.size()) {
+            auto node = frontier.front();
+            frontier.pop_front();
+
+            // Loop check
+            if (traversed.count(node)) continue;
+            traversed.insert(node);
+
+            // For leaves, we interpret just to trace end
+            for (auto child : node->children) {
+                bool &isRedt = node->metadata.isRedtInChildren;
+                Info &cInfo = child->metadata;
+                // It is redundant if the children AND grandchildren redundant.
+                isRedt = isRedt && (!cInfo.isNotRedundant && cInfo.isRedtInChildren);
+            }
+
+            errs() << "UP PROP " << node.get() << " VERDICT " 
+                << node->metadata.isRedtInChildren << "\n";
+    
+            frontier.insert(frontier.end(), 
+                            node->parents.begin(), node->parents.end());
+        }
+    }
+
+    /**
+     * 3. Now that we have all the path info, we can find the injection points.
+     * 
+     * We traverse from the roots down, and when we see a node which is both
+     * redundant in parents and redundant in children, we add it to the points 
+     * list and stop traversing that path.
+     */
+
+    for (auto nptr : graph_.roots) {
+        // If it was always provably redundant in the children, then why wouldn't
+        // we go with the catch-all fix?
+        assert(!nptr->metadata.isRedtInChildren && "then the original fix!");
+
+        std::deque<ContextGraph<Info>::GraphNodePtr> frontier;
+        std::unordered_set<ContextGraph<Info>::GraphNodePtr> traversed;
+
+        frontier.insert(frontier.end(), nptr->children.begin(), nptr->children.end());
+        traversed.insert(nptr);
+
+        while (frontier.size()) {
+            auto node = frontier.front();
+            frontier.pop_front();
+
+            // Loop check
+            if (traversed.count(node)) continue;
+            traversed.insert(node);
+
+            if (node->metadata.isRedtInChildren && 
+                node->metadata.isRedtInParents) {
+                points.push_back(node->block->first);
+            } else {
+                frontier.insert(frontier.end(), 
+                                node->children.begin(), node->children.end());
+            }
+        }
+    }
+
     return points;
 }
 

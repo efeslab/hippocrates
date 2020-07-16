@@ -46,8 +46,6 @@ private:
         ADD_FENCE_ONLY,
         ADD_FLUSH_AND_FENCE,
         REMOVE_FLUSH_ONLY,
-
-        ADD_FLUSH_CONDITION,
         REMOVE_FLUSH_CONDITIONAL,
         // ,
         // REMOVE_FENCE_ONLY,
@@ -65,13 +63,18 @@ private:
      */
     struct FixDesc {
         FixType type;
-        llvm::Instruction *depends;
+        /**
+         * Slightly jank, but these two fields are just for conditional flushing.
+         */
+        llvm::Instruction *original;
+        std::list<llvm::Instruction*> points;
 
-        FixDesc() : type(NO_FIX), depends(nullptr) {}
-        FixDesc(FixType t, llvm::Instruction *d) : type(t), depends(d) {}
+        FixDesc() : type(NO_FIX), original(nullptr), points() {}
+        FixDesc(FixType t, llvm::Instruction *o, std::list<llvm::Instruction*> p) 
+            : type(t), original(o), points(p) {}
 
         bool operator==(const FixDesc &f) const {
-            return type == f.type && depends == f.depends;
+            return type == f.type && original == f.original && points == f.points;
         }
 
         bool operator!=(const FixDesc &f) const {

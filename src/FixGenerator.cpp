@@ -24,6 +24,29 @@ llvm::Function *FixGenerator::getSfenceDefinition() const {
     return sfence;
 }
 
+GlobalVariable *FixGenerator::createConditionVariable(Instruction *resetBefore, 
+                                                      Instruction *setAt) {
+    
+    auto *boolType = Type::getInt1Ty(module_.getContext());
+
+    GlobalVariable *gv = new GlobalVariable(
+        /* Module */ module_, /* Type */ boolType, /* isConstant */ false,
+        /* Linkage */ GlobalValue::ExternalLinkage, 
+        /* Constant constructor */ Constant::getNullValue(boolType),
+        /* Name */ "test", /* Insert before */ nullptr,
+        /* Thread local? */ GlobalValue::LocalExecTLSModel,
+        /* AddressSpace */ 0,
+        /* Externally init? */ false);
+
+    return gv;
+}
+
+llvm::Instruction *FixGenerator::createConditionalBlock(
+    llvm::Instruction *first, llvm::Instruction *end,
+    std::list<llvm::GlobalVariable*> conditions) {
+    return nullptr;
+}
+
 #pragma endregion
 
 #pragma region FixGenerators
@@ -118,6 +141,13 @@ bool GenericFixGenerator::removeFlush(Instruction *i) {
         return true;
     }
 
+    return false;
+}
+
+bool GenericFixGenerator::removeFlushConditionally(
+        llvm::Instruction *original, llvm::Instruction *redundant,
+        std::list<llvm::Instruction*> pathPoints) {
+    assert(false && "Implement me!");
     return false;
 }
 
@@ -242,6 +272,19 @@ bool PMTestFixGenerator::removeFlush(Instruction *i) {
     assertCb->eraseFromParent();
 
     return true;
+}
+
+bool PMTestFixGenerator::removeFlushConditionally(Instruction *original, 
+    Instruction *redundant, std::list<Instruction*> pathPoints) {
+
+    for (Instruction *point : pathPoints) {
+        GlobalVariable *gv = createConditionVariable(original, point);
+        assert(gv && "could not create global variable!");
+        errs() << "GV: " << *gv << "\n";
+    }
+    
+    assert(false && "Implement me!");
+    return false;
 }
 
 #pragma endregion

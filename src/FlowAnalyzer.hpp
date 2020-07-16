@@ -257,6 +257,9 @@ namespace pmfix {
             // Use this to cache results
             bool updated = false;
             bool isNotRedundant = false;
+            // For path stuff.
+            bool isRedtInParents = true;
+            bool isRedtInChildren = true;
         };
 
         llvm::Module &m_;

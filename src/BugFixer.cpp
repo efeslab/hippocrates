@@ -12,14 +12,11 @@ using namespace llvm;
 
 bool BugFixer::addFixToMapping(Instruction *i, FixDesc desc) {
     if (!fixMap_.count(i)) {
-        errs() << "DING\n";
         fixMap_[i] = desc;
         return true;
     } else if (fixMap_[i] == desc) {
-        errs() << "DONG\n";
         return false;
     }
-    errs() << "NOPE\n";
 
     if (fixMap_[i].type == ADD_FLUSH_ONLY && desc.type == ADD_FENCE_ONLY) {
         fixMap_[i].type = ADD_FLUSH_AND_FENCE;
@@ -219,21 +216,19 @@ bool BugFixer::handleRequiredFlush(const TraceEvent &te, int bug_index) {
             FixDesc desc;
             desc.type = REMOVE_FLUSH_ONLY;
             res = addFixToMapping(i, desc);
+            errs() << "Always redundant! " << "\n";
         } else {
             std::list<Instruction*> redundantPaths = f.redundantPaths();
-            if (redundantPaths.size()) {
-                // Set dependent of the real fix
-                Instruction *prev = i;
-                for (Instruction *a : redundantPaths) {
-                    FixDesc d(ADD_FLUSH_CONDITION, prev);
-                    bool ret = addFixToMapping(a, d);
-                    assert(ret && "wat");
-                    prev = a; 
-                }
 
-                FixDesc remove(REMOVE_FLUSH_CONDITIONAL, prev);
+            if (redundantPaths.size()) {
+                assert(mapper_[orig.location].size() == 1 && "can't handle!");
+                Instruction *originalInst = mapper_[orig.location].front();
+                // Set dependent of the real fix
+                FixDesc remove(REMOVE_FLUSH_CONDITIONAL, originalInst, redundantPaths);
                 bool ret = addFixToMapping(i, remove);
                 res = res || ret;
+            } else {
+                errs() << "No paths on which to fix!!!" << "\n";
             }
         }
     }
@@ -294,9 +289,23 @@ bool BugFixer::fixBug(FixGenerator *fixer, Instruction *i, FixDesc desc) {
             assert(success && "could not remove flush of REMOVE_FLUSH_ONLY");
             break;
         }
+        case REMOVE_FLUSH_CONDITIONAL: {
+            /**
+             * We need to get all of the dependent fixes, add them, then
+             * add the conditional wrapper. Fun.
+             * 
+             * We also need to reset the conditionals on the "original" store.
+             */
+            bool success = fixer->removeFlushConditionally(
+                desc.original, i, desc.points);
+            assert(success && 
+                "could not conditionally remove flush of REMOVE_FLUSH_CONDITIONAL");
+            break;
+        }
         default: {
             errs() << "UNSUPPORTED: " << desc.type << "\n";
             assert(false && "not handled!");
+            break;
         }
     }
 
@@ -349,6 +358,11 @@ bool BugFixer::doRepair(void) {
         }
     }
 
+    /**
+     * Step 2.
+     * 
+     * TODO: Raise fixes.
+     */
     bool couldOpt = runFixMapOptimization();
     if (couldOpt) {
         errs() << "Was able to optimize!\n";
