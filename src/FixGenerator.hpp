@@ -44,8 +44,8 @@ protected:
         llvm::Instruction *resetBefore, llvm::Instruction *setAt);
 
     llvm::Instruction *createConditionalBlock(
-        llvm::Instruction *first, llvm::Instruction *end,
-        std::list<llvm::GlobalVariable*> conditions);
+        llvm::Instruction *start, llvm::Instruction *end,
+        const std::list<llvm::GlobalVariable*> &conditions);
 
 public:
     FixGenerator(llvm::Module &m) : module_(m) {}
@@ -101,6 +101,10 @@ public:
  */
 class PMTestFixGenerator : public FixGenerator {
 private:
+
+    bool findFlushAndAssertion(llvm::Instruction *end, 
+                               llvm::Instruction **flush, 
+                               llvm::Instruction **assert);
 
 public:
     PMTestFixGenerator(llvm::Module &m) : FixGenerator(m) {}

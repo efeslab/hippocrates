@@ -38,13 +38,66 @@ GlobalVariable *FixGenerator::createConditionVariable(Instruction *resetBefore,
         /* AddressSpace */ 0,
         /* Externally init? */ false);
 
+
+    IRBuilder<> builder(resetBefore);
+    // The reset
+    auto *resetInst = builder.CreateStore(Constant::getNullValue(boolType), gv);
+    errs() << "reset:" << *resetInst << "\n";
+
+    // The set
+    builder.SetInsertPoint(setAt);
+    auto *setInst = builder.CreateStore(Constant::getAllOnesValue(boolType), gv);
+    errs() << "set:" << *setInst << "\n";
+
     return gv;
 }
 
 llvm::Instruction *FixGenerator::createConditionalBlock(
     llvm::Instruction *first, llvm::Instruction *end,
-    std::list<llvm::GlobalVariable*> conditions) {
-    return nullptr;
+    const std::list<llvm::GlobalVariable*> &conditions) {
+    errs() << "first:" << *first << "\n";
+   
+   /**
+    * We want to wrap instructions from [first, end] in a conditional block.
+    * So, we need to create two new basic blocks.
+    */
+
+    BasicBlock *newRegion = first->getParent()->splitBasicBlock(first);
+    BasicBlock *endRegion = newRegion->splitBasicBlock(end->getNextNonDebugInstruction());
+
+    /**
+     * We want to get the last branch in the original basic block, because we
+     * need to eventually replace it with a conditional branch.
+     */
+    BasicBlock *originalBB = newRegion->getUniquePredecessor();
+    assert(originalBB);
+
+    /**
+     * Okay, now we need to construct the actual conditional, then insert 
+     * the conditional branch, and delete the unconditional branch to the newRegion.
+     */
+
+    // Set up the inserter.
+    Instruction *oldTerm = originalBB->getTerminator();
+    assert(isa<BranchInst>(oldTerm));
+    IRBuilder<> builder(oldTerm);
+
+    // Insert all the cascaded ANDs
+    auto *boolType = Type::getInt1Ty(module_.getContext());
+    Value *prev = Constant::getAllOnesValue(boolType);
+    for (auto *gv : conditions) {
+        // Load from gv, then and
+        auto *loadRes = builder.CreateLoad(boolType, gv, /*isvolatile*/ true);
+        prev = builder.CreateAnd(prev, loadRes);
+    }
+
+    // Now, make a conditional branch. If true, newRegion, else endRegion
+    builder.CreateCondBr(prev, newRegion, endRegion);
+
+    // Finally, erase old unconditional branch
+    oldTerm->eraseFromParent();
+
+    return &newRegion->front();
 }
 
 #pragma endregion
@@ -275,16 +328,49 @@ bool PMTestFixGenerator::removeFlush(Instruction *i) {
 }
 
 bool PMTestFixGenerator::removeFlushConditionally(Instruction *original, 
-    Instruction *redundant, std::list<Instruction*> pathPoints) {
+                                                  Instruction *redundant, 
+                                                  std::list<Instruction*> pathPoints)
+{
 
+    std::list<GlobalVariable*> conditions;
     for (Instruction *point : pathPoints) {
         GlobalVariable *gv = createConditionVariable(original, point);
         assert(gv && "could not create global variable!");
         errs() << "GV: " << *gv << "\n";
+        conditions.push_back(gv);
     }
     
-    assert(false && "Implement me!");
-    return false;
+    /**
+     * Step 2. Get the bounds of the block we need to make conditional.
+     */
+
+    Instruction *start = nullptr, *end = redundant, *tmp = redundant;
+
+    errs() << *end << "\n";
+    // end should be the flush assertion, then we scroll up to find the flush.
+    while(!start) {
+        tmp = tmp->getPrevNonDebugInstruction();
+        if (!tmp) break;
+        if (auto *cb = dyn_cast<CallBase>(tmp)) {
+            if (cb->getCalledFunction() == getClwbDefinition()){
+                start = tmp;
+            }
+        }
+    }
+    assert(start && end);
+
+    errs() << "HEY START" << *start << "\n";
+    errs() << "HEY END" << *end << "\n";
+
+    /**
+     * Step 3. Now, we actually create the conditional block to wrap around the
+     * redundant store.
+     */
+
+    auto *i = createConditionalBlock(start, end, conditions);
+    assert(i && "wat");
+
+    return true;
 }
 
 #pragma endregion
