@@ -3,6 +3,8 @@
  * 
  */
 
+#include <unordered_set>
+
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Function.h"
@@ -24,6 +26,14 @@ private:
     llvm::Module &module_;
     TraceInfo &trace_;
     BugLocationMapper mapper_;
+
+    /**
+     * We're not allowed to insert fixes into some functions. These are some 
+     * smart defaults.
+     */
+    std::unordered_set<llvm::Function*> immutableFns_;
+    static const std::string immutableFnNames_[];
+    static const std::string immutableLibNames_[];
 
     /**
      * High-level description of the fix that needs to be applied.
@@ -120,6 +130,11 @@ private:
     bool runFixMapOptimization(void);
 
     /**
+     * This is one fix map optimization.
+     */
+    bool raiseFixLocation(llvm::Instruction *i, const FixDesc &desc);
+
+    /**
      * Figure out how to fix the given bug and add the fix to the map. Generally
      * will call a handler function based on the kind of fix that needs to be
      * applied after validating that the request is well-formed.
@@ -135,8 +150,7 @@ private:
     bool fixBug(FixGenerator *fixer, llvm::Instruction *i, FixDesc desc);
 
 public:
-    BugFixer(llvm::Module &m, TraceInfo &ti) 
-        : module_(m), trace_(ti), mapper_(m) {}
+    BugFixer(llvm::Module &m, TraceInfo &ti);
 
     /**
      * Do the program repair!
@@ -150,6 +164,11 @@ public:
      * Returns true if modifications were made to the program.
      */
     bool doRepair(void);
+
+    // Utilities
+    void addImmutableFunction(const std::string &fnName);
+
+    void addImmutableModule(const std::string &modName);
 };
 
 }

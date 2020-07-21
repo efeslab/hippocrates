@@ -1,5 +1,6 @@
 #include "BugFixer.hpp"
 #include "FlowAnalyzer.hpp"
+#include "PassUtils.hpp"
 
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/DebugInfoMetadata.h"
@@ -312,8 +313,103 @@ bool BugFixer::fixBug(FixGenerator *fixer, Instruction *i, FixDesc desc) {
     return true;
 }
 
+bool BugFixer::raiseFixLocation(llvm::Instruction *i, const FixDesc &desc) {
+    assert(i && "instruction cannot be null!");
+    /**
+     * ASSUME: since we would need to raise, that fences are not within 
+     * this context.
+     * ASSUME: currently raise one level only.
+     */
+
+    /**
+     * Need to figure out loops and such via data-flow analysis.
+     * 
+     * This is justified, because our fix needs to be based on the input 
+     * arguments.
+     */
+    errs() << *i << "\n";
+    auto *si = dyn_cast<StoreInst>(i);
+    if (!si) {
+        errs() << "not a store!!!\n";
+        return false;
+    }
+
+    // hopefully, accumulate arguments used to calculate pointer
+    std::list<Argument*> usedArgs;
+    std::list<Value*> frontier;
+    std::unordered_set<Value*> traversed;
+
+    /**
+     * We not only want to add the pointer operand, but we also want to include
+     * loop variables. How? Great question.
+     * 
+     * Conservatively, we could find all the condition variables.
+     */
+    frontier.push_back(si->getPointerOperand());
+
+    // Find all condition variables for BBs
+    for (auto *cond : utils::getConditionVariables(si->getParent())) {
+        errs() << "Condition variable: " << *cond << "\n"; 
+        frontier.push_back(cond);
+    }
+    
+    while (frontier.size()) {
+        Value *v = frontier.front();
+        frontier.pop_front();
+
+        if (traversed.count(v)) continue;
+        traversed.insert(v);
+
+        errs() << "Frontier (" << frontier.size() << ") pop:" << *v << "\n";
+        if (auto *arg = dyn_cast<Argument>(v)) {
+            errs() << "\tFound an argument!\n"; 
+            usedArgs.push_back(arg);
+        } else if (auto *alloca = dyn_cast<AllocaInst>(v)) {
+            /**
+             * Allocs are special. We now need to find stores which use this
+             * alloc as a pointer operand, then find the operands of that store.
+             */
+            for (auto *user : alloca->users()) {
+                if (auto *si = dyn_cast<StoreInst>(user)) {
+                    /**
+                     * Rather than just adding this back, we want to add the value
+                     * operand of the store.
+                     */
+                    assert(alloca == si->getPointerOperand());
+                    errs() << "\tAdd store value:" << *si->getValueOperand() << "\n";
+                    frontier.push_back(si->getValueOperand());
+                }
+            }
+        } else if (auto *user = dyn_cast<User>(v)) {
+            for (auto *valOp : user->operand_values()) {
+                errs() << "\tOperand Value:" << *valOp << "\n";
+                frontier.push_back(valOp);
+            }
+        } else {
+            errs() << "Don't know how to handle " << *v << "\n";
+            assert(false);
+        }
+    }
+
+    for (auto *arg : usedArgs) {
+        errs() << "Used Arg:" << *arg << "\n";
+    }
+    
+    assert(false && "todo finish impl!");
+    return true;
+}
+
 bool BugFixer::runFixMapOptimization(void) {
-    errs() << "\tTODO: implement " << __FUNCTION__ << "!\n";
+    /**
+     * Optimization 1: avoid "immutable" functions.
+     */
+    for (auto &p : fixMap_) {
+        Function *fixFn = p.first->getFunction();
+        if (immutableFns_.count(fixFn)) {
+            bool successful = raiseFixLocation(p.first, p.second);
+            assert(successful && "function raising should work!");
+        }
+    }
     return false;
 }
 
@@ -381,6 +477,58 @@ bool BugFixer::doRepair(void) {
     }
 
     return modified;
+}
+
+const std::string BugFixer::immutableFnNames_[] = {};
+const std::string BugFixer::immutableLibNames_[] = {"libc.so"};
+
+BugFixer::BugFixer(llvm::Module &m, TraceInfo &ti) 
+    : module_(m), trace_(ti), mapper_(m) {
+    for (const std::string &fnName : immutableFnNames_) {
+        addImmutableFunction(fnName);
+    }
+
+    for (const std::string &libName : immutableLibNames_) {
+        addImmutableModule(libName);
+    }
+}
+
+void BugFixer::addImmutableFunction(const std::string &fnName) {
+    Function *f = module_.getFunction(fnName);
+
+    if (!f) {
+        errs() << "Could not find function \"" << fnName << "\"!\n"; 
+        assert(f && "could not find function!");
+    }
+    
+    immutableFns_.insert(f);
+}
+
+void BugFixer::addImmutableModule(const std::string &modName) {
+    for (Function &f : module_) {
+        auto *metadata = f.getMetadata("dbg");
+        // if (metadata) errs() << "Metadata: " << *metadata << "\n";
+        // else {
+        //     errs() << "Metadata: NULLPTR\n";
+        //     SmallVector<StringRef,100> Result;
+        //     module_.getMDKindNames(Result);
+        //     for (auto &name : Result) errs() << "KIND " << name << "\n";
+        //     assert(false);
+        // }
+        if (!metadata) {
+            // If we don't have debug info, then don't modify anyways.
+            immutableFns_.insert(&f);
+            continue;
+        }
+
+        if (auto *ds = dyn_cast<DISubprogram>(metadata)) {
+            DIFile *df = ds->getFile();
+            std::string fileName = df->getFilename().data();
+            if (fileName.find(modName) != std::string::npos) {
+                assert(false && "implement!");
+            }
+        }
+    }
 }
 
 #pragma endregion

@@ -30,6 +30,9 @@ cl::opt<bool> WeakClflush("weak-clflush",
                           cl::desc("Whether or not we should require explicit "
                                    "fences after clflush (required for old CPUs)"));
 
+cl::list<std::string> Immutables("immutable-fns", cl::desc("Something"), 
+                                 cl::ZeroOrMore, cl::CommaSeparated);
+
 struct PmBugFixerPass : public ModulePass {
     static char ID; // For LLVM purposes.
 
@@ -52,6 +55,9 @@ struct PmBugFixerPass : public ModulePass {
     
         // Construct bug fixer
         BugFixer fixer(m, ti);
+        for (const std::string &fnName : Immutables) {
+            fixer.addImmutableFunction(fnName);
+        } 
 
         bool modified = fixer.doRepair();
 

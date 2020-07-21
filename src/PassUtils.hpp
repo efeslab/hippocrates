@@ -41,6 +41,30 @@ namespace utils {
      */
     Function *getFlush(CallBase *cb);
 
+    /**
+     * Get all the condition variables that affect control flow to bb.
+     */
+    std::list<Value*> getConditionVariables(BasicBlock *bb);
+
+    // For fix map raising
+
+    /**
+     * Duplicates the function.
+     * 
+     * Is potentially recursive.
+     */
+    llvm::Function *duplicateFunction(llvm::Function *f, std::string postFix="_NT");
+
+
+    /**
+     * Replaces all stores (recursively) with non-temporal hinted stores.
+     */
+
+
+    /**
+     * 
+     */
+
     #pragma endregion
 
     #pragma region Agamotto

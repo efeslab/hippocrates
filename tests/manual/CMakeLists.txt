@@ -52,3 +52,9 @@ add_test_executable(TARGET 004_ExtraFlushComplex_PMTest
                     EXTRA_LIBS pmtest pthread
                     DEPENDS PMTEST
                     TOOL PMTEST)
+
+add_test_executable(TARGET 005_ImmutableFunction_PMEMCheck
+                    SOURCES 005_immutable_fn_pmemcheck.c
+                    INCLUDE ${PMCHK_INCLUDE}
+                    DEPENDS PMEMCHECK
+                    TOOL PMEMCHECK)

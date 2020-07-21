@@ -1,5 +1,7 @@
 #include "PassUtils.hpp"
 
+#include 
+
 using namespace pmfix;
 
 #pragma region PMFix
@@ -13,6 +15,45 @@ Function *utils::getFlush(CallBase *cb) {
         iid == Intrinsic::x86_sse2_clflush) return f;
 
     return nullptr;
+}
+
+std::list<Value*> utils::getConditionVariables(BasicBlock *bb) {
+    std::list<BasicBlock*> frontier = {bb};
+    std::unordered_set<BasicBlock*> traversed;
+
+    std::list<Value*> conditionals;
+
+    while (frontier.size()) {
+        BasicBlock *block = frontier.front();
+        frontier.pop_front();
+
+        if (traversed.count(block)) continue;
+        traversed.insert(block);
+
+        for (BasicBlock *pred : predecessors(block)) {
+            Instruction *inst = pred->getTerminator();
+            if (auto *bi = dyn_cast<BranchInst>(inst)) {
+                if (bi->isConditional()) {
+                    conditionals.push_back(bi->getCondition());
+                }
+            } else if (auto *si = dyn_cast<SwitchInst>(inst)) {
+                conditionals.push_back(si->getCondition());
+            } else {
+                assert(false && "wat");
+            }
+
+            frontier.push_back(pred);
+        }
+    }
+
+    return conditionals;
+}
+
+Function *utils::duplicateFunction(Function *f, std::string postFix) {
+    ValueToValueMapTy vmap;
+    Function *fNew = CloneFunction(f, vmap, nullptr);
+    assert(fNew && "what");
+    return fNew;
 }
 
 #pragma endregion
