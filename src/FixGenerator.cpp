@@ -106,23 +106,53 @@ Function *FixGenerator::duplicateFunction(Function *f, std::string postFix) {
     Function *fNew = llvm::CloneFunction(f, vmap);
     fNew->setName(f->getName() + postFix);
     assert(fNew && "what");
+    for (auto &bb : *f) errs() << "Old " << &bb << "\n";
+    for (auto &bb : *fNew) errs() << "New " << &bb << "\n";
+    errs() << *f << "\n";
+    errs() << *fNew << "\n";
     return fNew;
 }
 
 bool FixGenerator::makeAllStoresPersistent(llvm::Function *f, bool useNT) {
-    assert(false);
+    errs() << "FUNCTION PM: " << f->getName() << "\n";
+    std::list<StoreInst*> insertPoints;
     for (BasicBlock &bb : *f) {
         for (Instruction &i : bb) {
             if (auto *cb = dyn_cast<CallBase>(&i)) {
+                Function *f = cb->getCalledFunction();
+                if (f->getIntrinsicID() == Intrinsic::dbg_declare) continue;
+                
                 errs() << "ERR:" << *cb << "\n";
+                errs() << "FN:" << *f << "\n";
                 assert(false && "not supported yet!");
             } else if (auto *ri = dyn_cast<ReturnInst>(&i)) {
                 // Insert a sfence in front of the return.
             } else if (auto *si = dyn_cast<StoreInst>(&i)) {
-                // Either insert a flush or make the store non-temporal.
+                /**
+                 * Figure out if the store is to a stack variable. If so, we
+                 * really don't want to add it.
+                 */
+                if (isa<AllocaInst>(si->getPointerOperand())) continue;
+                insertPoints.push_back(si);
             }
         }
     }
+
+    for (auto *si : insertPoints) {
+        // Either insert a flush or make the store non-temporal.
+        if (useNT) {
+            // Set non-temporal metadata
+            si->setMetadata(LLVMContext::MD_nontemporal, nullptr);
+            assert(false && "wat");
+        } else {
+            // Insert flush
+            errs() << "Flushing" << *si << " in " << si->getFunction()->getName() << "\n";
+            auto *ni = insertFlush(si);
+            assert(ni && "unable to insert flush!");
+        }
+    }
+
+    return !insertPoints.empty();
 }
 
 #pragma endregion
@@ -139,6 +169,7 @@ Instruction *GenericFixGenerator::insertFlush(Instruction *i) {
     if (StoreInst *si = dyn_cast<StoreInst>(i)) {
         Value *addrExpr = si->getPointerOperand();
 
+        errs() << "Inserting flush in " << i->getFunction()->getName() << "\n";
         errs() << "Address of assign: " << *addrExpr << "\n";
 
         // I think we've made the assumption up to this point that len <= 64
@@ -228,6 +259,10 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
 
         Function *fn = currInst->getFunction();
         Function *pmFn = duplicateFunction(fn);
+
+        // Now, we need to 
+        bool successful = makeAllStoresPersistent(pmFn, false);
+        assert(successful && "failed to make persistent!");
 
         // Now we need to replace the call.
         auto &nextInstLoc = mapper[callstack[i+1]];

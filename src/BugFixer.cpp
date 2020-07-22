@@ -371,6 +371,8 @@ bool BugFixer::runFixMapOptimization(void) {
 
         bool success = raiseFixLocation(p.first, p.second);
         res = res || success;
+        // Erase original fix
+        moved.push_back(p.first);
     }
 
     for (auto *i : moved) {
