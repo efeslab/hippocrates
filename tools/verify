@@ -37,10 +37,14 @@ class ToolRunner:
         self.pmemcheck_path = Path(r'${PMCHK_BIN_DIR}/valgrind')
         assert self.pmemcheck_path.exists(), f'{str(self.pmemcheck_path)} does not exist!'
         self.exe_path = exe_path
-        self.exe_fixed_path = Path(str(exe_path) + '.fixed')
         self.bc_path = bc_path
         self.tool_type = tool_type
         self.suite = exe_path.parent.name
+
+        fixed_postfix = '.fixed'
+        if tool_type == ToolTypes.PMDK_UNIT_TEST:
+            fixed_postfix = '.static-debug'
+        self.exe_fixed_path = Path(str(exe_path) + fixed_postfix)
 
     def target(self):
         return self.exe_path.name
@@ -75,7 +79,8 @@ class ToolRunner:
 
         # 1. Run initial test
         runtests_args = shlex.split(f'./RUNTESTS -b debug -p force-enable {self.exe_path.parent.name} -s TEST0')
-        res = subprocess.run(runtests_args, cwd=self.exe_path.parent.parent, env=new_env)
+        res = subprocess.run(runtests_args, cwd=self.exe_path.parent.parent, 
+            env=new_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         assert (res.returncode != 0), 'Test was successful, meaning no bugs!'
         assert pmemcheck_log.exists(), 'No pmemcheck log!'
 
@@ -89,16 +94,43 @@ class ToolRunner:
         res.check_returncode()
         assert trace_file.exists()
 
-        # 3. Run the fixer script
+        # 3. Link the bitcode with the library so that opt can find the functions.
+        shared_objects = [f for f in self.exe_path.parent.iterdir() if '.so' in f.name and '.bc' not in f.name]
+        shared_bc = [f.parent / (f.name + '.bc') for f in shared_objects]
+        for so, bc in zip(shared_objects, shared_bc):
+            extract_args = shlex.split(f'extract-bc {so} -o {bc}')
+            res = subprocess.run(extract_args)
+            res.check_returncode()
+
+        ldd_args = shlex.split(f'ldd {str(self.exe_path)}')
+        res = subprocess.run(ldd_args, stdout=subprocess.PIPE)
+        res.check_returncode()
+        libs = [ l.strip().split()[0] for l in res.stdout.decode().split('\n') if l]
+        for lib in libs:
+            for bc in shared_bc:
+                if lib in bc.name:
+                    link_args = shlex.split(f'llvm-link-8 -o {str(self.bc_path)} {str(self.bc_path)} --override={str(bc)}')
+                    res = subprocess.run(link_args)
+                    res.check_returncode()
+
+        # 4. Run the fixer script
         fixer_script = Path(__file__).parent.absolute() / 'apply-fixer'
-        fixer_args = shlex.split(f'{str(fixer_script)} {str(self.bc_path)} {str(trace_file)} -o {str(self.exe_fixed_path)}')
+        if self.exe_fixed_path.exists():
+            self.exe_fixed_path.unlink()
+        fixer_arg_str = f'{str(fixer_script)} {str(self.bc_path)} {str(trace_file)} -o {str(self.exe_fixed_path)}'
+        print(fixer_arg_str)
+        fixer_args = shlex.split(fixer_arg_str)
         res = subprocess.run(fixer_args)
         res.check_returncode()
+        assert self.exe_fixed_path.exists(), 'Fixer did not succeed!'
 
-        # 4. Re-run the unit tests, see if we fixed it!
-        runtests_args = shlex.split(
-            f'./RUNTESTS -b fixed -p force-enable {self.exe_path.parent.name} -s TEST0')
+        # 5. Re-run the unit tests, see if we fixed it!
+        runtests_str = f'./RUNTESTS -b static-debug -p force-enable {self.exe_path.parent.name} -s TEST0'
+        runtests_args = shlex.split(runtests_str)
         res = subprocess.run(runtests_args, cwd=self.exe_path.parent.parent, env=new_env)
+        # res = subprocess.run(runtests_args, cwd=self.exe_path.parent.parent, 
+        #     env=new_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print(runtests_str)
         res.check_returncode()
 
         return True

@@ -8,6 +8,19 @@
 include(ProcessorCount)
 ProcessorCount(NPROC)
 
+set(PMDK_UNIT_TEST_TARGETS "" CACHE INTERNAL "")
+
+function(append_unit_test_list)
+    set(options)                                                                   
+    set(oneValueArgs TARGET)                                                       
+    set(multiValueArgs)                                         
+    cmake_parse_arguments(FN_ARGS "${options}" "${oneValueArgs}"                   
+                         "${multiValueArgs}" ${ARGN})
+
+    list(APPEND PMDK_UNIT_TEST_TARGETS "${FN_ARGS_TARGET}")
+    set(PMDK_UNIT_TEST_TARGETS ${PMDK_UNIT_TEST_TARGETS} CACHE INTERNAL "")
+endfunction()
+
 function(add_pmdk_unit_test)
     check_wllvm()
 
@@ -30,12 +43,13 @@ function(add_pmdk_unit_test)
     set(EXTRA_FLAGS "-g -O0")
     add_custom_target("${FN_ARGS_TARGET}_checkout"
                       COMMAND git checkout ${FN_ARGS_COMMIT_HASH}
+                      COMMAND  make CC=wllvm CXX=wllvm++ clean
                       COMMAND make CC=wllvm CXX=wllvm++
                               EXTRA_CFLAGS=${EXTRA_FLAGS}
                               EXTRA_CXXFLAGS=${EXTRA_FLAGS}
                               -j${NPROC} 
                       WORKING_DIRECTORY ${FN_ARGS_PMDK_PATH}
-                      DEPENDS ${FN_ARGS_PMDK_TARGET}
+                      DEPENDS ${FN_ARGS_PMDK_TARGET} ${PMDK_UNIT_TEST_TARGETS}
                       COMMENT "")
 
     # 2. Build test
@@ -83,5 +97,6 @@ function(add_pmdk_unit_test)
                       COMMENT "${FN_ARGS_TARGET} complete.")               
      
     append_tool_lists(TARGET "${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}" TOOL "PMDK_UNIT_TEST")
+    append_unit_test_list(TARGET "${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}")
 
 endfunction()
