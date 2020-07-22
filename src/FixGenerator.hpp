@@ -47,6 +47,18 @@ protected:
         llvm::Instruction *start, llvm::Instruction *end,
         const std::list<llvm::GlobalVariable*> &conditions);
 
+    /**
+     * Duplicates the function. Not recursive.
+     */
+    llvm::Function *duplicateFunction(
+        llvm::Function *f, std::string postFix="_NT");
+
+    /**
+     * Replaces all stores (recursively) with non-temporal hinted stores.
+     * Also add a fence at the 
+     */
+    bool makeAllStoresPersistent(llvm::Function *f, bool useNT=true);
+
 public:
     FixGenerator(llvm::Module &m) : module_(m) {}
 
@@ -63,8 +75,11 @@ public:
     /**
      *
      */
-    virtual llvm::Instruction *insertPersistentSubProgram(llvm::Instruction *i,
-        const std::vector<LocationInfo> &callstack) = 0;
+    virtual llvm::Instruction *insertPersistentSubProgram(
+        BugLocationMapper &mapper,
+        llvm::Instruction *i,
+        const std::vector<LocationInfo> &callstack,
+        int idx) = 0;
 
     /** PERFORMANCE
      * Removes an unnecessary flush
@@ -94,8 +109,11 @@ public:
 
     virtual llvm::Instruction *insertFence(llvm::Instruction *i) override;
 
-    virtual llvm::Instruction *insertPersistentSubProgram(llvm::Instruction *i,
-        const std::vector<LocationInfo> &callstack) override;
+    virtual llvm::Instruction *insertPersistentSubProgram(
+        BugLocationMapper &mapper,
+        llvm::Instruction *i,
+        const std::vector<LocationInfo> &callstack, 
+        int idx) override;
 
     virtual bool removeFlush(llvm::Instruction *i) override;
 
@@ -122,8 +140,11 @@ public:
 
     virtual llvm::Instruction *insertFence(llvm::Instruction *i) override;
 
-    virtual llvm::Instruction *insertPersistentSubProgram(llvm::Instruction *i,
-        const std::vector<LocationInfo> &callstack) override;
+    virtual llvm::Instruction *insertPersistentSubProgram(
+        BugLocationMapper &mapper,
+        llvm::Instruction *i,
+        const std::vector<LocationInfo> &callstack, 
+        int idx) override;
 
     virtual bool removeFlush(llvm::Instruction *i) override;
 

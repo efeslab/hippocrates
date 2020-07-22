@@ -281,7 +281,9 @@ bool BugFixer::fixBug(FixGenerator *fixer, Instruction *i, FixDesc desc) {
             break;
         }
         case ADD_PERSIST_CALLSTACK_OPT: {
-            assert(false && "IMPLEMENT ADD_PERSIST_CALLSTACK_OPT");
+            Instruction *n = fixer->insertPersistentSubProgram(
+                mapper_, i, *desc.dynStack, desc.stackIdx);
+            assert(n && "could not add persistent subprogram in ADD_PERSIST_CALLSTACK_OPT!");
             break;
         }
         case REMOVE_FLUSH_ONLY: {
@@ -313,60 +315,65 @@ bool BugFixer::fixBug(FixGenerator *fixer, Instruction *i, FixDesc desc) {
 }
 
 bool BugFixer::raiseFixLocation(llvm::Instruction *i, const FixDesc &desc) {
-    #if 0
-    assert(i && "instruction cannot be null!");
-    /**
-     * ASSUME: since we would need to raise, that fences are not within 
-     * this context.
-     * ASSUME: currently raise one level only.
-     */
+    bool raised = false;
 
     /**
-     * Step 1. Figure out where we want to be in the call stack.
+     * We raise in two circumstances: if the instruction is in an "immutable"
+     * function, or if it's heuristically good to raise the fix. 
      * 
-     * TODO: This.
+     * Optimization 1: avoid "immutable" functions.
+     * Optimization 2: For all the fixes, see if we should raise any 
+     * heuristically.
      */
+    const std::vector<LocationInfo> &stack = *desc.dynStack;
+    int idx = 0;
+    Instruction *curr = nullptr;
 
-    Function *fOrig = i->getFunction();
+    while (idx < stack.size()) {
+        auto &instList = mapper_[stack[idx]];
+        if (instList.size() > 1) break;
+        curr = instList.front();
 
-    /**
-     * Step 2. Set up the duplicate function.
-     */
-    
-    Function *fDup = utils::duplicateFunction(fOrig);
-    
-    assert(false && "todo finish impl!");
-    return true;
-    #else
-    assert(false);
-    return false;
-    #endif
+        errs() << "LI: " << stack[idx].str() << "\n";
+        Function *f = curr->getFunction();
+        
+        if (immutableFns_.count(f)) {
+            // Optimization 1: If it is immutable.
+            raised = true;
+            idx++;
+        } else {
+            break;
+        }
+    }
+
+    errs() << "idx: " << idx << "\n";
+
+    if (raised) {
+        bool success = addFixToMapping(curr, 
+            FixDesc(ADD_PERSIST_CALLSTACK_OPT, stack, idx));
+        assert(success && "wat!");
+    }
+
+    return raised;
 }
 
 bool BugFixer::runFixMapOptimization(void) {
     std::list<Instruction*> moved;
     bool res = false;
-    /**
-     * Optimization 1: avoid "immutable" functions.
-     */
+    
     for (auto &p : fixMap_) {
-        Function *fixFn = p.first->getFunction();
-        if (immutableFns_.count(fixFn)) {
-            bool successful = raiseFixLocation(p.first, p.second);
-            assert(successful && "function raising should work!");
-            res = true;
-            moved.push_back(p.first);
-        }
+        bool applies = (p.second.type == ADD_FLUSH_ONLY || 
+                        p.second.type == ADD_FENCE_ONLY || 
+                        p.second.type == ADD_FLUSH_AND_FENCE);
+        if (!applies) continue;
+
+        bool success = raiseFixLocation(p.first, p.second);
+        res = res || success;
     }
+
     for (auto *i : moved) {
         assert(fixMap_.erase(i) && "couldn't remove!");
     }
-    moved.clear();
-    
-    /**
-     * Optimization 2: For all the fixes, see if we should raise any.
-     */
-    errs() << "TODO: Implement the second optimization!\n";
 
     return res;
 }

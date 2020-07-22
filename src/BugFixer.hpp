@@ -88,12 +88,16 @@ private:
 
         /* Methods and constructors */
 
-        FixDesc() : type(NO_FIX), dynStack(nullptr), original(nullptr), points() {}
-        FixDesc(FixType t, const std::vector<LocationInfo> &l) 
-            : type(t), dynStack(&l), original(nullptr), points() {}
+        FixDesc() 
+            : type(NO_FIX), dynStack(nullptr), stackIdx(0), 
+            original(nullptr), points() {}
+        
+        FixDesc(FixType t, const std::vector<LocationInfo> &l, int si=0) 
+            : type(t), dynStack(&l), stackIdx(si), original(nullptr), points() {}
+        
         FixDesc(FixType t, const std::vector<LocationInfo> &l, 
                 llvm::Instruction *o, std::list<llvm::Instruction*> p) 
-            : type(t), dynStack(&l), original(o), points(p) {}
+            : type(t), dynStack(&l), stackIdx(0), original(o), points(p) {}
 
         bool operator==(const FixDesc &f) const {
             return type == f.type && original == f.original && points == f.points;

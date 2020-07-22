@@ -3,6 +3,7 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/Transforms/Utils/Cloning.h"
 
 using namespace pmfix;
 using namespace llvm;
@@ -100,6 +101,30 @@ llvm::Instruction *FixGenerator::createConditionalBlock(
     return &newRegion->front();
 }
 
+Function *FixGenerator::duplicateFunction(Function *f, std::string postFix) {
+    ValueToValueMapTy vmap;
+    Function *fNew = llvm::CloneFunction(f, vmap);
+    fNew->setName(f->getName() + postFix);
+    assert(fNew && "what");
+    return fNew;
+}
+
+bool FixGenerator::makeAllStoresPersistent(llvm::Function *f, bool useNT) {
+    assert(false);
+    for (BasicBlock &bb : *f) {
+        for (Instruction &i : bb) {
+            if (auto *cb = dyn_cast<CallBase>(&i)) {
+                errs() << "ERR:" << *cb << "\n";
+                assert(false && "not supported yet!");
+            } else if (auto *ri = dyn_cast<ReturnInst>(&i)) {
+                // Insert a sfence in front of the return.
+            } else if (auto *si = dyn_cast<StoreInst>(&i)) {
+                // Either insert a flush or make the store non-temporal.
+            }
+        }
+    }
+}
+
 #pragma endregion
 
 #pragma region FixGenerators
@@ -176,9 +201,18 @@ Instruction *GenericFixGenerator::insertFence(Instruction *i) {
     return nullptr;
 }
 
-Instruction *GenericFixGenerator::insertPersistentSubProgram(Instruction *i,
-    const std::vector<LocationInfo> &callstack) {
-    assert(false && "IMPLEMENT ME");
+Instruction *GenericFixGenerator::insertPersistentSubProgram(
+    BugLocationMapper &mapper,
+    Instruction *i,
+    const std::vector<LocationInfo> &callstack, 
+    int idx) {
+    
+    errs() << "GFIN " << *i << "\n";
+    for (int i = 0; i <= idx; ++i) {
+        errs() << "GFLI " << callstack[i].str() << "\n";
+    }
+
+    assert(false && "FINISH ME");
     return nullptr;
 }
 
@@ -295,8 +329,12 @@ Instruction *PMTestFixGenerator::insertFence(Instruction *i) {
     return nullptr;
 }
 
-Instruction *PMTestFixGenerator::insertPersistentSubProgram(Instruction *i,
-    const std::vector<LocationInfo> &callstack) {
+Instruction *PMTestFixGenerator::insertPersistentSubProgram(
+    BugLocationMapper &mapper,
+    Instruction *i,
+    const std::vector<LocationInfo> &callstack,
+    int idx) {
+
     assert(false && "IMPLEMENT ME");
     return nullptr;
 }
