@@ -110,16 +110,12 @@ bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
         errs() << "\t\tInstruction : " << *i << "\n";
         
         bool res = false;
-        FixDesc desc;
         if (missingFlush && missingFence) {
-            desc.type = ADD_FLUSH_AND_FENCE;
-            res = addFixToMapping(i, desc);
+            res = addFixToMapping(i, FixDesc(ADD_FLUSH_AND_FENCE, last.callstack));
         } else if (missingFlush) {
-            desc.type = ADD_FLUSH_ONLY;
-            res = addFixToMapping(i, desc);
+            res = addFixToMapping(i, FixDesc(ADD_FLUSH_ONLY, last.callstack));
         } else if (missingFence) {
-            desc.type = ADD_FENCE_ONLY;
-            res = addFixToMapping(i, desc);
+            res = addFixToMapping(i, FixDesc(ADD_FENCE_ONLY, last.callstack));
         }
 
         // Have to do it this way, otherwise it short-circuits.
@@ -214,9 +210,7 @@ bool BugFixer::handleRequiredFlush(const TraceEvent &te, int bug_index) {
     bool res = false;
     for (Instruction *i : mapper_[redt.location]) {
         if (f.alwaysRedundant()) {
-            FixDesc desc;
-            desc.type = REMOVE_FLUSH_ONLY;
-            res = addFixToMapping(i, desc);
+            res = addFixToMapping(i, FixDesc(REMOVE_FLUSH_ONLY, redt.callstack));
             errs() << "Always redundant! " << "\n";
         } else {
             std::list<Instruction*> redundantPaths = f.redundantPaths();
@@ -225,7 +219,8 @@ bool BugFixer::handleRequiredFlush(const TraceEvent &te, int bug_index) {
                 assert(mapper_[orig.location].size() == 1 && "can't handle!");
                 Instruction *originalInst = mapper_[orig.location].front();
                 // Set dependent of the real fix
-                FixDesc remove(REMOVE_FLUSH_CONDITIONAL, originalInst, redundantPaths);
+                FixDesc remove(REMOVE_FLUSH_CONDITIONAL, redt.callstack, 
+                    originalInst, redundantPaths);
                 bool ret = addFixToMapping(i, remove);
                 res = res || ret;
             } else {
@@ -285,6 +280,10 @@ bool BugFixer::fixBug(FixGenerator *fixer, Instruction *i, FixDesc desc) {
             assert(n && "could not add fence of FLUSH_AND_FENCE");
             break;
         }
+        case ADD_PERSIST_CALLSTACK_OPT: {
+            assert(false && "IMPLEMENT ADD_PERSIST_CALLSTACK_OPT");
+            break;
+        }
         case REMOVE_FLUSH_ONLY: {
             bool success = fixer->removeFlush(i);
             assert(success && "could not remove flush of REMOVE_FLUSH_ONLY");
@@ -314,6 +313,7 @@ bool BugFixer::fixBug(FixGenerator *fixer, Instruction *i, FixDesc desc) {
 }
 
 bool BugFixer::raiseFixLocation(llvm::Instruction *i, const FixDesc &desc) {
+    #if 0
     assert(i && "instruction cannot be null!");
     /**
      * ASSUME: since we would need to raise, that fences are not within 
@@ -322,84 +322,30 @@ bool BugFixer::raiseFixLocation(llvm::Instruction *i, const FixDesc &desc) {
      */
 
     /**
-     * Need to figure out loops and such via data-flow analysis.
+     * Step 1. Figure out where we want to be in the call stack.
      * 
-     * This is justified, because our fix needs to be based on the input 
-     * arguments.
+     * TODO: This.
      */
-    errs() << *i << "\n";
-    auto *si = dyn_cast<StoreInst>(i);
-    if (!si) {
-        errs() << "not a store!!!\n";
-        return false;
-    }
 
-    // hopefully, accumulate arguments used to calculate pointer
-    std::list<Argument*> usedArgs;
-    std::list<Value*> frontier;
-    std::unordered_set<Value*> traversed;
+    Function *fOrig = i->getFunction();
 
     /**
-     * We not only want to add the pointer operand, but we also want to include
-     * loop variables. How? Great question.
-     * 
-     * Conservatively, we could find all the condition variables.
+     * Step 2. Set up the duplicate function.
      */
-    frontier.push_back(si->getPointerOperand());
-
-    // Find all condition variables for BBs
-    for (auto *cond : utils::getConditionVariables(si->getParent())) {
-        errs() << "Condition variable: " << *cond << "\n"; 
-        frontier.push_back(cond);
-    }
     
-    while (frontier.size()) {
-        Value *v = frontier.front();
-        frontier.pop_front();
-
-        if (traversed.count(v)) continue;
-        traversed.insert(v);
-
-        errs() << "Frontier (" << frontier.size() << ") pop:" << *v << "\n";
-        if (auto *arg = dyn_cast<Argument>(v)) {
-            errs() << "\tFound an argument!\n"; 
-            usedArgs.push_back(arg);
-        } else if (auto *alloca = dyn_cast<AllocaInst>(v)) {
-            /**
-             * Allocs are special. We now need to find stores which use this
-             * alloc as a pointer operand, then find the operands of that store.
-             */
-            for (auto *user : alloca->users()) {
-                if (auto *si = dyn_cast<StoreInst>(user)) {
-                    /**
-                     * Rather than just adding this back, we want to add the value
-                     * operand of the store.
-                     */
-                    assert(alloca == si->getPointerOperand());
-                    errs() << "\tAdd store value:" << *si->getValueOperand() << "\n";
-                    frontier.push_back(si->getValueOperand());
-                }
-            }
-        } else if (auto *user = dyn_cast<User>(v)) {
-            for (auto *valOp : user->operand_values()) {
-                errs() << "\tOperand Value:" << *valOp << "\n";
-                frontier.push_back(valOp);
-            }
-        } else {
-            errs() << "Don't know how to handle " << *v << "\n";
-            assert(false);
-        }
-    }
-
-    for (auto *arg : usedArgs) {
-        errs() << "Used Arg:" << *arg << "\n";
-    }
+    Function *fDup = utils::duplicateFunction(fOrig);
     
     assert(false && "todo finish impl!");
     return true;
+    #else
+    assert(false);
+    return false;
+    #endif
 }
 
 bool BugFixer::runFixMapOptimization(void) {
+    std::list<Instruction*> moved;
+    bool res = false;
     /**
      * Optimization 1: avoid "immutable" functions.
      */
@@ -408,9 +354,21 @@ bool BugFixer::runFixMapOptimization(void) {
         if (immutableFns_.count(fixFn)) {
             bool successful = raiseFixLocation(p.first, p.second);
             assert(successful && "function raising should work!");
+            res = true;
+            moved.push_back(p.first);
         }
     }
-    return false;
+    for (auto *i : moved) {
+        assert(fixMap_.erase(i) && "couldn't remove!");
+    }
+    moved.clear();
+    
+    /**
+     * Optimization 2: For all the fixes, see if we should raise any.
+     */
+    errs() << "TODO: Implement the second optimization!\n";
+
+    return res;
 }
 
 bool BugFixer::doRepair(void) {

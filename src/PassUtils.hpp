@@ -49,16 +49,16 @@ namespace utils {
     // For fix map raising
 
     /**
-     * Duplicates the function.
-     * 
-     * Is potentially recursive.
+     * Duplicates the function. Not recursive.
      */
     llvm::Function *duplicateFunction(llvm::Function *f, std::string postFix="_NT");
 
 
     /**
      * Replaces all stores (recursively) with non-temporal hinted stores.
+     * Also add a fence at the 
      */
+    bool makeAllStoresPersistent(llvm::Function *f, bool useNT=true);
 
 
     /**

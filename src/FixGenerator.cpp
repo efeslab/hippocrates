@@ -176,6 +176,12 @@ Instruction *GenericFixGenerator::insertFence(Instruction *i) {
     return nullptr;
 }
 
+Instruction *GenericFixGenerator::insertPersistentSubProgram(Instruction *i,
+    const std::vector<LocationInfo> &callstack) {
+    assert(false && "IMPLEMENT ME");
+    return nullptr;
+}
+
 /**
  * This should just remove the flush.
  */
@@ -286,6 +292,12 @@ Instruction *PMTestFixGenerator::insertFence(Instruction *i) {
         return traceCall;
     }
 
+    return nullptr;
+}
+
+Instruction *PMTestFixGenerator::insertPersistentSubProgram(Instruction *i,
+    const std::vector<LocationInfo> &callstack) {
+    assert(false && "IMPLEMENT ME");
     return nullptr;
 }
 

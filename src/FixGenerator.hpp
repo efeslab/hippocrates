@@ -60,6 +60,12 @@ public:
 
     virtual llvm::Instruction *insertFence(llvm::Instruction *i) = 0;
 
+    /**
+     *
+     */
+    virtual llvm::Instruction *insertPersistentSubProgram(llvm::Instruction *i,
+        const std::vector<LocationInfo> &callstack) = 0;
+
     /** PERFORMANCE
      * Removes an unnecessary flush
      */
@@ -88,6 +94,9 @@ public:
 
     virtual llvm::Instruction *insertFence(llvm::Instruction *i) override;
 
+    virtual llvm::Instruction *insertPersistentSubProgram(llvm::Instruction *i,
+        const std::vector<LocationInfo> &callstack) override;
+
     virtual bool removeFlush(llvm::Instruction *i) override;
 
     virtual bool removeFlushConditionally(
@@ -112,6 +121,9 @@ public:
     virtual llvm::Instruction *insertFlush(llvm::Instruction *i) override;
 
     virtual llvm::Instruction *insertFence(llvm::Instruction *i) override;
+
+    virtual llvm::Instruction *insertPersistentSubProgram(llvm::Instruction *i,
+        const std::vector<LocationInfo> &callstack) override;
 
     virtual bool removeFlush(llvm::Instruction *i) override;
 

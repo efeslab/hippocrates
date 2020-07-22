@@ -52,14 +52,16 @@ private:
      */
     enum FixType {
         NO_FIX = -1,
+        // Correctness, low-level
         ADD_FLUSH_ONLY = 0,
         ADD_FENCE_ONLY,
         ADD_FLUSH_AND_FENCE,
+        // Correctness, high-level
+        ADD_PERSIST_CALLSTACK_OPT,
+        // Performance, known always redundant.
         REMOVE_FLUSH_ONLY,
-        REMOVE_FLUSH_CONDITIONAL,
-        // ,
-        // REMOVE_FENCE_ONLY,
-        // REMOVE_FLUSH_AND_FENCE
+        // Performance, not known always redundant.
+        REMOVE_FLUSH_CONDITIONAL,    
     };
 
     /**
@@ -73,15 +75,25 @@ private:
      */
     struct FixDesc {
         FixType type;
+        const std::vector<LocationInfo> *dynStack;
+        /**
+         * Used for the callstack optimized version.
+         */
+        int stackIdx;
         /**
          * Slightly jank, but these two fields are just for conditional flushing.
          */
         llvm::Instruction *original;
         std::list<llvm::Instruction*> points;
 
-        FixDesc() : type(NO_FIX), original(nullptr), points() {}
-        FixDesc(FixType t, llvm::Instruction *o, std::list<llvm::Instruction*> p) 
-            : type(t), original(o), points(p) {}
+        /* Methods and constructors */
+
+        FixDesc() : type(NO_FIX), dynStack(nullptr), original(nullptr), points() {}
+        FixDesc(FixType t, const std::vector<LocationInfo> &l) 
+            : type(t), dynStack(&l), original(nullptr), points() {}
+        FixDesc(FixType t, const std::vector<LocationInfo> &l, 
+                llvm::Instruction *o, std::list<llvm::Instruction*> p) 
+            : type(t), dynStack(&l), original(o), points(p) {}
 
         bool operator==(const FixDesc &f) const {
             return type == f.type && original == f.original && points == f.points;
@@ -130,7 +142,8 @@ private:
     bool runFixMapOptimization(void);
 
     /**
-     * This is one fix map optimization.
+     * This is one fix map optimization. Adds the directive to do a higher-level
+     * flush+fence fix.
      */
     bool raiseFixLocation(llvm::Instruction *i, const FixDesc &desc);
 

@@ -1,6 +1,6 @@
 #include "PassUtils.hpp"
 
-#include 
+#include "llvm/Transforms/Utils/Cloning.h"
 
 using namespace pmfix;
 
@@ -51,9 +51,26 @@ std::list<Value*> utils::getConditionVariables(BasicBlock *bb) {
 
 Function *utils::duplicateFunction(Function *f, std::string postFix) {
     ValueToValueMapTy vmap;
-    Function *fNew = CloneFunction(f, vmap, nullptr);
+    Function *fNew = llvm::CloneFunction(f, vmap);
+    fNew->setName(f->getName() + postFix);
     assert(fNew && "what");
     return fNew;
+}
+
+bool utils::makeAllStoresPersistent(llvm::Function *f, bool useNT) {
+    assert(false);
+    for (BasicBlock &bb : *f) {
+        for (Instruction &i : bb) {
+            if (auto *cb = dyn_cast<CallBase>(&i)) {
+                errs() << "ERR:" << *cb << "\n";
+                assert(false && "not supported yet!");
+            } else if (auto *ri = dyn_cast<ReturnInst>(&i)) {
+                // Insert a sfence in front of the return.
+            } else if (auto *si = dyn_cast<StoreInst>(&i)) {
+                // Either insert a flush or make the store non-temporal.
+            }
+        }
+    }
 }
 
 #pragma endregion
