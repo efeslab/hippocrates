@@ -284,6 +284,8 @@ bool BugFixer::fixBug(FixGenerator *fixer, Instruction *i, FixDesc desc) {
             Instruction *n = fixer->insertPersistentSubProgram(
                 mapper_, i, *desc.dynStack, desc.stackIdx);
             assert(n && "could not add persistent subprogram in ADD_PERSIST_CALLSTACK_OPT!");
+            n = fixer->insertFence(n);
+            assert(n && "could not add fence of ADD_PERSIST_CALLSTACK_OPT!");
             break;
         }
         case REMOVE_FLUSH_ONLY: {

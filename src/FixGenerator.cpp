@@ -177,7 +177,7 @@ Instruction *GenericFixGenerator::insertFlush(Instruction *i) {
  * TODO: Metadata for inserted instructions?
  */
 Instruction *GenericFixGenerator::insertFence(Instruction *i) {
-
+#if 0
     if (CallInst *ci = dyn_cast<CallInst>(i)) {
         Function *f = ci->getCalledFunction();
         
@@ -199,6 +199,16 @@ Instruction *GenericFixGenerator::insertFence(Instruction *i) {
     }
 
     return nullptr;
+#else
+    // 1) Set up the IR Builder.
+    // -- want AFTER
+    IRBuilder<> builder(i->getNextNode());
+
+    // 2) Find and insert an sfence.
+    CallInst *sfenceCall = builder.CreateCall(getSfenceDefinition(), {});
+
+    return sfenceCall;
+#endif
 }
 
 Instruction *GenericFixGenerator::insertPersistentSubProgram(
@@ -207,13 +217,37 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
     const std::vector<LocationInfo> &callstack, 
     int idx) {
     
-    errs() << "GFIN " << *i << "\n";
-    for (int i = 0; i <= idx; ++i) {
-        errs() << "GFLI " << callstack[i].str() << "\n";
+    Instruction *retInst = nullptr;
+    // errs() << "GFIN " << *i << "\n";
+    for (int i = 0; i < idx; ++i) {
+        // errs() << "GFLI " << callstack[i].str() << "\n";
+        auto &instLoc = mapper[callstack[i]];
+        assert(instLoc.size() == 1 && "");
+        Instruction *currInst = instLoc.front();
+        errs() << "CI:" << *currInst << "\n";
+
+        Function *fn = currInst->getFunction();
+        Function *pmFn = duplicateFunction(fn);
+
+        // Now we need to replace the call.
+        auto &nextInstLoc = mapper[callstack[i+1]];
+        assert(nextInstLoc.size() == 1 && "next still too big");
+
+        Instruction *ni = nextInstLoc.front();
+        if (auto *cb = dyn_cast<CallBase>(ni)) {
+            // Replace this value with a call to the new function.
+            if (cb->getCalledFunction() == fn) {
+                cb->setCalledFunction(pmFn);
+                retInst = cb;
+            } else {
+                assert(false && "function pointer unhandled!");
+            }
+        } else {
+            assert(false && "doesn't make sense!!");
+        }
     }
 
-    assert(false && "FINISH ME");
-    return nullptr;
+    return retInst;
 }
 
 /**
