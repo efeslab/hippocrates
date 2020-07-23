@@ -78,7 +78,9 @@ class ToolRunner:
             pmemcheck_log.unlink()
 
         # 1. Run initial test
-        runtests_args = shlex.split(f'./RUNTESTS -b debug -p force-enable {self.exe_path.parent.name} -s TEST0')
+        test_file = self.exe_path.parent.name.split("_")[-2]
+        assert 'TEST' in test_file, 'Bad parsing!'
+        runtests_args = shlex.split(f'./RUNTESTS -b debug -p force-enable {self.exe_path.parent.name} -s {test_file}')
         # res = subprocess.run(runtests_args, cwd=self.exe_path.parent.parent, 
         #     env=new_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         res = subprocess.run(runtests_args, cwd=self.exe_path.parent.parent, env=new_env)
@@ -128,7 +130,7 @@ class ToolRunner:
         assert self.exe_fixed_path.exists(), 'Fixer did not succeed!'
 
         # 5. Re-run the unit tests, see if we fixed it!
-        runtests_str = f'./RUNTESTS -b static-debug -p force-enable {self.exe_path.parent.name} -s TEST0'
+        runtests_str = f'./RUNTESTS -b static-debug -p force-enable {self.exe_path.parent.name} -s {test_file}'
         runtests_args = shlex.split(runtests_str)
         res = subprocess.run(runtests_args, cwd=self.exe_path.parent.parent, env=new_env)
         # res = subprocess.run(runtests_args, cwd=self.exe_path.parent.parent, 

@@ -1,3 +1,4 @@
+
 ################################################################################
 #
 # This function's purpose in life is to add a unit test from PMDK.
@@ -25,7 +26,8 @@ function(add_pmdk_unit_test)
     check_wllvm()
 
     set(options)                                                                  
-    set(oneValueArgs TEST_CASE TEST_FILE PMDK_PATH PMDK_TARGET COMMIT_HASH)                                                       
+    set(oneValueArgs TEST_CASE TEST_FILE TEST_PATCH 
+                     PMDK_PATH PMDK_TARGET COMMIT_HASH)                                                       
     set(multiValueArgs SOURCES EXTRA_LIBS INCLUDE)                                         
     cmake_parse_arguments(FN_ARGS "${options}" "${oneValueArgs}"                   
                         "${multiValueArgs}" ${ARGN})
@@ -43,14 +45,14 @@ function(add_pmdk_unit_test)
     set(EXTRA_FLAGS "-g -O0")
     add_custom_target("${FN_ARGS_TARGET}_checkout"
                       COMMAND git checkout ${FN_ARGS_COMMIT_HASH}
-                      COMMAND  make CC=wllvm CXX=wllvm++ clean
+                      COMMAND make CC=wllvm CXX=wllvm++ clean
                       COMMAND make CC=wllvm CXX=wllvm++
                               EXTRA_CFLAGS=${EXTRA_FLAGS}
                               EXTRA_CXXFLAGS=${EXTRA_FLAGS}
                               -j${NPROC} 
                       WORKING_DIRECTORY ${FN_ARGS_PMDK_PATH}
                       DEPENDS ${FN_ARGS_PMDK_TARGET} ${PMDK_UNIT_TEST_TARGETS}
-                      COMMENT "")
+                      COMMENT "Checking out PMDK repo for test generation...")
 
     # 2. Build test
     set(TEST_ROOT "${FN_ARGS_PMDK_PATH}/src/test")
@@ -79,6 +81,8 @@ function(add_pmdk_unit_test)
                       COMMAND extract-bc "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}"
                                 -o "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}.bc"
                       COMMAND cp -uv "${LIB_ROOT}/*.so" "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}"
+                      COMMAND ln -vf "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/libpmem.so" "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/libpmem.so.1"
+                      COMMAND ln -vf "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/libpmemobj.so" "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/libpmemobj.so.1"
                       COMMAND patchelf --set-rpath "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}" 
                                 "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}"
                       DEPENDS "${FN_ARGS_TARGET}_build"
@@ -90,13 +94,25 @@ function(add_pmdk_unit_test)
                       COMMAND mkdir -p "${CMAKE_CURRENT_BINARY_DIR}/unittest"
                       COMMAND cp -rnv ${TEST_ROOT}/unittest/* "${CMAKE_CURRENT_BINARY_DIR}/unittest"
                       DEPENDS "${FN_ARGS_TARGET}_build"
-                      COMMENT "Copying tooling...")               
+                      COMMENT "Copying tooling...")
+    
+    set(DEP_LIST "${FN_ARGS_TARGET}_copy" "${FN_ARGS_TARGET}_tooling")
+    
+    if (NOT FN_ARGS_TEST_PATCH STREQUAL "")
+        add_custom_target("${FN_ARGS_TARGET}_patching"
+                          COMMAND patch -o "${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}.patched" "${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}" "${FN_ARGS_TEST_PATCH}"
+                          COMMAND mv "${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}" "${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}.original"
+                          COMMAND mv "${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}.patched" "${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}"
+                          DEPENDS "${FN_ARGS_TARGET}_tooling"
+                          COMMENT "Patching with patch ${FN_ARGS_TEST_PATCH}...")
+        # list(APPEND DEP_LIST "${FN_ARGS_TARGET}_patching")
+    endif()
                       
     add_custom_target(${FN_ARGS_TARGET} ALL : # no-op
-                      DEPENDS "${FN_ARGS_TARGET}_copy" "${FN_ARGS_TARGET}_tooling"
+                      DEPENDS ${DEP_LIST}
                       COMMENT "${FN_ARGS_TARGET} complete.")               
      
     append_tool_lists(TARGET "${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}" TOOL "PMDK_UNIT_TEST")
-    append_unit_test_list(TARGET "${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}")
+    append_unit_test_list(TARGET "${FN_ARGS_TARGET}")
 
 endfunction()

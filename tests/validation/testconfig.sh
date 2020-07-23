@@ -81,7 +81,7 @@ PMEM_FS_DIR_FORCE_PMEM=1
 # (floating point number with an optional suffix: 's' for seconds (the default),
 # 'm' for minutes, 'h' for hours or 'd' for days)
 #
-#TEST_TIMEOUT=3m
+TEST_TIMEOUT=5m
 
 #
 # To display execution time of each test
@@ -108,7 +108,7 @@ KEEP_GOING=y
 # 1 - normal (above + SETUP + START + DONE + PASS + important SKIP messages)
 # 2 - verbose (above + all SKIP messages + stdout from test binaries)
 #
-#UNITTEST_LOG_LEVEL=1
+UNITTEST_LOG_LEVEL=2
 
 #
 # Test against installed libraries, NOT the one built in tree.
