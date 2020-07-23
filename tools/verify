@@ -79,8 +79,9 @@ class ToolRunner:
 
         # 1. Run initial test
         runtests_args = shlex.split(f'./RUNTESTS -b debug -p force-enable {self.exe_path.parent.name} -s TEST0')
-        res = subprocess.run(runtests_args, cwd=self.exe_path.parent.parent, 
-            env=new_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # res = subprocess.run(runtests_args, cwd=self.exe_path.parent.parent, 
+        #     env=new_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        res = subprocess.run(runtests_args, cwd=self.exe_path.parent.parent, env=new_env)
         assert (res.returncode != 0), 'Test was successful, meaning no bugs!'
         assert pmemcheck_log.exists(), 'No pmemcheck log!'
 
@@ -106,10 +107,12 @@ class ToolRunner:
         res = subprocess.run(ldd_args, stdout=subprocess.PIPE)
         res.check_returncode()
         libs = [ l.strip().split()[0] for l in res.stdout.decode().split('\n') if l]
+        self.bc_linked_path = self.bc_path.parent / (self.bc_path.name + '.linked')
         for lib in libs:
             for bc in shared_bc:
                 if lib in bc.name:
-                    link_args = shlex.split(f'llvm-link-8 -o {str(self.bc_path)} {str(self.bc_path)} --override={str(bc)}')
+                    argstr = f'llvm-link-8 -o {str(self.bc_linked_path)} {str(self.bc_path)} --override={str(bc)}'
+                    link_args = shlex.split(argstr)
                     res = subprocess.run(link_args)
                     res.check_returncode()
 
@@ -117,7 +120,7 @@ class ToolRunner:
         fixer_script = Path(__file__).parent.absolute() / 'apply-fixer'
         if self.exe_fixed_path.exists():
             self.exe_fixed_path.unlink()
-        fixer_arg_str = f'{str(fixer_script)} {str(self.bc_path)} {str(trace_file)} -o {str(self.exe_fixed_path)}'
+        fixer_arg_str = f'{str(fixer_script)} {str(self.bc_linked_path)} {str(trace_file)} -o {str(self.exe_fixed_path)}'
         print(fixer_arg_str)
         fixer_args = shlex.split(fixer_arg_str)
         res = subprocess.run(fixer_args)

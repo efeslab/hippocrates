@@ -47,7 +47,7 @@ struct PmBugFixerPass : public ModulePass {
     bool runOnModule(Module &m) override {
         YAML::Node trace_info_doc = YAML::LoadFile(TraceFile);
         TraceInfo ti = TraceInfoBuilder(trace_info_doc).build();
-        errs() << "TraceInfo string:\n" << ti.str() << '\n';
+        // errs() << "TraceInfo string:\n" << ti.str() << '\n';
 
         if (WeakClflush) {
             errs() << "Err: --weak-clflush set, but nothing to do!\n";

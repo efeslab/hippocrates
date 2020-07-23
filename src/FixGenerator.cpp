@@ -5,6 +5,10 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 
+#include "llvm/IR/DIBuilder.h"
+
+#include <unordered_set>
+
 using namespace pmfix;
 using namespace llvm;
 
@@ -115,35 +119,41 @@ Function *FixGenerator::duplicateFunction(Function *f, std::string postFix) {
 
 bool FixGenerator::makeAllStoresPersistent(llvm::Function *f, bool useNT) {
     errs() << "FUNCTION PM: " << f->getName() << "\n";
-    std::list<StoreInst*> insertPoints;
+    std::list<StoreInst*> flushPoints;
+    std::list<ReturnInst*> fencePoints;
     for (BasicBlock &bb : *f) {
         for (Instruction &i : bb) {
             if (auto *cb = dyn_cast<CallBase>(&i)) {
                 Function *f = cb->getCalledFunction();
                 if (f->getIntrinsicID() == Intrinsic::dbg_declare) continue;
                 
-                errs() << "ERR:" << *cb << "\n";
-                errs() << "FN:" << *f << "\n";
-                assert(false && "not supported yet!");
+                // errs() << "ERR:" << *cb << "\n";
+                // errs() << "FN:" << *f << "\n";
+                // assert(false && "not supported yet!");
+                // This should be okay. Just have to go down to the level that
+                // the error occurs at.
             } else if (auto *ri = dyn_cast<ReturnInst>(&i)) {
                 // Insert a sfence in front of the return.
+                fencePoints.push_back(ri);
             } else if (auto *si = dyn_cast<StoreInst>(&i)) {
                 /**
                  * Figure out if the store is to a stack variable. If so, we
                  * really don't want to add it.
                  */
                 if (isa<AllocaInst>(si->getPointerOperand())) continue;
-                insertPoints.push_back(si);
+                flushPoints.push_back(si);
             }
         }
     }
 
-    for (auto *si : insertPoints) {
+    for (auto *si : flushPoints) {
         // Either insert a flush or make the store non-temporal.
         if (useNT) {
             // Set non-temporal metadata
-            si->setMetadata(LLVMContext::MD_nontemporal, nullptr);
-            assert(false && "wat");
+            DIExpression *die = DIBuilder(module_).createConstantValueExpression(1);
+            errs() << "MD:" << *die << "\n";
+            si->setMetadata(LLVMContext::MD_nontemporal, die);
+            errs() << "NT:" << *si << "\n";
         } else {
             // Insert flush
             errs() << "Flushing" << *si << " in " << si->getFunction()->getName() << "\n";
@@ -152,7 +162,19 @@ bool FixGenerator::makeAllStoresPersistent(llvm::Function *f, bool useNT) {
         }
     }
 
-    return !insertPoints.empty();
+    if (flushPoints.empty()) return false;
+
+    for (auto *ri : fencePoints) {
+        Instruction *insertAt = ri->getPrevNonDebugInstruction();
+        if (!insertAt) {
+            IRBuilder<> builder(ri);
+            insertAt = builder.CreateCall(Intrinsic::getDeclaration(&module_, Intrinsic::donothing), {});
+        }
+        auto *fi = insertFence(insertAt);
+        assert(fi && "unable to insert fence!");
+    }
+
+    return true;
 }
 
 #pragma endregion
@@ -253,7 +275,13 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
     for (int i = 0; i < idx; ++i) {
         // errs() << "GFLI " << callstack[i].str() << "\n";
         auto &instLoc = mapper[callstack[i]];
-        assert(instLoc.size() == 1 && "");
+        if (instLoc.size() > 1) {
+            // Make sure they're all in the same function, cuz then it's fine.
+            std::unordered_set<Function*> fns;
+            for (auto *i : instLoc) fns.insert(i->getFunction());
+            assert(fns.size() == 1 && "don't know how to handle this weird code!");
+        }
+
         Instruction *currInst = instLoc.front();
         errs() << "CI:" << *currInst << "\n";
 
@@ -266,19 +294,28 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
 
         // Now we need to replace the call.
         auto &nextInstLoc = mapper[callstack[i+1]];
-        assert(nextInstLoc.size() == 1 && "next still too big");
+        // assert(nextInstLoc.size() == 1 && "next still too big");
+        assert(!nextInstLoc.empty());
 
-        Instruction *ni = nextInstLoc.front();
-        if (auto *cb = dyn_cast<CallBase>(ni)) {
-            // Replace this value with a call to the new function.
-            if (cb->getCalledFunction() == fn) {
-                cb->setCalledFunction(pmFn);
-                retInst = cb;
-            } else {
-                assert(false && "function pointer unhandled!");
-            }
-        } else {
-            assert(false && "doesn't make sense!!");
+        for (Instruction *ni : nextInstLoc) {
+            errs() << *ni << " @ " << ni->getFunction()->getName() << "\n";
+            if (auto *cb = dyn_cast<CallBase>(ni)) {
+                Function *cbFn = cb->getCalledFunction();
+                // Replace this value with a call to the new function.
+                if (cbFn == fn) {
+                    cb->setCalledFunction(pmFn);
+                    retInst = cb;
+                } else if (cbFn) {
+                    continue;
+                } else {
+                    /**
+                     * For function pointers, we need a conditional mapping, a-la
+                     * if (f == old_fn) new_fn(...)
+                     */
+                    errs() << "FUNCTION POINTER: " << *cb << "\n";
+                    assert(false && "function pointer unhandled!");
+                }
+            } 
         }
     }
 

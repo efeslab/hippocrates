@@ -83,6 +83,8 @@ bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
                 break;
             } else if (event.type == TraceEvent::FLUSH &&
                         event.addresses.front().overlaps(te.addresses.front())) {
+                errs() << "Overlaps Address: " << te.addresses.front().address << "\n";
+                errs() << "Overlaps Lenght: " << te.addresses.front().length << "\n";
                 assert(missingFence == true &&
                         "Shouldn't be a bug in this case, has flush and fence");
                 lastOpIndex = i;
@@ -102,25 +104,35 @@ bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
 
     // Find where the last operation was.
     const TraceEvent &last = trace_[lastOpIndex];
-    errs() << "\t\tLocation : " << last.location.str() << "\n";
-    assert(mapper_[last.location].size() && "can't have no instructions!");
     bool added = false;
-    for (Instruction *i : mapper_[last.location]) {
-        assert(i && "can't be null!");
-        errs() << "\t\tInstruction : " << *i << "\n";
-        
-        bool res = false;
-        if (missingFlush && missingFence) {
-            res = addFixToMapping(i, FixDesc(ADD_FLUSH_AND_FENCE, last.callstack));
-        } else if (missingFlush) {
-            res = addFixToMapping(i, FixDesc(ADD_FLUSH_ONLY, last.callstack));
-        } else if (missingFence) {
-            res = addFixToMapping(i, FixDesc(ADD_FENCE_ONLY, last.callstack));
-        }
+    if (mapper_.contains(last.location)) {
+        errs() << "Fix direct!\n";
+        errs() << "\t\tLocation : " << last.location.str() << "\n";
+        assert(mapper_[last.location].size() && "can't have no instructions!");
+        for (Instruction *i : mapper_[last.location]) {
+            assert(i && "can't be null!");
+            errs() << "\t\tInstruction : " << *i << "\n";
+            
+            bool res = false;
+            if (missingFlush && missingFence) {
+                res = addFixToMapping(i, FixDesc(ADD_FLUSH_AND_FENCE, last.callstack));
+            } else if (missingFlush) {
+                res = addFixToMapping(i, FixDesc(ADD_FLUSH_ONLY, last.callstack));
+            } else if (missingFence) {
+                res = addFixToMapping(i, FixDesc(ADD_FENCE_ONLY, last.callstack));
+            }
 
-        // Have to do it this way, otherwise it short-circuits.
-        added = res || added;
+            // Have to do it this way, otherwise it short-circuits.
+            added = res || added;
+        }
+    } else {
+        errs() << "Forced indirect fix!\n";
+        for (const LocationInfo &li : last.callstack) {
+            errs() << li.str() << " contains? " << mapper_.contains(li) << "\n";
+        }
+        assert(false && "finish!");
     }
+    
     
     return added;      
 }
@@ -333,12 +345,17 @@ bool BugFixer::raiseFixLocation(llvm::Instruction *i, const FixDesc &desc) {
 
     while (idx < stack.size()) {
         auto &instList = mapper_[stack[idx]];
-        if (instList.size() > 1) break;
+        if (instList.size() > 1) {
+            // Make sure they're all in the same function, cuz then it's fine.
+            std::unordered_set<Function*> fns;
+            for (auto *i : instList) fns.insert(i->getFunction());
+            assert(fns.size() == 1 && "don't know how to handle this weird code!");
+        }
+        
         curr = instList.front();
 
         errs() << "LI: " << stack[idx].str() << "\n";
         Function *f = curr->getFunction();
-        
         if (immutableFns_.count(f)) {
             // Optimization 1: If it is immutable.
             raised = true;
@@ -347,8 +364,6 @@ bool BugFixer::raiseFixLocation(llvm::Instruction *i, const FixDesc &desc) {
             break;
         }
     }
-
-    errs() << "idx: " << idx << "\n";
 
     if (raised) {
         bool success = addFixToMapping(curr, 
@@ -371,8 +386,8 @@ bool BugFixer::runFixMapOptimization(void) {
 
         bool success = raiseFixLocation(p.first, p.second);
         res = res || success;
-        // Erase original fix
-        moved.push_back(p.first);
+        // Erase original fix if successful
+        if (success) moved.push_back(p.first);
     }
 
     for (auto *i : moved) {
@@ -448,7 +463,8 @@ bool BugFixer::doRepair(void) {
     return modified;
 }
 
-const std::string BugFixer::immutableFnNames_[] = {};
+const std::string BugFixer::immutableFnNames_[] = { "memset_mov_sse2_empty" };
+// const std::string BugFixer::immutableFnNames_[] = {};
 const std::string BugFixer::immutableLibNames_[] = {"libc.so"};
 
 BugFixer::BugFixer(llvm::Module &m, TraceInfo &ti) 
@@ -465,12 +481,11 @@ BugFixer::BugFixer(llvm::Module &m, TraceInfo &ti)
 void BugFixer::addImmutableFunction(const std::string &fnName) {
     Function *f = module_.getFunction(fnName);
 
-    if (!f) {
-        errs() << "Could not find function \"" << fnName << "\"!\n"; 
-        assert(f && "could not find function!");
+    if (f) {
+        immutableFns_.insert(f);
+    } else {
+        errs() << "Could not find function " << fnName << ", skipping\n";
     }
-    
-    immutableFns_.insert(f);
 }
 
 void BugFixer::addImmutableModule(const std::string &modName) {
