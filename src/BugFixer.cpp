@@ -158,6 +158,8 @@ bool BugFixer::handleRequiredFlush(const TraceEvent &te, int bug_index) {
         assert(event.addresses.size() <= 1 && 
                 "Don't know how to handle more addresses!");
         if (event.addresses.size()) {
+            errs() << "IDX: " << i << "\n";
+            errs() << "EVENT: " << event.typeString << "\n";
             errs() << "Address: " << event.addresses.front().address << "\n";
             errs() << "Length:  " << event.addresses.front().length << "\n";
             assert(event.addresses.front().isSingleCacheLine() && 
@@ -165,8 +167,11 @@ bool BugFixer::handleRequiredFlush(const TraceEvent &te, int bug_index) {
 
             if (event.type == TraceEvent::FLUSH &&
                 event.addresses.front() == te.addresses.front()) {
-                if (redundantIdx == -1) redundantIdx = i;
-                else {
+                if (redundantIdx == -1) {
+                    errs() << "\tfilled redt!\n";
+                    redundantIdx = i;
+                } else {
+                    errs() << "\tfilled orig!\n";
                     originalIdx = i;
                     break;
                 }

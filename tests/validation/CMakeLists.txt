@@ -21,15 +21,39 @@ add_custom_target(VALIDATION_PMDK : # no-op, only if a dependency
 configure_file(testconfig.sh ${CMAKE_CURRENT_BINARY_DIR})
 
 # Issue: https://github.com/pmem/issues/issues/440
-# Issue: https://github.com/pmem/issues/issues/441
-# Issue: https://github.com/pmem/issues/issues/442
-# Issue: https://github.com/pmem/issues/issues/444
-# Issue: https://github.com/pmem/issues/issues/446
-# Issue: https://github.com/pmem/issues/issues/447
-# Issue: https://github.com/pmem/issues/issues/448
-# Issue: https://github.com/pmem/issues/issues/449
-# Issue: https://github.com/pmem/issues/issues/450
+# obj_list_recovery/TEST0, TEST1, TEST2
 
+# Issue: https://github.com/pmem/issues/issues/441
+# obj_locks/TEST0
+
+# Issue: https://github.com/pmem/issues/issues/442
+# obj_persist_count/TEST0, TEST1
+
+# Issue: https://github.com/pmem/issues/issues/444
+# obj_pvector/TEST0
+
+# Issue: https://github.com/pmem/issues/issues/446
+# obj_redo_log/TEST0, TEST1
+
+# Issue: https://github.com/pmem/issues/issues/447
+# obj_toid/TEST0
+# Status: NOT REPRO
+# orig: 0fd509d73
+# 8bbb0af9c6fc96f1aa9fc17321d0896a74e15d34
+add_pmdk_unit_test(TEST_CASE obj_toid
+                   TEST_FILE TEST0
+                   COMMIT_HASH 8bbb0af
+                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+                   PMDK_TARGET VALIDATION_PMDK)
+
+# Issue: https://github.com/pmem/issues/issues/448
+# obj_tx_alloc/TEST0
+
+# Issue: https://github.com/pmem/issues/issues/449
+# obj_tx_add_range/TEST0
+
+# Issue: https://github.com/pmem/issues/issues/450
+# obj_tx_add_range_direct/TEST0
 
 # Issue: https://github.com/pmem/issues/issues/452
 # obj_constructor/TEST0, TEST2
@@ -43,6 +67,7 @@ configure_file(testconfig.sh ${CMAKE_CURRENT_BINARY_DIR})
 
 # Issue: https://github.com/pmem/issues/issues/460
 # pmem_memmove/TEST0, TEST1, TEST2, TEST3, TEST4, TEST5, TEST6, TEST7, TEST8, TEST9, TEST10, TEST11
+# Status: NO REPRO
 add_pmdk_unit_test(TEST_CASE pmem_memmove
                    TEST_FILE TEST0
                    COMMIT_HASH 0fd509d73
