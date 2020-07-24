@@ -29,9 +29,16 @@ configure_file(testconfig.sh ${CMAKE_CURRENT_BINARY_DIR})
 # Issue: https://github.com/pmem/issues/issues/448
 # Issue: https://github.com/pmem/issues/issues/449
 # Issue: https://github.com/pmem/issues/issues/450
+
+
 # Issue: https://github.com/pmem/issues/issues/452
+# obj_constructor/TEST0, TEST2
+
 # Issue: https://github.com/pmem/issues/issues/458
+# pmemspoil/TEST0
+
 # Issue: https://github.com/pmem/issues/issues/459
+# pmem_memcpy/TEST0, TEST1, TEST2, TEST3 
 
 
 # Issue: https://github.com/pmem/issues/issues/460

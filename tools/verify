@@ -103,12 +103,16 @@ class ToolRunner:
         assert trace_file.exists()
 
         # 3. Link the bitcode with the library so that opt can find the functions.
+        # -- First, ensure bitcode was auto-extracted properly.
+        # -- We DON'T extract here for build reasons.
         shared_objects = [f for f in self.exe_path.parent.iterdir() if '.so' in f.name and '.bc' not in f.name]
         shared_bc = [f.parent / (f.name + '.bc') for f in shared_objects]
-        for so, bc in zip(shared_objects, shared_bc):
-            extract_args = shlex.split(f'extract-bc {so} -o {bc}')
-            res = subprocess.run(extract_args)
-            res.check_returncode()
+        # for so, bc in zip(shared_objects, shared_bc):
+        #     extract_args = shlex.split(f'extract-bc {so} -o {bc}')
+        #     res = subprocess.run(extract_args)
+        #     res.check_returncode()
+
+        # embed()
 
         ldd_args = shlex.split(f'ldd {str(self.exe_path)}')
         res = subprocess.run(ldd_args, stdout=subprocess.PIPE)
@@ -118,6 +122,7 @@ class ToolRunner:
         for lib in libs:
             for bc in shared_bc:
                 if lib in bc.name:
+                    assert bc.exists(), f'Bad cmake build! {bc.name} does not exist!'
                     argstr = f'llvm-link-8 -o {str(self.bc_linked_path)} {str(self.bc_path)} --override={str(bc)}'
                     link_args = shlex.split(argstr)
                     res = subprocess.run(link_args)

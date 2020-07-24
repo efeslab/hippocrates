@@ -62,6 +62,7 @@ function(add_pmdk_unit_test)
     set(TEST_PATH "${TEST_ROOT}/${FN_ARGS_TEST_CASE}")
     set(TOOL_PATH "${TEST_ROOT}/tools")
     set(SRC_TOOLS "${FN_ARGS_PMDK_PATH}/src/test")
+    set(TARGET_BIN "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}")
     # if(NOT EXISTS ${TEST_PATH} OR NOT EXISTS ${TOOL_PATH})
     #     message(FATAL_ERROR "${TEST_PATH} does not exist!")
     # endif()
@@ -84,6 +85,8 @@ function(add_pmdk_unit_test)
                       COMMAND extract-bc "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}"
                                 -o "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}.bc"
                       COMMAND cp -uv "${LIB_ROOT}/*.so" "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}"
+                      COMMAND extract-bc -o ${TARGET_BIN}/libpmem.so.1.bc ${TARGET_BIN}/libpmem.so.1
+                      COMMAND extract-bc -o ${TARGET_BIN}/libpmemobj.so.1.bc ${TARGET_BIN}/libpmemobj.so.1
                       COMMAND cp -urv "${SRC_TOOLS}" "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}"
                       COMMAND ln -vf "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/libpmem.so" "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/libpmem.so.1"
                       COMMAND ln -vf "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/libpmemobj.so" "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/libpmemobj.so.1"
@@ -91,6 +94,9 @@ function(add_pmdk_unit_test)
                                 "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}"
                       DEPENDS "${FN_ARGS_TARGET}_build"
                       COMMENT "Copying and extracting files...")
+    
+    # execute_process(COMMAND echo for f in ${TARGET_BIN}/*.so*; do extract-bc $f -o $f.bc; done)
+    # message(FATAL_ERROR "argh")
 
     add_custom_target("${FN_ARGS_TARGET}_tooling"
                       COMMAND mkdir -p "${CMAKE_CURRENT_BINARY_DIR}/tools"
