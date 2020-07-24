@@ -136,7 +136,7 @@ add_pmdk_unit_test(TEST_CASE obj_mem
                    PMDK_TARGET VALIDATION_PMDK)
 
 # Issue: https://github.com/pmem/issues/issues/943
-# Status: REPRO'D
+# Status: REPRO'D (10m timeout)
 add_pmdk_unit_test(TEST_CASE obj_memops
                    TEST_FILE TEST0
                    COMMIT_HASH e71dfa41b

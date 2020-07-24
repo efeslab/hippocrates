@@ -81,7 +81,7 @@ TEST_FS=pmem
 # (floating point number with an optional suffix: 's' for seconds (the default),
 # 'm' for minutes, 'h' for hours or 'd' for days)
 #
-TEST_TIMEOUT=5m
+TEST_TIMEOUT=10m
 
 #
 # To display execution time of each test
