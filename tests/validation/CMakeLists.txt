@@ -42,7 +42,7 @@ configure_file(testconfig.sh ${CMAKE_CURRENT_BINARY_DIR})
 # 8bbb0af9c6fc96f1aa9fc17321d0896a74e15d34
 add_pmdk_unit_test(TEST_CASE obj_toid
                    TEST_FILE TEST0
-                   COMMIT_HASH 8bbb0af
+                   COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK)
 
@@ -128,6 +128,7 @@ add_pmdk_unit_test(TEST_CASE obj_first_next
                    PMDK_TARGET VALIDATION_PMDK)
 
 # Issue: https://github.com/pmem/issues/issues/942
+# Status: TIMEOUT
 add_pmdk_unit_test(TEST_CASE obj_mem
                    TEST_FILE TEST0
                    COMMIT_HASH e71dfa41b
@@ -135,6 +136,7 @@ add_pmdk_unit_test(TEST_CASE obj_mem
                    PMDK_TARGET VALIDATION_PMDK)
 
 # Issue: https://github.com/pmem/issues/issues/943
+# Status: REPRO'D
 add_pmdk_unit_test(TEST_CASE obj_memops
                    TEST_FILE TEST0
                    COMMIT_HASH e71dfa41b
@@ -142,7 +144,7 @@ add_pmdk_unit_test(TEST_CASE obj_memops
                    PMDK_TARGET VALIDATION_PMDK)
 
 # Issue: https://github.com/pmem/issues/issues/945
-# Status: PASS
+# Status: FIX PASSES
 add_pmdk_unit_test(TEST_CASE pmem_memset 
                    TEST_FILE TEST0
                    TEST_PATCH pmem_memset_TEST0_e71dfa41b.patch
@@ -151,6 +153,13 @@ add_pmdk_unit_test(TEST_CASE pmem_memset
                    PMDK_TARGET VALIDATION_PMDK)
 
 # Issue: https://github.com/pmem/issues/issues/949
+# Tests: obj_pmalloc_basic/TEST0
+# Status: UNKNOWN
+# add_pmdk_unit_test(TEST_CASE obj_pmalloc_basic
+#                    TEST_FILE TEST0
+#                    COMMIT_HASH e71dfa41b
+#                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+#                    PMDK_TARGET VALIDATION_PMDK)
 
 # Issue: https://github.com/pmem/issues/issues/1103 
 # add_pmdk_unit_test(TEST_CASE pmemobjcli 
@@ -160,8 +169,8 @@ add_pmdk_unit_test(TEST_CASE pmem_memset
 #                    PMDK_TARGET VALIDATION_PMDK)
 
 # Issue: https://github.com/pmem/issues/issues/1118
-# add_pmdk_unit_test(TEST_CASE obj_pmalloc_mt
-#                    TEST_FILE TEST1
-#                    COMMIT_HASH 7ff604b
-#                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
-#                    PMDK_TARGET VALIDATION_PMDK)
+add_pmdk_unit_test(TEST_CASE obj_pmalloc_mt
+                   TEST_FILE TEST1
+                   COMMIT_HASH 7ff604b
+                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+                   PMDK_TARGET VALIDATION_PMDK)

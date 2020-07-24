@@ -50,10 +50,10 @@ function(add_pmdk_unit_test)
                       COMMAND make CC=wllvm CXX=wllvm++
                               EXTRA_CFLAGS=${EXTRA_FLAGS}
                               EXTRA_CXXFLAGS=${EXTRA_FLAGS}
-                              NDCTL_ENABLE=n
                               -j${NPROC} 
                       WORKING_DIRECTORY ${FN_ARGS_PMDK_PATH}
-                      DEPENDS ${FN_ARGS_PMDK_TARGET} ${PMDK_UNIT_TEST_TARGETS}
+                      DEPENDS ${FN_ARGS_PMDK_TARGET} #${PMDK_UNIT_TEST_TARGETS}
+                    #   DEPENDS ${FN_ARGS_PMDK_TARGET} ${PMDK_UNIT_TEST_TARGETS}
                       COMMENT "Checking out PMDK repo for test generation...")
 
     # 2. Build test

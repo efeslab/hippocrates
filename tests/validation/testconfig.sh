@@ -74,7 +74,7 @@ PMEM_FS_DIR_FORCE_PMEM=1
 # Overwrite available filesystem types:
 # pmem, non-pmem, any, none, all (default)
 #
-#TEST_FS=all
+TEST_FS=pmem
 
 #
 # Overwrite default timeout
