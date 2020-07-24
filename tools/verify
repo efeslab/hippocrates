@@ -72,26 +72,31 @@ class ToolRunner:
             new_env['LD_LIBRARY_PATH'] += f':{str(self.exe_path.parent)}'
         new_env['PATH'] = f'{str(self.pmemcheck_path.parent)}:{new_env["PATH"]}'
 
+        # -1. Parse some values
+        test_file = self.exe_path.parent.name.split("_")[-2]
+        assert 'TEST' in test_file, 'Bad parsing!'
+        test_num = test_file.replace('TEST', '')
+        assert test_num.isnumeric(), 'Bad parsing!'
+        test_num = int(test_num)
+
         # 0. Cleanup old logs, if any.
-        pmemcheck_log = self.exe_path.parent / 'pmemcheck0.log'
+        pmemcheck_log = self.exe_path.parent / f'pmemcheck{test_num}.log'
         if pmemcheck_log.exists():
             pmemcheck_log.unlink()
 
         # 1. Run initial test
-        test_file = self.exe_path.parent.name.split("_")[-2]
-        assert 'TEST' in test_file, 'Bad parsing!'
         runtests_args = shlex.split(f'./RUNTESTS -b debug -p force-enable {self.exe_path.parent.name} -s {test_file}')
         # res = subprocess.run(runtests_args, cwd=self.exe_path.parent.parent, 
         #     env=new_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         res = subprocess.run(runtests_args, cwd=self.exe_path.parent.parent, env=new_env)
         assert (res.returncode != 0), 'Test was successful, meaning no bugs!'
-        assert pmemcheck_log.exists(), 'No pmemcheck log!'
+        assert pmemcheck_log.exists(), f'pmemcheck log "{str(pmemcheck_log)}" does not exist!'
 
         # 2. Get trace from log file
         assert pmemcheck_log.exists(), 'Log not created!'
         parse_script = Path(__file__).parent.absolute() / 'parse-trace'
         assert parse_script.exists(), 'parser not available!'
-        trace_file = pmemcheck_log.parent / "pmemcheck0.trace"
+        trace_file = pmemcheck_log.parent / f'pmemcheck{test_num}.trace'
         parse_args = shlex.split(f'{str(parse_script)} pmemcheck {str(pmemcheck_log)} -o {str(trace_file)}')
         res = subprocess.run(parse_args)
         res.check_returncode()

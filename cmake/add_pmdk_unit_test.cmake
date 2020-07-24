@@ -42,13 +42,15 @@ function(add_pmdk_unit_test)
     endif()
 
     # 1. Checkout
-    set(EXTRA_FLAGS "-g -O0")
+    set(EXTRA_FLAGS "-g -O0 -Wno-error")
     add_custom_target("${FN_ARGS_TARGET}_checkout"
                       COMMAND git checkout ${FN_ARGS_COMMIT_HASH}
+                      COMMAND git clean -fxd
                       COMMAND make CC=wllvm CXX=wllvm++ clean
                       COMMAND make CC=wllvm CXX=wllvm++
                               EXTRA_CFLAGS=${EXTRA_FLAGS}
                               EXTRA_CXXFLAGS=${EXTRA_FLAGS}
+                              NDCTL_ENABLE=n
                               -j${NPROC} 
                       WORKING_DIRECTORY ${FN_ARGS_PMDK_PATH}
                       DEPENDS ${FN_ARGS_PMDK_TARGET} ${PMDK_UNIT_TEST_TARGETS}
@@ -59,6 +61,7 @@ function(add_pmdk_unit_test)
     set(LIB_ROOT "${FN_ARGS_PMDK_PATH}/src/debug")
     set(TEST_PATH "${TEST_ROOT}/${FN_ARGS_TEST_CASE}")
     set(TOOL_PATH "${TEST_ROOT}/tools")
+    set(SRC_TOOLS "${FN_ARGS_PMDK_PATH}/src/test")
     # if(NOT EXISTS ${TEST_PATH} OR NOT EXISTS ${TOOL_PATH})
     #     message(FATAL_ERROR "${TEST_PATH} does not exist!")
     # endif()
@@ -81,6 +84,7 @@ function(add_pmdk_unit_test)
                       COMMAND extract-bc "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}"
                                 -o "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}.bc"
                       COMMAND cp -uv "${LIB_ROOT}/*.so" "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}"
+                      COMMAND cp -urv "${SRC_TOOLS}" "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}"
                       COMMAND ln -vf "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/libpmem.so" "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/libpmem.so.1"
                       COMMAND ln -vf "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/libpmemobj.so" "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/libpmemobj.so.1"
                       COMMAND patchelf --set-rpath "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}" 

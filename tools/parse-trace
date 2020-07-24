@@ -280,11 +280,14 @@ class TraceParser:
         stop_trace = False
 
         nbugs_re = re.compile(r'==\d+==\s+Number of stores not made persistent: (\d+)')
+        nperf_re = re.compile(r'==\d+==\s+Number of unnecessary flushes: (\d+)')
         nbugs_total = None
         nbugs_remaining = None
         last_bug_no = -1
+        is_perf = False
 
         bug_re = re.compile(r'==\d+==\s+\[(\d+)\]\s+ at \w+: \w+ \(\S+\) ==\d+==\s+Address: (\w+)\s+size: (\d+)\s+state: (\w+)')
+        perf_re = re.compile(r'==\d+==\s+\[(\d+)\]\s+ at \w+: \w+ \(\S+\) ==\d+==\s+Address: (\w+)\s+size: (\d+)')
 
         # We want to insert these in specific places
         # (addr, size, fn, file, line) describes the original assignment
@@ -314,11 +317,19 @@ class TraceParser:
                 elif start_trace and stop_trace and nbugs_total is None:
                     # Parse the bug reports themselves.
                     matches = nbugs_re.match(lines[i])
+                    perf_matches = nperf_re.match(lines[i])
                     if matches is not None:
-                        nbugs_total = int(matches.group(1))
+                        nbugs_found = int(matches.group(1))
+                        if nbugs_found > 0:
+                            nbugs_total = int(matches.group(1))
+                            nbugs_remaining = nbugs_total
+                            assert ('Stores not made persistent properly' in lines[i+1]), f'Unexpected: "{lines[i+1]}"'
+                            is_perf = False
+                        i += 1
+                    elif perf_matches is not None:
+                        nbugs_total = int(perf_matches.group(1))
                         nbugs_remaining = nbugs_total
-                    assert('Stores not made persistent properly' in lines[i+1])
-                    i += 1
+                        is_perf = True
                 elif nbugs_remaining is not None and nbugs_remaining > 0:
                     # Finish getting the bug reports
                     # Add another one, end of function does the rest
@@ -331,22 +342,40 @@ class TraceParser:
                         split_word = 'at' if st == 0 else 'by'
                         sf_raw = lines[i+st].split(split_word)[-1].strip()
                         m = self.TRACE_EVENT_RE.match(sf_raw)
+                        if m is None:
+                            embed()
                         assert (m is not None), f'"{sf_raw}" does not conform!'
                         sf = {'function': m.group(1), 'file': m.group(2), 'line': int(m.group(3))}
                         frames += [sf]; st += 1
 
                     bug_report = f'{lines[i].strip()} {lines[i+st].strip()}'
                     i += st
-                    matches = bug_re.match(bug_report)
-                    assert (matches is not None), f'"{bug_report}" does not match "{bug_re}"'
-                    bug_no = int(matches.group(1))
-                    addr = int(matches.group(2), base=16)
-                    size = int(matches.group(3))
-                    state = matches.group(4)
+                    bug = None
+                    bug_no = None
 
-                    bug = TraceEvent(state=state, address=addr, length=size, 
-                                     event='ASSERT_PERSISTED', timestamp=timestamp,
-                                     is_bug=True, stack=frames, **frames[0])
+                    if not is_perf:
+                        matches = bug_re.match(bug_report)
+                        assert (matches is not None), f'"{bug_report}" does not match "{bug_re}"'
+                        bug_no = int(matches.group(1))
+                        addr = int(matches.group(2), base=16)
+                        size = int(matches.group(3))
+                        state = matches.group(4)
+
+                        bug = TraceEvent(state=state, address=addr, length=size, 
+                                        event='ASSERT_PERSISTED', 
+                                        timestamp=timestamp,
+                                        is_bug=True, stack=frames, **frames[0])
+                    else:
+                        matches = perf_re.match(bug_report)
+                        assert (matches is not None), f'"{bug_report}" does not match "{perf_re}"'
+                        bug_no = int(matches.group(1))
+                        addr = int(matches.group(2), base=16)
+                        size = int(matches.group(3))
+
+                        bug = TraceEvent(address=addr, length=size, event='REQUIRED_FLUSH', 
+                                         timestamp=timestamp, is_bug=True, 
+                                         stack=frames, **frames[0])
+
                     report.add_trace_event(bug)
                     timestamp += 1
 
@@ -355,7 +384,10 @@ class TraceParser:
                     assert(bug_no == last_bug_no + 1)
                     last_bug_no = bug_no
 
-                    nbugs_remaining -= 1    
+                    nbugs_remaining -= 1
+                    if nbugs_remaining == 0 and not is_perf:
+                        nbugs_total = None
+                        nbugs_remaining = None
                 else:
                     # End of interesting stuff.
                     break

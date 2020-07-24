@@ -32,14 +32,56 @@ configure_file(testconfig.sh ${CMAKE_CURRENT_BINARY_DIR})
 # Issue: https://github.com/pmem/issues/issues/452
 # Issue: https://github.com/pmem/issues/issues/458
 # Issue: https://github.com/pmem/issues/issues/459
+
+
 # Issue: https://github.com/pmem/issues/issues/460
+# pmem_memmove/TEST0, TEST1, TEST2, TEST3, TEST4, TEST5, TEST6, TEST7, TEST8, TEST9, TEST10, TEST11
+add_pmdk_unit_test(TEST_CASE pmem_memmove
+                   TEST_FILE TEST0
+                   COMMIT_HASH 0fd509d73
+                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+                   PMDK_TARGET VALIDATION_PMDK)
+
+
 # Issue: https://github.com/pmem/issues/issues/461
+# Weirdly, reporting a performance issue.
+# Status: 
+add_pmdk_unit_test(TEST_CASE pmem_memset
+                   TEST_FILE TEST1
+                   COMMIT_HASH 0fd509d73
+                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+                   PMDK_TARGET VALIDATION_PMDK)
+
 # Issue: https://github.com/pmem/issues/issues/463
+# add_pmdk_unit_test(TEST_CASE pmempool_sync
+#                    TEST_FILE TEST0
+#                    COMMIT_HASH 0fd509d73
+#                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+#                    PMDK_TARGET VALIDATION_PMDK)
+
+
 # Issue: https://github.com/pmem/issues/issues/465
+# libpmempool_api/TEST1, TEST10, TEST11, TEST13
+# add_pmdk_unit_test(TEST_CASE libpmempool_sync
+#                    TEST_FILE TEST0
+#                    COMMIT_HASH 0fd509d73
+#                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+#                    PMDK_TARGET VALIDATION_PMDK)
+
+
 # Issue: https://github.com/pmem/issues/issues/466
+# Status: 
+add_pmdk_unit_test(TEST_CASE libpmempool_sync
+                   TEST_FILE TEST0
+                #    COMMIT_HASH 0fd509d73
+                   COMMIT_HASH 9a1651b11
+                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+                   PMDK_TARGET VALIDATION_PMDK)
+
 # Issue: https://github.com/pmem/issues/issues/535
 
 # Issue: https://github.com/pmem/issues/issues/585
+# Status: requires pmempool
 # add_pmdk_unit_test(TEST_CASE rpmemd_db
 #                    TEST_FILE TEST0
 #                    COMMIT_HASH 60e24d2 
@@ -68,6 +110,7 @@ add_pmdk_unit_test(TEST_CASE obj_memops
                    PMDK_TARGET VALIDATION_PMDK)
 
 # Issue: https://github.com/pmem/issues/issues/945
+# Status: PASS
 add_pmdk_unit_test(TEST_CASE pmem_memset 
                    TEST_FILE TEST0
                    TEST_PATCH pmem_memset_TEST0_e71dfa41b.patch
