@@ -33,6 +33,13 @@ struct AddressInfo {
     bool isSingleCacheLine(void) const;
     bool overlaps(const AddressInfo &other) const;
     bool operator==(const AddressInfo &other) const;
+
+    std::string str() const {
+        std::stringstream buffer;
+        buffer << "<AddressInfo: addr=" << address << 
+            " len=" << length << ">";
+        return buffer.str();
+    }
 };
 
 /**

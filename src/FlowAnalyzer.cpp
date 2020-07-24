@@ -54,6 +54,11 @@ PmDesc::PmDesc(Module &m) {
 void PmDesc::addKnownPmValue(Value *pmv) {
     std::unordered_set<const llvm::Value *> ptsSet;
     assert(getPointsToSet(pmv, ptsSet) && "could not get!");
+    if (ptsSet.empty()) {
+        // This happens for allocation sites I believe. 
+        // -- inttoptr too
+        ptsSet.insert(pmv);
+    }
     assert(ptsSet.size() && "no points to!");
 
     if (isa<GlobalValue>(pmv)) pm_globals_.insert(ptsSet.begin(), ptsSet.end());
@@ -62,7 +67,11 @@ void PmDesc::addKnownPmValue(Value *pmv) {
 
 bool PmDesc::pointsToPm(llvm::Value *pmv) {
     std::unordered_set<const llvm::Value *> ptsSet;
-    assert(getPointsToSet(pmv, ptsSet) && "could not get!");
+    bool res = getPointsToSet(pmv, ptsSet);
+    if (!res) {
+        errs() << "COULD NOT GET: " << *pmv << "\n";
+    }
+    assert(res && "could not get!");
 
     std::unordered_set<const llvm::Value *> pm_values;
     pm_values.insert(pm_locals_.begin(), pm_locals_.end());
@@ -141,7 +150,8 @@ FnContext::Shared FnContext::doReturn(ReturnInst *ri) {
     FnContext::Shared p = parent_;
     // Propagate up PM values
     if (Value *v = ri->getReturnValue()) {
-        if (pm_.pointsToPm(v)) {
+        // Integers cannot point to anything.
+        if (v->getType()->isPointerTy() && pm_.pointsToPm(v)) {
             p->pm_.addKnownPmValue(callStack_.back());
         }
     }
@@ -196,19 +206,25 @@ ContextBlock::Shared ContextBlock::create(FnContext::Shared ctx,
     node->first = first;
     node->last = first;
     node->traceInst = trace;
+    errs() << "CREATE BEGIN ------\n";
 
     // -- Scroll down to find the last instruction.
     while (Instruction *tmp = node->last->getNextNonDebugInstruction()) {
+        // This makes sure the call is also the last instruction, as 
+        // it should be.
+        node->last = tmp;
         if (CallBase *cb = dyn_cast<CallBase>(tmp)) {
             Function *f = cb->getCalledFunction();
-            if (f && !f->isDeclaration() && !f->isIntrinsic()) break;
-        }
-        node->last = tmp;
+            if (f && !f->isDeclaration() && !f->isIntrinsic()) {
+                errs() << "BREAK\n";
+                break;
+            }
+        }  
     }
 
-    errs() << "------\n";
+    
     errs() << node->str() << "\n";
-    errs() << "------\n";
+    errs() << "CREATE END ------\n";
 
     return node;
 }
@@ -223,7 +239,7 @@ ContextBlock::Shared ContextBlock::create(const BugLocationMapper &mapper,
         const LocationInfo &callee = te.callstack[i-1];
 
         // errs() << "CALLER: " << caller.str() << "\n";
-        // errs() << "CALLEE: " << callee.str() << "\n";
+        errs() << "CALLEE: " << callee.str() << "\n";
 
         if (!caller.valid() || !mapper.contains(caller)) {
             continue;
@@ -231,9 +247,13 @@ ContextBlock::Shared ContextBlock::create(const BugLocationMapper &mapper,
 
         // The location in the caller calls the function of the callee
 
-        std::list<Instruction*> possibleCallSites;
+        std::list<CallBase*> possibleCallSites;
+
         for (auto *inst : mapper[caller]) {
-            possibleCallSites.push_back(inst);
+            if (auto *cb = dyn_cast<CallBase>(inst)) {
+                errs() << "POSSIBLE: " << *cb << "\n";
+                possibleCallSites.push_back(cb);
+            }
         }
 
         assert(possibleCallSites.size() > 0 && "don't know how to handle!");
@@ -379,6 +399,7 @@ ContextGraph<T>::constructSuccessors(ContextGraph<T>::GraphNodePtr node) {
      * This case doesn't make any sense, so we will fail hard.
      */
     else {
+        errs() << "NONSENSE:" << *last << "\n";
         assert(false && "wat");
     }
 

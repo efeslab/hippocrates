@@ -1,4 +1,5 @@
 #include "BugReports.hpp"
+#include "PassUtils.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -228,9 +229,28 @@ std::list<Value*> TraceEvent::pmValues(const BugLocationMapper &mapper) const {
             }
             case GENERIC: {
                 switch (type) {
-                    case STORE:
-                    case FLUSH:
+                    case STORE: {
+                        assert(false && "DO ME");
+                        auto *cb = dyn_cast<CallBase>(i);
+                        assert(cb && "bad trace!");
+                        Function *f = utils::getFlush(cb);
+                        assert(f && "bad trace!");
+                        pmAddrs.push_back(cb->getArgOperand(0));
+                        break;
+                    }  
+                    case FLUSH: {
+                        auto *cb = dyn_cast<CallBase>(i);
+                        assert(cb && "bad trace!");
+                        Function *f = utils::getFlush(cb);
+                        assert(f && "bad trace!");
+                        pmAddrs.push_back(cb->getArgOperand(0));
+                        break;
+                    }        
                     default:
+                        for (auto &ai : addresses) {
+                            errs() << ai.str() << "\n";
+                        }
+                        errs() << *i << "\n";
                         assert(false && "wat");
                         break;
                 }
