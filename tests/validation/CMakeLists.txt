@@ -76,8 +76,7 @@ add_pmdk_unit_test(TEST_CASE pmem_memmove
 
 
 # Issue: https://github.com/pmem/issues/issues/461
-# Weirdly, reporting a performance issue.
-# Status: 
+# Status: REPRO'D
 add_pmdk_unit_test(TEST_CASE pmem_memset
                    TEST_FILE TEST1
                    COMMIT_HASH 0fd509d73

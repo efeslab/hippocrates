@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 3.4.3)
 project(PMFixer)
 
-include("${CMAKE_SOURCE_DIR}/cmake/functions.cmake")
 
 # This will find the shared LLVM build.
 find_package(LLVM 8.0 REQUIRED CONFIG)
@@ -16,6 +15,7 @@ include_directories(${LLVM_INCLUDE_DIRS})
 
 add_subdirectory(deps)
 
+include("${CMAKE_SOURCE_DIR}/cmake/functions.cmake")
 # -- This sets these variables so that they're available in the lower scope.
 
 get_property(YAMLCPP_LIBS GLOBAL PROPERTY yaml_cpp_lib_dir)

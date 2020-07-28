@@ -42,7 +42,7 @@ function(add_pmdk_unit_test)
     endif()
 
     # 1. Checkout
-    set(EXTRA_FLAGS "-g -O0 -Wno-error")
+    set(EXTRA_FLAGS "-g -O0 -Wno-error -DUSE_VALGRIND=1 -I${PMCHK_INCLUDE_DIR}")
     add_custom_target("${FN_ARGS_TARGET}_checkout"
                       COMMAND git checkout ${FN_ARGS_COMMIT_HASH}
                       COMMAND git clean -fxd
