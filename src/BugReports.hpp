@@ -25,6 +25,8 @@ struct AddressInfo {
     uint64_t address;
     uint64_t length;
 
+    AddressInfo() : address(0), length(0) {}
+
     // Helpers -- both inclusive.
     uint64_t start(void) const { return address; }
     uint64_t end(void) const { return address + length - 1llu; }

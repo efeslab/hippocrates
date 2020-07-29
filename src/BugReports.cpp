@@ -331,13 +331,14 @@ void TraceInfoBuilder::processEvent(TraceInfo &ti, YAML::Node event) {
         case TraceEvent::STORE:
         case TraceEvent::FLUSH:
         case TraceEvent::ASSERT_PERSISTED:
-        case TraceEvent::REQUIRED_FLUSH:
+        case TraceEvent::REQUIRED_FLUSH: {
             AddressInfo ai;
             ai.address = event["address"].as<uint64_t>();
             ai.length = event["length"].as<uint64_t>();
             e.addresses.push_back(ai);
             break;
-        case TraceEvent::ASSERT_ORDERED:
+        }    
+        case TraceEvent::ASSERT_ORDERED: {
             AddressInfo a, b;
             a.address = event["address_a"].as<uint64_t>();
             a.length = event["length_a"].as<uint64_t>();
@@ -346,6 +347,7 @@ void TraceInfoBuilder::processEvent(TraceInfo &ti, YAML::Node event) {
             e.addresses.push_back(a);
             e.addresses.push_back(b);
             break;
+        } 
         default:
             break;
     }

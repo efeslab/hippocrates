@@ -36,7 +36,7 @@ function(check_wllvm)
     string(FIND ${CMAKE_CXX_COMPILER} "wllvm++" CXX_WLLVM)
 
     if (${C_WLLVM} EQUAL -1 OR ${CXX_WLLVM} EQUAL -1)
-        message(FATAL_ERROR "Must set wllvm and wllvm++ as C and CXX compiler.")
+        message(FATAL_ERROR "Must set wllvm and wllvm++ as C and CXX compiler.\nCurrently ${C_WLLVM} and ${CXX_WLLVM}")
     endif()
 
     # Ensure environment variables are set.

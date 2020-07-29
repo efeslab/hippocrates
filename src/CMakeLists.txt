@@ -20,3 +20,5 @@ target_include_directories(PMFIXER PUBLIC ${YAMLCPP_INCLUDE} ${ANDERSEN_INCLUDE}
 target_link_libraries(PMFIXER PUBLIC yaml-cpp -Wl,-rpath=${YAMLCPP_LIBS} 
                                      Andersen -Wl,-rpath=${ANDERSEN_LIB})
 target_compile_options(PMFIXER PUBLIC "-fPIC")
+
+add_subdirectory(intrinsic)

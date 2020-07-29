@@ -85,12 +85,12 @@ function(add_pmdk_unit_test)
                       COMMAND extract-bc "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}"
                                 -o "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}.bc"
                       COMMAND cp -uv "${LIB_ROOT}/*.so" "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}"
-                      COMMAND extract-bc -o ${TARGET_BIN}/libpmem.so.1.bc ${TARGET_BIN}/libpmem.so.1
-                      COMMAND extract-bc -o ${TARGET_BIN}/libpmemobj.so.1.bc ${TARGET_BIN}/libpmemobj.so.1
                       COMMAND cp -urv "${SRC_TOOLS}" "${TARGET_BIN}"
                       COMMAND cp -v "${SRC_TOOLS}/match" "${CMAKE_CURRENT_BINARY_DIR}"
-                      COMMAND ln -vf "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/libpmem.so" "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/libpmem.so.1"
-                      COMMAND ln -vf "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/libpmemobj.so" "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/libpmemobj.so.1"
+                      COMMAND ln -vf "${TARGET_BIN}/libpmem.so" "${TARGET_BIN}/libpmem.so.1"
+                      COMMAND ln -vf "${TARGET_BIN}/libpmemobj.so" "${TARGET_BIN}/libpmemobj.so.1"
+                      COMMAND extract-bc -o ${TARGET_BIN}/libpmem.so.1.bc ${TARGET_BIN}/libpmem.so.1
+                      COMMAND extract-bc -o ${TARGET_BIN}/libpmemobj.so.1.bc ${TARGET_BIN}/libpmemobj.so.1
                       COMMAND patchelf --set-rpath "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}" 
                                 "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}"
                       DEPENDS "${FN_ARGS_TARGET}_build"
