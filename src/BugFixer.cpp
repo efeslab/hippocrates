@@ -60,8 +60,17 @@ bool BugFixer::addFixToMapping(Instruction *i, FixDesc desc) {
 bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
     bool missingFlush = false;
     bool missingFence = true;
-    // Need this so we know where the eventual fix will go.
-    int lastOpIndex = -1;
+    // Need this so we know where the eventual fixes will go.
+    std::list<int> opIndices;
+    // For cumulative stores.
+    struct AddressInfo addrInfo;
+    errs() << "\t\tCHECK: " << te.addresses.front().str() << "\n";
+
+    /**
+     * This can be larger than a cacheline, as it can be a bug report at the
+     * end of a program.
+     */
+    auto &bugAddr = te.addresses.front();
 
     // First, determine which case we are in by going backwards.
     for (int i = bug_index - 1; i >= 0; i--) {
@@ -71,26 +80,41 @@ bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
         assert(event.addresses.size() <= 1 && 
                 "Don't know how to handle more addresses!");
         if (event.addresses.size()) {
-            errs() << "Address: " << event.addresses.front().address << "\n";
-            errs() << "Length:  " << event.addresses.front().length << "\n";
-            assert(event.addresses.front().isSingleCacheLine() && 
-                    "Don't know how to handle multi-cache line operations!");
+            auto &addr = event.addresses.front();
 
-            if (event.type == TraceEvent::STORE &&
-                event.addresses.front() == te.addresses.front()) {
+            if (event.type == TraceEvent::STORE && addr == bugAddr) {
+                assert(addr.isSingleCacheLine() && "don't know how to handle!");
+                /* This is the easy case, it's clear that none of the range was
+                persisted. */
+                errs() << "STORE: " << addr.str() << "\n";
                 missingFlush = true;
-                lastOpIndex = i;
+                opIndices.push_back(i);
                 break;
+            } else if (event.type == TraceEvent::STORE && addr.overlaps(bugAddr)) {
+                assert(addr.isSingleCacheLine() && "don't know how to handle!");
+                /* In this case, we need to validate that there are a bunch of stores that
+                    when summed together */
+                errs() << "STORE OVERLAP: " << addr.str() << "\n";
+                addrInfo += addr;
+                opIndices.push_back(i);
+                if (addrInfo == bugAddr) {
+                    errs() << "\tCOMPLETE\n";
+                    missingFlush = true;
+                    break;
+                } else {
+                    errs() << "\tACCUMULATED: " << addrInfo.str() << "\n";
+                }
             } else if (event.type == TraceEvent::FLUSH &&
                         event.addresses.front().overlaps(te.addresses.front())) {
-                errs() << "Overlaps Address: " << te.addresses.front().address << "\n";
-                errs() << "Overlaps Lenght: " << te.addresses.front().length << "\n";
+                assert(addr.isSingleCacheLine() && "don't know how to handle!");
+                errs() << "FLUSH: " << addr.str() << "\n";
                 assert(missingFence == true &&
                         "Shouldn't be a bug in this case, has flush and fence");
-                lastOpIndex = i;
+                opIndices.push_back(i);
                 break;
             }
         } else if (event.type == TraceEvent::FENCE) {
+            errs() << "FENCE\n";
             missingFence = false;
             missingFlush = true;
         }
@@ -98,41 +122,56 @@ bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
 
     errs() << "\t\tMissing Flush? : " << missingFlush << "\n";
     errs() << "\t\tMissing Fence? : " << missingFence << "\n";
-    errs() << "\t\tLast Operation : " << lastOpIndex << "\n";
+    errs() << "\t\tNum Ops : " << opIndices.size() << "\n";
 
-    assert(lastOpIndex >= 0 && "Has to had been assigned at least!");
+    assert(opIndices.size() && "Has to had been assigned at least!");
 
-    // Find where the last operation was.
-    const TraceEvent &last = trace_[lastOpIndex];
     bool added = false;
-    if (mapper_.contains(last.location)) {
-        errs() << "Fix direct!\n";
-        errs() << "\t\tLocation : " << last.location.str() << "\n";
-        assert(mapper_[last.location].size() && "can't have no instructions!");
-        for (Instruction *i : mapper_[last.location]) {
-            assert(i && "can't be null!");
-            errs() << "\t\tInstruction : " << *i << "\n";
-            
-            bool res = false;
-            if (missingFlush && missingFence) {
-                res = addFixToMapping(i, FixDesc(ADD_FLUSH_AND_FENCE, last.callstack));
-            } else if (missingFlush) {
-                res = addFixToMapping(i, FixDesc(ADD_FLUSH_ONLY, last.callstack));
-            } else if (missingFence) {
-                res = addFixToMapping(i, FixDesc(ADD_FENCE_ONLY, last.callstack));
-            }
+    // Foreach, if multiple stores need be fixed.
+    for (int lastOpIndex : opIndices) {
+        // Find where the last operation was.
+        const TraceEvent &last = trace_[lastOpIndex];
+        if (mapper_.contains(last.location)) {
+            errs() << "Fix direct!\n";
+            errs() << "\t\tLocation : " << last.location.str() << "\n";
+            assert(mapper_[last.location].size() && "can't have no instructions!");
+            for (Instruction *i : mapper_[last.location]) {
+                assert(i && "can't be null!");
+                errs() << "\t\tInstruction : " << *i << "\n";
+                            
+                bool multiline = !last.addresses.front().isSingleCacheLine();
+                assert(!multiline && 
+                        "Don't know how to handle multi-cache line operations!");
+                
+                bool res = false;
+                if (missingFlush && missingFence) {
+                    res = addFixToMapping(i, FixDesc(ADD_FLUSH_AND_FENCE, last.callstack));
+                } else if (missingFlush) {
+                    res = addFixToMapping(i, FixDesc(ADD_FLUSH_ONLY, last.callstack));
+                } else if (missingFence) {
+                    res = addFixToMapping(i, FixDesc(ADD_FENCE_ONLY, last.callstack));
+                }
 
-            // Have to do it this way, otherwise it short-circuits.
+                // Have to do it this way, otherwise it short-circuits.
+                added = res || added;
+            }
+        } else {
+            errs() << "Forced indirect fix!\n";
+            for (const LocationInfo &li : last.callstack) {
+                errs() << li.str() << " contains? " << mapper_.contains(li) << "\n";
+            }
+            // Here, we can take advantage of the persistent subprogram thing.
+            auto desc = FixDesc(ADD_FLUSH_AND_FENCE, last.callstack);
+            bool res = raiseFixLocation(nullptr, desc);
+            if (res) errs() << "\tAdded high-level fix!\n";
+            else errs() << "\tDid not add a fix!\n";
             added = res || added;
         }
-    } else {
-        errs() << "Forced indirect fix!\n";
-        for (const LocationInfo &li : last.callstack) {
-            errs() << li.str() << " contains? " << mapper_.contains(li) << "\n";
-        }
-        assert(false && "finish!");
+
     }
-    
+
+    if (added) errs() << "-----------ADDED SOMEWHERE\n";
+    else errs() <<"------------NO FIX\n";
     
     return added;      
 }
@@ -257,8 +296,6 @@ bool BugFixer::computeAndAddFix(const TraceEvent &te, int bug_index) {
             errs() << "\tPersistence Bug (Universal Correctness)!\n";
             assert(te.addresses.size() == 1 &&
                 "A persist assertion should only have 1 address!");
-            assert(te.addresses.front().isSingleCacheLine() &&
-                "Don't know how to handle non-standard ranges which cross lines!");
             return handleAssertPersisted(te, bug_index);
         }
         case TraceEvent::REQUIRED_FLUSH: {
@@ -333,7 +370,7 @@ bool BugFixer::fixBug(FixGenerator *fixer, Instruction *i, FixDesc desc) {
     return true;
 }
 
-bool BugFixer::raiseFixLocation(llvm::Instruction *i, const FixDesc &desc) {
+bool BugFixer::raiseFixLocation(llvm::Instruction *startInst, const FixDesc &desc) {
     bool raised = false;
 
     /**
@@ -349,6 +386,13 @@ bool BugFixer::raiseFixLocation(llvm::Instruction *i, const FixDesc &desc) {
     Instruction *curr = nullptr;
 
     while (idx < stack.size()) {
+        if (!startInst && !mapper_.contains(stack[idx])) {
+            errs() << "LI: " << stack[idx].str() << " NOT CONTAINED\n";
+            raised = true;
+            idx++;
+            continue;
+        }
+
         auto &instList = mapper_[stack[idx]];
         if (instList.size() > 1) {
             // Make sure they're all in the same function, cuz then it's fine.
@@ -359,24 +403,26 @@ bool BugFixer::raiseFixLocation(llvm::Instruction *i, const FixDesc &desc) {
         
         curr = instList.front();
 
-        errs() << "LI: " << stack[idx].str() << "\n";
+        
         Function *f = curr->getFunction();
         if (immutableFns_.count(f)) {
             // Optimization 1: If it is immutable.
+            errs() << "LI: " << stack[idx].str() << " RAISING ABOVE IMMUTABLE\n";
             raised = true;
             idx++;
         } else {
+            errs() << "LI: " << stack[idx].str() << " NOW HAS THE FIX\n";
             break;
         }
     }
 
+    bool success = false;
     if (raised) {
-        bool success = addFixToMapping(curr, 
-            FixDesc(ADD_PERSIST_CALLSTACK_OPT, stack, idx));
-        assert(success && "wat!");
+        auto desc = FixDesc(ADD_PERSIST_CALLSTACK_OPT, stack, idx);
+        success = addFixToMapping(curr, desc);
     }
 
-    return raised;
+    return success;
 }
 
 bool BugFixer::runFixMapOptimization(void) {

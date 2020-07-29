@@ -20,20 +20,50 @@ add_custom_target(VALIDATION_PMDK : # no-op, only if a dependency
 
 configure_file(testconfig.sh ${CMAKE_CURRENT_BINARY_DIR})
 
+################################################################################
+# ALL ISSUES AND TESTS
+################################################################################
+
 # Issue: https://github.com/pmem/issues/issues/440
 # obj_list_recovery/TEST0, TEST1, TEST2
+# Status: Need to copy tool.
+#add_pmdk_unit_test(TEST_CASE obj_list_recovery
+#                   TEST_FILE TEST0
+#                   COMMIT_HASH 8bbb0af9c
+#                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+#                   PMDK_TARGET VALIDATION_PMDK)
 
 # Issue: https://github.com/pmem/issues/issues/441
 # obj_locks/TEST0
+add_pmdk_unit_test(TEST_CASE obj_locks
+                   TEST_FILE TEST0
+                   COMMIT_HASH 8bbb0af9c
+                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+                   PMDK_TARGET VALIDATION_PMDK)
 
 # Issue: https://github.com/pmem/issues/issues/442
 # obj_persist_count/TEST0, TEST1
+add_pmdk_unit_test(TEST_CASE obj_persist_count
+                   TEST_FILE TEST0
+                   COMMIT_HASH 8bbb0af9c
+                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+                   PMDK_TARGET VALIDATION_PMDK)
 
 # Issue: https://github.com/pmem/issues/issues/444
 # obj_pvector/TEST0
+add_pmdk_unit_test(TEST_CASE obj_pvector
+                   TEST_FILE TEST0
+                   COMMIT_HASH 8bbb0af9c
+                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+                   PMDK_TARGET VALIDATION_PMDK)
 
 # Issue: https://github.com/pmem/issues/issues/446
 # obj_redo_log/TEST0, TEST1
+add_pmdk_unit_test(TEST_CASE obj_redo_log
+                   TEST_FILE TEST0
+                   COMMIT_HASH 8bbb0af9c
+                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+                   PMDK_TARGET VALIDATION_PMDK)
 
 # Issue: https://github.com/pmem/issues/issues/447
 # obj_toid/TEST0
@@ -48,26 +78,55 @@ add_pmdk_unit_test(TEST_CASE obj_toid
 
 # Issue: https://github.com/pmem/issues/issues/448
 # obj_tx_alloc/TEST0
+add_pmdk_unit_test(TEST_CASE obj_tx_alloc
+                   TEST_FILE TEST0
+                   COMMIT_HASH 8bbb0af9c
+                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+                   PMDK_TARGET VALIDATION_PMDK)
 
 # Issue: https://github.com/pmem/issues/issues/449
 # obj_tx_add_range/TEST0
+add_pmdk_unit_test(TEST_CASE obj_tx_add_range
+                   TEST_FILE TEST0
+                   COMMIT_HASH 8bbb0af9c
+                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+                   PMDK_TARGET VALIDATION_PMDK)
 
 # Issue: https://github.com/pmem/issues/issues/450
 # obj_tx_add_range_direct/TEST0
+add_pmdk_unit_test(TEST_CASE obj_tx_add_range_direct
+                   TEST_FILE TEST0
+                   COMMIT_HASH 8bbb0af9c
+                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+                   PMDK_TARGET VALIDATION_PMDK)
 
 # Issue: https://github.com/pmem/issues/issues/452
 # obj_constructor/TEST0, TEST2
+add_pmdk_unit_test(TEST_CASE obj_constructor
+                   TEST_FILE TEST0
+                   COMMIT_HASH 8bbb0af9c
+                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+                   PMDK_TARGET VALIDATION_PMDK)
 
 # Issue: https://github.com/pmem/issues/issues/458
 # pmemspoil/TEST0
+add_pmdk_unit_test(TEST_CASE pmemspoil
+                   TEST_FILE TEST0
+                   COMMIT_HASH 8bbb0af9c
+                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+                   PMDK_TARGET VALIDATION_PMDK)
 
 # Issue: https://github.com/pmem/issues/issues/459
 # pmem_memcpy/TEST0, TEST1, TEST2, TEST3 
-
+add_pmdk_unit_test(TEST_CASE pmem_memcpy
+                   TEST_FILE TEST0
+                   COMMIT_HASH 8bbb0af9c
+                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+                   PMDK_TARGET VALIDATION_PMDK)
 
 # Issue: https://github.com/pmem/issues/issues/460
 # pmem_memmove/TEST0, TEST1, TEST2, TEST3, TEST4, TEST5, TEST6, TEST7, TEST8, TEST9, TEST10, TEST11
-# Status: NO REPRO
+# Status: REPRO'D
 add_pmdk_unit_test(TEST_CASE pmem_memmove
                    TEST_FILE TEST0
                    COMMIT_HASH 0fd509d73
@@ -84,6 +143,7 @@ add_pmdk_unit_test(TEST_CASE pmem_memset
                    PMDK_TARGET VALIDATION_PMDK)
 
 # Issue: https://github.com/pmem/issues/issues/463
+# Status: needs pmempool
 # add_pmdk_unit_test(TEST_CASE pmempool_sync
 #                    TEST_FILE TEST0
 #                    COMMIT_HASH 0fd509d73
@@ -110,6 +170,7 @@ add_pmdk_unit_test(TEST_CASE libpmempool_sync
                    PMDK_TARGET VALIDATION_PMDK)
 
 # Issue: https://github.com/pmem/issues/issues/535
+# pmemobjcli/TEST0
 
 # Issue: https://github.com/pmem/issues/issues/585
 # Status: requires pmempool
@@ -127,7 +188,7 @@ add_pmdk_unit_test(TEST_CASE obj_first_next
                    PMDK_TARGET VALIDATION_PMDK)
 
 # Issue: https://github.com/pmem/issues/issues/942
-# Status: TIMEOUT
+# Status: REPRO'D
 add_pmdk_unit_test(TEST_CASE obj_mem
                    TEST_FILE TEST0
                    COMMIT_HASH e71dfa41b
@@ -168,6 +229,7 @@ add_pmdk_unit_test(TEST_CASE pmem_memset
 #                    PMDK_TARGET VALIDATION_PMDK)
 
 # Issue: https://github.com/pmem/issues/issues/1118
+# Status: 
 add_pmdk_unit_test(TEST_CASE obj_pmalloc_mt
                    TEST_FILE TEST1
                    COMMIT_HASH 7ff604b

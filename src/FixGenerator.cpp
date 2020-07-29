@@ -29,6 +29,20 @@ llvm::Function *FixGenerator::getSfenceDefinition() const {
     return sfence;
 }
 
+llvm::Function *FixGenerator::getPersistentIntrinsic(const char *name) const {
+    Function *fn = module_.getFunction(name);
+    assert(fn && "Could not find persistent intrinsic! Likely forgot to link with intrinsics library.");
+    return fn;
+}
+
+llvm::Function *FixGenerator::getPersistentMemcpy() const {
+    return getPersistentIntrinsic("PMFIXER_memcpy");
+}
+
+llvm::Function *FixGenerator::getPersistentMemset() const {
+    return getPersistentIntrinsic("PMFIXER_memset");
+}
+
 GlobalVariable *FixGenerator::createConditionVariable(Instruction *resetBefore, 
                                                       Instruction *setAt) {
     
@@ -266,14 +280,67 @@ Instruction *GenericFixGenerator::insertFence(Instruction *i) {
 
 Instruction *GenericFixGenerator::insertPersistentSubProgram(
     BugLocationMapper &mapper,
-    Instruction *i,
+    Instruction *startInst,
     const std::vector<LocationInfo> &callstack, 
     int idx) {
     
+    errs() << __PRETTY_FUNCTION__ << " BEGIN\n";
+
+    if (!mapper.contains(callstack[0])) {
+        assert(1 == idx && "don't know how to handle nested unknowns!");
+        auto *cb = dyn_cast<CallBase>(startInst);
+        assert(cb && "has to be calling something!");
+        Function *f = cb->getCalledFunction();
+        assert(f && "don't know what to do!");
+        if (f->getIntrinsicID() != Intrinsic::not_intrinsic) {
+            Function *newFn = nullptr;
+            switch (f->getIntrinsicID()) {
+                case Intrinsic::memcpy: {
+                    newFn = getPersistentMemcpy();
+                    break;
+                }
+                case Intrinsic::memset: {
+                    newFn = getPersistentMemset();
+                    break;
+                }
+                default: {
+                    assert(false && "unhandled!");
+                    break;
+                }
+            }
+
+            errs() << *newFn << "\n";
+            errs() << *cb << "\n";
+            // May need to do some casts.
+            IRBuilder<> builder(cb);
+            std::list<Value *> newArgs;
+            for (unsigned i = 0; i < newFn->arg_size(); ++i) {
+                // Get value
+                Value *op = cb->getArgOperand(i);
+                // Get new type
+                Argument *arg = newFn->arg_begin() + i;
+                // errs() << "\tARG:" << *arg << "\n";
+                Type *newType = arg->getType();
+                // Create the conversion
+                // errs() << "\tOP:" << *op << "\n";
+                // errs() << "\tTY:" << *newType << "\n";
+                Value *newOp = builder.CreateBitOrPointerCast(op, newType);
+                // Replace arg
+                cb->setArgOperand(i, newOp);
+            }
+
+            // Now, replace the call.
+            cb->setCalledFunction(newFn);
+            errs() << "cb:" << *cb << "\n";
+            return cb;
+        }
+    }
+
     Instruction *retInst = nullptr;
-    // errs() << "GFIN " << *i << "\n";
+    errs() << "GFIN " << *startInst << "\n";
     for (int i = 0; i < idx; ++i) {
-        // errs() << "GFLI " << callstack[i].str() << "\n";
+        errs() << "GFLI " << callstack[i].str() << "\n";
+
         auto &instLoc = mapper[callstack[i]];
         if (instLoc.size() > 1) {
             // Make sure they're all in the same function, cuz then it's fine.

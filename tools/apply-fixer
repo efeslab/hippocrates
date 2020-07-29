@@ -38,12 +38,21 @@ def run_pass_and_compile(bitcode_file, bug_report, output_file, keep_files):
         raise Exception(f'LLVM_COMPILER_PATH="{str(llvm_path)}"" does not exist!')
 
     # Do some setup before we create the temporary directory
+    # 0. link with the persistent memory intrinsics, the fixer needs them.
+    link_exe = llvm_path / 'llvm-link'
+    assert link_exe.exists()
+    pm_intrinsics = Path(r'${PMINTRINSICS_BITCODE}')
+    assert pm_intrinsics.exists(), f'${pm_intrinsics.name} does not exist! Bad build!'
+    link_arg_str_fn = lambda out: (f'{str(link_exe)} {str(bitcode_file)} '
+                                   f'{str(pm_intrinsics)} -o {str(out)}')
+
     # 1. opt to run the fixer
     opt_exe = llvm_path / 'opt'
     assert(opt_exe.exists())
 
-    opt_arg_str = (f'{str(opt_exe)} -load {str(pass_library)} -pm-bug-fixer '
-                   f' -trace-file {str(bug_report)} {str(bitcode_file)}')
+    opt_arg_str_fn = lambda bc: (f'{str(opt_exe)} -load {str(pass_library)} '
+                                 f'-pm-bug-fixer -trace-file {str(bug_report)} '
+                                 f'{str(bc)}')
     
     # 2. llc to compile the optimized bitcode
     llc_exe = llvm_path / 'llc'
@@ -61,19 +70,32 @@ def run_pass_and_compile(bitcode_file, bug_report, output_file, keep_files):
     with TemporaryDirectory() as tempdir:
         temppath = Path(tempdir)
         assert(temppath.exists())
-        bitcode_opt = temppath / 'fixed.bc' 
-        ret = subprocess.run(shlex.split(opt_arg_str), stdout=bitcode_opt.open('w'))
+        # 0. Link
+        bitcode_linked = temppath / 'linked.bc'
+        args = shlex.split(link_arg_str_fn(bitcode_linked))
+        ret = subprocess.run(args)
         ret.check_returncode()
+        assert bitcode_linked.exists(), 'nonsense!'
+
+        # 1. Fix
+        bitcode_opt = temppath / 'fixed.bc' 
+        args = shlex.split(opt_arg_str_fn(bitcode_linked))
+        ret = subprocess.run(args, stdout=bitcode_opt.open('w'))
+        ret.check_returncode()
+        assert bitcode_opt.exists(), 'nonsense!'
         
-        ret = subprocess.run(shlex.split(llc_arg_str_fn(bitcode_opt)))
+        # 2. Compile to machine code
+        args = shlex.split(llc_arg_str_fn(bitcode_opt))
+        ret = subprocess.run(args)
         ret.check_returncode()
         asm_path = temppath / 'fixed.s'
         assert(asm_path.exists())
 
-        ret = subprocess.run(shlex.split(clang_arg_str_fn(asm_path)))
+        # 3. Compile to executable.
+        args = shlex.split(clang_arg_str_fn(asm_path))
+        ret = subprocess.run(args)
         ret.check_returncode()
         assert(output_file.exists())
-
 
 
 def main(): 

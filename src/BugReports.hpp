@@ -36,6 +36,8 @@ struct AddressInfo {
     bool overlaps(const AddressInfo &other) const;
     bool operator==(const AddressInfo &other) const;
 
+    void operator+=(const AddressInfo &other);
+
     std::string str() const {
         std::stringstream buffer;
         buffer << "<AddressInfo: addr=" << address << 

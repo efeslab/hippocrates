@@ -152,6 +152,9 @@ class ToolRunner:
 
     def run(self):
         print(f'{self.exe_path}: {self.tool_type.name}')
+        assert self.exe_path.exists(), f'{self.exe_path.name} does not exist!'
+        assert self.bc_path.exists(), f'{self.bc_path.name} was not extracted!'
+
         if self.tool_type == ToolTypes.PMTEST:
             return self._run_pmtest()
         elif self.tool_type == ToolTypes.PMEMCHECK:
@@ -173,8 +176,8 @@ def get_test_list():
                     zip(exe_list, bc_list, tool_list)]
     for x, y, _ in test_list:
         assert (f'{str(x)}.bc' == str(y)), 'EXE list and BC list not matching up!!!'
-        assert x.exists(), f'{x} must be built!'
-        assert y.exists(), f'{y} must be extracted!'
+        # assert x.exists(), f'{x} must be built!'
+        # assert y.exists(), f'{y} must be extracted!'
 
     suites = set([x[0].parent.name for x in test_list] + ['all'])
 

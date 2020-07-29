@@ -35,6 +35,28 @@ bool AddressInfo::operator==(const AddressInfo &other) const {
     return address == other.address && length == other.length;
 }
 
+void AddressInfo::operator+=(const AddressInfo &other) {
+    if (length == 0) {
+        assert(!address && "bad construction!");
+        address = other.address;
+        length = other.length;
+        return;
+    }
+
+    // Combine ranges, ensure no gaps.
+    if (other.address < address) {
+        assert(other.end() + 1 >= address && "bad range!");
+    } else {
+        assert(end() + 1 >= other.address && "bad range!");
+    }
+
+    uint64_t newAddress = std::min(other.address, address);
+    uint64_t newLength = std::max(other.end(), end()) + 1 - newAddress;
+
+    address = newAddress;
+    length = newLength;
+}
+
 #pragma endregion
 
 #pragma region LocationInfo

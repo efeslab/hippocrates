@@ -22,6 +22,8 @@ namespace pmfix {
 class FixGenerator {
 private:
 
+    llvm::Function *getPersistentIntrinsic(const char *name) const;
+
 protected:
     llvm::Module &module_;
 
@@ -31,6 +33,10 @@ protected:
     llvm::Function *getClwbDefinition() const;
 
     llvm::Function *getSfenceDefinition() const; 
+
+    llvm::Function *getPersistentMemcpy() const;
+
+    llvm::Function *getPersistentMemset() const;
 
     /** PERF UTILITY
      * 
