@@ -5,4 +5,5 @@ add_test_executable(TARGET 000_SimplePerf
                     INCLUDE ${PMDK_INCLUDE}
                     EXTRA_LIBS pmem pthread
                     DEPENDS PMDK
-                    TOOL NONE)
+                    TOOL NONE
+                    SUITE PERF)

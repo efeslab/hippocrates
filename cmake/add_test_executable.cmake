@@ -8,7 +8,7 @@ function(add_test_executable)
     check_wllvm()
 
     set(options)                                                                   
-    set(oneValueArgs TARGET TOOL)                                                       
+    set(oneValueArgs TARGET TOOL SUITE)                                                       
     set(multiValueArgs SOURCES EXTRA_LIBS INCLUDE DEPENDS)                                         
     cmake_parse_arguments(FN_ARGS "${options}" "${oneValueArgs}"                   
                         "${multiValueArgs}" ${ARGN})
@@ -40,7 +40,7 @@ function(add_test_executable)
                                -o $<TARGET_FILE:${FN_ARGS_TARGET}>.bc
                        COMMENT "\textract-bc ${FN_ARGS_TARGET}")
     
-    append_tool_lists(TARGET ${FN_ARGS_TARGET} TOOL ${FN_ARGS_TOOL})
+    append_tool_lists(TARGET ${FN_ARGS_TARGET} TOOL ${FN_ARGS_TOOL} SUITE ${FN_ARGS_SUITE})
 
 endfunction()
 

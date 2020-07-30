@@ -31,23 +31,22 @@ class ToolTypes(Enum):
     NONE = auto()
 
 class ToolRunner:
-    def __init__(self, exe_path, bc_path, tool_type):
+    def __init__(self, target_name, exe_path, bc_path, tool_type, suite):
         assert_is_path(exe_path, bc_path)
         assert_is_type(tool_type, ToolTypes)
         self.pmemcheck_path = Path(r'${PMCHK_BIN_DIR}/valgrind')
         assert self.pmemcheck_path.exists(), f'{str(self.pmemcheck_path)} does not exist!'
+
         self.exe_path = exe_path
         self.bc_path = bc_path
         self.tool_type = tool_type
-        self.suite = exe_path.parent.name
+        self.suite = suite
+        self.target = target_name
 
         fixed_postfix = '.fixed'
         if tool_type == ToolTypes.PMDK_UNIT_TEST:
             fixed_postfix = '.static-debug'
         self.exe_fixed_path = Path(str(exe_path) + fixed_postfix)
-
-    def target(self):
-        return self.exe_path.name
 
     def in_suite(self, suite):
         if suite == 'all' or suite == self.suite:
@@ -169,32 +168,35 @@ def get_test_list():
         List of:
             (test_executable, test_bitcode, tool_to_use)
     '''
-    exe_list = r'${TEST_EXE_LIST}'.split(';')
-    bc_list = r'${TEST_BC_LIST}'.split(';')
-    tool_list = r'${TEST_TOOL_LIST}'.split(';')
-    test_list = [ (Path(x), Path(y), ToolTypes[z]) for x, y, z in 
-                    zip(exe_list, bc_list, tool_list)]
-    for x, y, _ in test_list:
+    target_list = r'${TEST_TARGET_LIST}'.split(';')
+    exe_list = [ Path(x) for x in r'${TEST_EXE_LIST}'.split(';') ]
+    bc_list = [ Path(x) for x in r'${TEST_BC_LIST}'.split(';') ]
+    tool_list = [ ToolTypes[x] for x in r'${TEST_TOOL_LIST}'.split(';') ]
+    suite_list = [ x.lower() for x in r'${TEST_SUITE_LIST}'.split(';') ]
+
+    # Do some sanity checking 
+
+    for x, y in zip(exe_list, bc_list):
         assert (f'{str(x)}.bc' == str(y)), 'EXE list and BC list not matching up!!!'
         # assert x.exists(), f'{x} must be built!'
         # assert y.exists(), f'{y} must be extracted!'
+    
+    for s in suite_list:
+        assert s, 'Suite cannot be empty!'
 
-    suites = set([x[0].parent.name for x in test_list] + ['all'])
+    suites = set(suite_list + ['all'])
 
-    return test_list, sorted(list(suites))
+    test_list = list(zip(target_list, exe_list, bc_list, tool_list, suite_list))
 
-def run_test(exe, bc, tool, suite):
+    return test_list, sorted(target_list), sorted(list(suites))
+
+def run_test(runner):
     # 1. Run the test and gather the initial trace.
-    r = ToolRunner(exe, bc, tool)
-    if not r.in_suite(suite):
-        print(f'{r.target()} in suite {r.suite}, skipping')
-        return
-
-    success = r.run()
+    success = runner.run()
     if success:
-        print(f'1. {r.target()} ran successfully.')
+        print(f'1. {runner.target} ran successfully.')
     else:
-        raise Exception(f'{r.target()} failed!')
+        raise Exception(f'{runner.target} failed!')
     
     # 2. Parse the trace.
 
@@ -208,20 +210,37 @@ def run_test(exe, bc, tool, suite):
 
 
 def run_all(args, test_list):
-    for exe, bc, tool in test_list:
-        run_test(exe, bc, tool, args.suite)
+    for target, exe, bc, tool, suite in test_list:
+        r = ToolRunner(target, exe, bc, tool, suite)
+        if not r.in_suite(args.suite):
+            print(f'{r.target} in suite {r.suite}, skipping')
+        else:
+            run_test(r)
+
+def run_target(args, test_list):
+    for target, exe, bc, tool, suite in test_list:
+        r = ToolRunner(target, exe, bc, tool, suite)
+        if r.target == args.target:
+            run_test(r)
 
 def main():
-    test_list, suites = get_test_list()
+    test_list, targets, suites = get_test_list()
 
     parser = ArgumentParser(description=(r'Verify the ${CMAKE_PROJECT_NAME} by '
         'running tests, applying fixes, then verifying all the bugs are gone.'))
     parser.add_argument('suite', type=str, choices=suites, default='all',
                         help='Which set of tests to run')
+    parser.add_argument('--target', '-t', type=str, choices=targets, 
+                        help='Which target to run.')
     args = parser.parse_args()
 
-    run_all(args, test_list)
+    if args.target is not None:
+        print(f'Running target "{args.target}"')
+        run_target(args, test_list)
+    else:
+        print(f'Running suite "{args.suite}"')
+        run_all(args, test_list)
 
 
 if __name__ == '__main__':
-    main()
+    main()  

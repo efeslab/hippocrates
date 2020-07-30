@@ -6,13 +6,15 @@
 ################################################################################
 
 # For the verifier later.
+set(TEST_TARGET_LIST "" CACHE INTERNAL "List of generated test target names")
 set(TEST_EXE_LIST "" CACHE INTERNAL "List of all generated tests (executables)")
 set(TEST_BC_LIST "" CACHE INTERNAL "List of all generated tests (bitcodes)")
 set(TEST_TOOL_LIST "" CACHE INTERNAL "List of tools to use for each test")
+set(TEST_SUITE_LIST "" CACHE INTERNAL "List of suites that each test belongs to")
 
 function(append_tool_lists)
     set(options)                                                                   
-    set(oneValueArgs TARGET TOOL)                                                       
+    set(oneValueArgs TARGET TOOL SUITE)                                                       
     set(multiValueArgs)                                         
     cmake_parse_arguments(FN_ARGS "${options}" "${oneValueArgs}"                   
                          "${multiValueArgs}" ${ARGN})
@@ -20,12 +22,20 @@ function(append_tool_lists)
     if (FN_ARGS_TOOL STREQUAL "NONE")
         message(WARNING "${FN_ARGS_TARGET} tool set to NONE, not adding to validation script.")
     else()
+        list(APPEND TEST_TARGET_LIST "${FN_ARGS_TARGET}")
+        set(TEST_TARGET_LIST ${TEST_TARGET_LIST} CACHE INTERNAL "")
+
         list(APPEND TEST_EXE_LIST "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}")
         set(TEST_EXE_LIST ${TEST_EXE_LIST} CACHE INTERNAL "")
+        
         list(APPEND TEST_BC_LIST "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}.bc")
         set(TEST_BC_LIST ${TEST_BC_LIST} CACHE INTERNAL "")
+        
         list(APPEND TEST_TOOL_LIST "${FN_ARGS_TOOL}")
         set(TEST_TOOL_LIST ${TEST_TOOL_LIST} CACHE INTERNAL "")
+        
+        list(APPEND TEST_SUITE_LIST "${FN_ARGS_SUITE}")
+        set(TEST_SUITE_LIST ${TEST_SUITE_LIST} CACHE INTERNAL "")
     endif()
 endfunction()
 
