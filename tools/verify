@@ -113,19 +113,34 @@ class ToolRunner:
 
         # embed()
 
+        # --- Get the required libraries
         ldd_args = shlex.split(f'ldd {str(self.exe_path)}')
         res = subprocess.run(ldd_args, stdout=subprocess.PIPE)
         res.check_returncode()
+
         libs = [ l.strip().split()[0] for l in res.stdout.decode().split('\n') if l]
         self.bc_linked_path = self.bc_path.parent / (self.bc_path.name + '.linked')
+
+        # --- Report which libraries didn't pull through
+        to_link = []
         for lib in libs:
-            for bc in shared_bc:
-                if lib in bc.name:
-                    assert bc.exists(), f'Bad cmake build! {bc.name} does not exist!'
-                    argstr = f'llvm-link-8 -o {str(self.bc_linked_path)} {str(self.bc_path)} --override={str(bc)}'
-                    link_args = shlex.split(argstr)
-                    res = subprocess.run(link_args)
-                    res.check_returncode()
+            matching_bc = [bc for bc in shared_bc if lib in bc.name]
+            if not matching_bc:
+                print(f'Could not link {lib}. Continuing...')
+                continue
+
+            assert len(matching_bc) == 1, f'Too many options!'
+            bc = matching_bc[0]
+            assert bc.exists(), f'Bad cmake build! {bc.name} does not exist!'
+            to_link += [bc]
+
+        argstr = f'llvm-link-8 -o {str(self.bc_linked_path)} {str(self.bc_path)}'
+        for bc in to_link:
+            argstr += f' --override={str(bc)}'
+            
+        link_args = shlex.split(argstr)
+        res = subprocess.run(link_args)
+        res.check_returncode()
 
         # 4. Run the fixer script
         fixer_script = Path(__file__).parent.absolute() / 'apply-fixer'

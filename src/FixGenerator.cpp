@@ -43,6 +43,10 @@ llvm::Function *FixGenerator::getPersistentMemset() const {
     return getPersistentIntrinsic("PMFIXER_memset");
 }
 
+llvm::Function *FixGenerator::getPersistentMemmove() const {
+    return getPersistentIntrinsic("PMFIXER_memmove");
+}
+
 GlobalVariable *FixGenerator::createConditionVariable(Instruction *resetBefore, 
                                                       Instruction *setAt) {
     
@@ -301,6 +305,10 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
                 }
                 case Intrinsic::memset: {
                     newFn = getPersistentMemset();
+                    break;
+                }
+                case Intrinsic::memmove: {
+                    newFn = getPersistentMemmove();
                     break;
                 }
                 default: {

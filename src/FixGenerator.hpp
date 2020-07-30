@@ -38,6 +38,8 @@ protected:
 
     llvm::Function *getPersistentMemset() const;
 
+    llvm::Function *getPersistentMemmove() const;
+
     /** PERF UTILITY
      * 
      */

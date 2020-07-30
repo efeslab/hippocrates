@@ -1,6 +1,7 @@
 #include <immintrin.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdlib.h>
 
 #include <valgrind/pmemcheck.h>
 
@@ -11,7 +12,7 @@ void PMFIXER(store_nt)(void) {
     __builtin_nontemporal_store(0, &i);
 }
 
-void PMFIXER(memset)(int8_t *s, int8_t c, size_t n, bool _unused) {
+void PMFIXER(memset)(uint8_t *s, uint8_t c, size_t n, bool _unused) {
     for (size_t i = 0; i < n; ++i) {
         int *ptr = (int*)(s + i);
         int val = (int)c;
@@ -22,7 +23,7 @@ void PMFIXER(memset)(int8_t *s, int8_t c, size_t n, bool _unused) {
     _mm_sfence();
 }
 
-void PMFIXER(memcpy)(int8_t *d, int8_t *s, size_t n, bool _unused) {
+void PMFIXER(memcpy)(uint8_t *d, uint8_t *s, size_t n, bool _unused) {
     for (size_t i = 0; i < n; ++i) {
         int *ptr = (int*)(d + i);
         int val = (int)(s[i]);
@@ -31,4 +32,38 @@ void PMFIXER(memcpy)(int8_t *d, int8_t *s, size_t n, bool _unused) {
     }
 
     _mm_sfence();
-} 
+}
+
+void PMFIXER(memmove)(uint8_t *d, uint8_t *s, size_t n, bool _unused) {
+    // https://opensource.apple.com/source/network_cmds/network_cmds-481.20.1/unbound/compat/memmove.c.auto.html
+    uint8_t* from = (uint8_t*) s;
+	uint8_t* to = (uint8_t*) d;
+
+	if (from == to || n == 0) {
+        return;
+    }
+
+	if (to > from && to-from < n) {
+		/* to overlaps with from */
+		/*  <from......>         */
+		/*         <to........>  */
+		/* copy in reverse, to avoid overwriting from */
+		for(size_t i = n-1; i >= 0; i--) {
+            to[i] = from[i];
+        }
+        return;
+	}
+
+	if (from > to && from-to < (int)n) {
+		/* to overlaps with from */
+		/*        <from......>   */
+		/*  <to........>         */
+		/* copy forwards, to avoid overwriting from */
+		for (size_t i=0; i < n; i++) {
+            to[i] = from[i];
+        }
+        return;
+	}
+
+	PMFIXER(memcpy)(d, s, n, _unused);
+}

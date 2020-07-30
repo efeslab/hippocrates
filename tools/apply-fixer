@@ -63,7 +63,7 @@ def run_pass_and_compile(bitcode_file, bug_report, output_file, keep_files):
     # 3. clang to compile the assembly file and link libraries.
     clang_exe = llvm_path / 'clang'
     assert(clang_exe.exists())
-    cc_arg_str = '-g -O0'
+    cc_arg_str = '-g -O0 -mno-avx512f'
 
     clang_arg_str_fn = lambda asm: f'{str(clang_exe)} {cc_arg_str} {str(asm)} {get_linker_strings()} -o {str(output_file)}'
     
