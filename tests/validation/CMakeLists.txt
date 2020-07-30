@@ -35,27 +35,30 @@ configure_file(testconfig.sh ${CMAKE_CURRENT_BINARY_DIR})
 
 # Issue: https://github.com/pmem/issues/issues/441
 # obj_locks/TEST0
+# Status: Passing? NOT REPRO
 add_pmdk_unit_test(TEST_CASE obj_locks
                    TEST_FILE TEST0
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
-                   SUITE UNKNOWN)
+                   SUITE NO_REPRO)
 
 # Issue: https://github.com/pmem/issues/issues/442
 # obj_persist_count/TEST0, TEST1
+# Status: NOT REPRO (wants non-pmem?)
 add_pmdk_unit_test(TEST_CASE obj_persist_count
                    TEST_FILE TEST0
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
-                   SUITE UNKNOWN)
+                   SUITE NO_REPRO)
 
 # Issue: https://github.com/pmem/issues/issues/444
 # obj_pvector/TEST0
+# Status: 
 add_pmdk_unit_test(TEST_CASE obj_pvector
                    TEST_FILE TEST0
-                   COMMIT_HASH 8bbb0af9c
+                   COMMIT_HASpH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
                    SUITE UNKNOWN)

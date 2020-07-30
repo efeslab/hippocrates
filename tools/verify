@@ -177,7 +177,7 @@ def get_test_list():
     # Do some sanity checking 
 
     for x, y in zip(exe_list, bc_list):
-        assert (f'{str(x)}.bc' == str(y)), 'EXE list and BC list not matching up!!!'
+        assert (f'{str(x)}.bc' == str(y)), f'{str(x)}.bc != {str(y)}'
         # assert x.exists(), f'{x} must be built!'
         # assert y.exists(), f'{y} must be extracted!'
     
@@ -229,7 +229,7 @@ def main():
     parser = ArgumentParser(description=(r'Verify the ${CMAKE_PROJECT_NAME} by '
         'running tests, applying fixes, then verifying all the bugs are gone.'))
     parser.add_argument('suite', type=str, choices=suites, default='all',
-                        help='Which set of tests to run')
+                        nargs='?', help='Which set of tests to run')
     parser.add_argument('--target', '-t', type=str, choices=targets, 
                         help='Which target to run.')
     args = parser.parse_args()

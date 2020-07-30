@@ -123,7 +123,8 @@ function(add_pmdk_unit_test)
                       DEPENDS ${DEP_LIST}
                       COMMENT "${FN_ARGS_TARGET} complete.")               
      
-    append_tool_lists(TARGET "${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}" 
+    append_tool_lists(TARGET "${FN_ARGS_TARGET}"
+                      EXECUTABLE "${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}" 
                       TOOL "PMDK_UNIT_TEST" 
                       SUITE "${FN_ARGS_SUITE}")
     append_unit_test_list(TARGET "${FN_ARGS_TARGET}")
