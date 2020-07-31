@@ -86,10 +86,13 @@ function(add_pmdk_unit_test)
                     # Copy tool files first.
                     COMMAND cp -uv "${SRC_TOOLS}/pmempool/pmempool" "${DEST_DIR}"
                     COMMAND cp -uv "${TOOL_PATH}/pmemobjcli/pmemobjcli" "${DEST_DIR}"
+                    COMMAND cp -uv "${TOOL_PATH}/pmemobjcli/*.posc" "${DEST_DIR}"
+                    COMMAND cp -uv "${TOOL_PATH}/pmemobjcli/.pmemobjcli.o.bc" "${DEST_DIR}/pmemobjcli.bc"
                     COMMAND extract-bc "${DEST_DIR}/${FN_ARGS_TEST_CASE}"
                                 -o "${DEST_DIR}/${FN_ARGS_TEST_CASE}.bc"
                     COMMAND cp -uv "${LIB_ROOT}/*.so" "${DEST_DIR}"
                     COMMAND cp -v "${TEST_ROOT}/match" "${CMAKE_CURRENT_BINARY_DIR}"
+                    COMMAND cp -v "${TEST_ROOT}/RUNTESTS" "${CMAKE_CURRENT_BINARY_DIR}/RUNTESTS_${FN_ARGS_TARGET}"
                     COMMAND ln -vf "${TARGET_BIN}/libpmem.so" "${TARGET_BIN}/libpmem.so.1"
                     COMMAND ln -vf "${TARGET_BIN}/libpmemobj.so" "${TARGET_BIN}/libpmemobj.so.1"
                     COMMAND ln -vf "${TARGET_BIN}/libpmempool.so" "${TARGET_BIN}/libpmempool.so.1"
@@ -103,7 +106,7 @@ function(add_pmdk_unit_test)
                     COMMAND patchelf --set-rpath "${DEST_DIR}" "${DEST_DIR}/pmempool"
                     COMMAND patchelf --set-rpath "${DEST_DIR}" "${DEST_DIR}/${FN_ARGS_TEST_CASE}"
                     DEPENDS "${FN_ARGS_TARGET}_build"
-                    COMMENT "Copying and extracting files...")
+                    COMMENT "Copying and extracting files into DEST=${DEST_DIR}...")
     
     # execute_process(COMMAND echo for f in ${TARGET_BIN}/*.so*; do extract-bc $f -o $f.bc; done)
     # message(FATAL_ERROR "argh")
@@ -127,7 +130,7 @@ function(add_pmdk_unit_test)
                                       "${FN_ARGS_TARGET}/${FN_ARGS_TEST_FILE}.original"
                           COMMAND cp "${FN_ARGS_TARGET}/${FN_ARGS_TEST_FILE}.patched" 
                                      "${FN_ARGS_TARGET}/${FN_ARGS_TEST_FILE}"
-                          DEPENDS "${FN_ARGS_TARGET}_tooling"
+                          DEPENDS "${FN_ARGS_TARGET}_copy"
                           COMMENT "Patching with patch ${FN_ARGS_TEST_PATCH}...")
         list(APPEND DEP_LIST "${FN_ARGS_TARGET}_patching")
     endif()

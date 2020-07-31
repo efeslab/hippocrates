@@ -377,7 +377,7 @@ add_pmdk_unit_test(TEST_CASE obj_memops
                    COMMIT_HASH e71dfa41b
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
-                   SUITE UNKNOWN)
+                   SUITE REPRO)
 
 # Issue: https://github.com/pmem/issues/issues/945
 # pmem_memset/TEST0
@@ -408,7 +408,7 @@ add_pmdk_unit_test(TEST_CASE pmemobjcli
                    COMMIT_HASH 2c2ba2e
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
-                   SUITE UNKNWON)
+                   SUITE NO_REPRO)
 
 # Issue: https://github.com/pmem/issues/issues/1118
 # Status: 

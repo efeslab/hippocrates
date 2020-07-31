@@ -383,13 +383,22 @@ bool BugFixer::raiseFixLocation(llvm::Instruction *startInst, const FixDesc &des
      * We raise in two circumstances: if the instruction is in an "immutable"
      * function, or if it's heuristically good to raise the fix. 
      * 
-     * Optimization 1: avoid "immutable" functions.
+     * Optimization 1: avoid "immutable" functions. This is both explicit and
+     * implicit (i.e. function not linked, like libc).
+     * 
      * Optimization 2: For all the fixes, see if we should raise any 
-     * heuristically.
+     * heuristically. 
+     * 
+     * For now, we'll see what "min-aliases" gives us. Likely, 
+     * too high.
+     * - We'll need all the PM values in the program. We want to know the number
+     * of overall aliases and the number which can be PM values.
      */
     const std::vector<LocationInfo> &stack = *desc.dynStack;
     int idx = 0;
     Instruction *curr = nullptr;
+
+    size_t minAliases = UINT64_MAX;
 
     while (idx < stack.size()) {
         if (!startInst && !mapper_.contains(stack[idx])) {

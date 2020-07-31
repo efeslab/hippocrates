@@ -62,7 +62,7 @@ PMEM_FS_DIR_FORCE_PMEM=1
 # check (default), short, medium, long, all
 # where: check = short + medium; all = short + medium + long
 #
-#TEST_TYPE=check
+TEST_TYPE=all
 
 #
 # Overwrite available build types:
