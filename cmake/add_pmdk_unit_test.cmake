@@ -61,7 +61,6 @@ function(add_pmdk_unit_test)
     set(LIB_ROOT "${FN_ARGS_PMDK_PATH}/src/debug")
     set(TEST_PATH "${TEST_ROOT}/${FN_ARGS_TEST_CASE}")
     set(TOOL_PATH "${TEST_ROOT}/tools")
-    set(SRC_TOOLS "${FN_ARGS_PMDK_PATH}/src/test")
     set(TARGET_BIN "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}")
     # if(NOT EXISTS ${TEST_PATH} OR NOT EXISTS ${TOOL_PATH})
     #     message(FATAL_ERROR "${TEST_PATH} does not exist!")
@@ -77,24 +76,25 @@ function(add_pmdk_unit_test)
                       COMMENT "Building ${FN_ARGS_TEST_CASE}...")
 
     # 3. Copy test directory and libs
+    set(DEST_DIR "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}")
 
     add_custom_target("${FN_ARGS_TARGET}_copy"
-                      COMMAND mkdir -p "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}"
-                      COMMAND cp -ruv ${TEST_PATH}/* 
-                                "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}"
-                      COMMAND extract-bc "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}"
-                                -o "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}.bc"
-                      COMMAND cp -uv "${LIB_ROOT}/*.so" "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}"
-                      COMMAND cp -urv "${SRC_TOOLS}" "${TARGET_BIN}"
-                      COMMAND cp -v "${SRC_TOOLS}/match" "${CMAKE_CURRENT_BINARY_DIR}"
-                      COMMAND ln -vf "${TARGET_BIN}/libpmem.so" "${TARGET_BIN}/libpmem.so.1"
-                      COMMAND ln -vf "${TARGET_BIN}/libpmemobj.so" "${TARGET_BIN}/libpmemobj.so.1"
-                      COMMAND extract-bc -o ${TARGET_BIN}/libpmem.so.1.bc ${TARGET_BIN}/libpmem.so.1
-                      COMMAND extract-bc -o ${TARGET_BIN}/libpmemobj.so.1.bc ${TARGET_BIN}/libpmemobj.so.1
-                      COMMAND patchelf --set-rpath "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}" 
-                                "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}"
-                      DEPENDS "${FN_ARGS_TARGET}_build"
-                      COMMENT "Copying and extracting files...")
+                    COMMAND mkdir -p "${DEST_DIR}"
+                    COMMAND cp -ruv ${TEST_PATH}/* "${DEST_DIR}"
+                    # Copy tool files first.
+                    COMMAND cp -uv "${TOOL_PATH}/pmempool/pmempool" "${DEST_DIR}"
+                    COMMAND cp -uv "${TOOL_PATH}/pmemobjcli/pmemobjcli" "${DEST_DIR}"
+                    COMMAND extract-bc "${DEST_DIR}/${FN_ARGS_TEST_CASE}"
+                                -o "${DEST_DIR}/${FN_ARGS_TEST_CASE}.bc"
+                    COMMAND cp -uv "${LIB_ROOT}/*.so" "${DEST_DIR}"
+                    COMMAND cp -v "${TEST_ROOT}/match" "${CMAKE_CURRENT_BINARY_DIR}"
+                    COMMAND ln -vf "${TARGET_BIN}/libpmem.so" "${TARGET_BIN}/libpmem.so.1"
+                    COMMAND ln -vf "${TARGET_BIN}/libpmemobj.so" "${TARGET_BIN}/libpmemobj.so.1"
+                    COMMAND extract-bc -o ${TARGET_BIN}/libpmem.so.1.bc ${TARGET_BIN}/libpmem.so.1
+                    COMMAND extract-bc -o ${TARGET_BIN}/libpmemobj.so.1.bc ${TARGET_BIN}/libpmemobj.so.1
+                    COMMAND patchelf --set-rpath "${DEST_DIR}" "${DEST_DIR}/${FN_ARGS_TEST_CASE}"
+                    DEPENDS "${FN_ARGS_TARGET}_build"
+                    COMMENT "Copying and extracting files...")
     
     # execute_process(COMMAND echo for f in ${TARGET_BIN}/*.so*; do extract-bc $f -o $f.bc; done)
     # message(FATAL_ERROR "argh")

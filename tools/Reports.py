@@ -127,9 +127,13 @@ class BugReport:
     
     def dump(self):
         self._validate_metadata()
+        print('Prepare to dump.')
+        report = {'trace': self.trace, 'metadata': self.metadata}
+        raw = yaml.dump(report, None)
+        print('Prepare to write.')
         with self.output_file.open('w') as f:
-            report = {'trace': self.trace, 'metadata': self.metadata}
-            yaml.dump(report, f)
+            f.write(raw)
+            # yaml.dump(report, f)
         print(f'Report written to {str(self.output_file)}')
 
     def __getitem__(self, a):

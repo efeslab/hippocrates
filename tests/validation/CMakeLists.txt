@@ -77,7 +77,7 @@ add_pmdk_unit_test(TEST_CASE obj_persist_count
 # Status: 
 add_pmdk_unit_test(TEST_CASE obj_pvector
                    TEST_FILE TEST0
-                   COMMIT_HASpH 8bbb0af9c
+                   COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
                    SUITE UNKNOWN)
@@ -401,11 +401,13 @@ add_pmdk_unit_test(TEST_CASE obj_pmalloc_basic
 
 # Issue: https://github.com/pmem/issues/issues/1103 
 # Status: TOOL TEST
-# add_pmdk_unit_test(TEST_CASE pmemobjcli 
-#                    TEST_FILE TEST0
-#                    COMMIT_HASH 2c2ba2e
-#                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
-#                    PMDK_TARGET VALIDATION_PMDK)
+add_pmdk_unit_test(TEST_CASE pmemobjcli 
+                   TEST_FILE TEST0
+                   TEST_PATCH pmemobjcli_TEST0_2c2ba2e.patch
+                   COMMIT_HASH 2c2ba2e
+                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+                   PMDK_TARGET VALIDATION_PMDK
+                   SUITE UNKNWON)
 
 # Issue: https://github.com/pmem/issues/issues/1118
 # Status: 

@@ -31,6 +31,10 @@ bool AddressInfo::overlaps(const AddressInfo &other) const {
     return start() <= other.end() && other.start() <= end();
 }
 
+bool AddressInfo::contains(const AddressInfo &other) const {
+    return start() <= other.start() && end() >= other.end();
+}
+
 bool AddressInfo::operator==(const AddressInfo &other) const {
     return address == other.address && length == other.length;
 }

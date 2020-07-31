@@ -58,8 +58,8 @@ def run_pass_and_compile(bitcode_file, bug_report, output_file, keep_files):
     llc_exe = llvm_path / 'llc'
     assert(llc_exe.exists())
 
-    llc_arg_str = '-g -O0 -mcpu=skylake'
-    llc_arg_str_fn = lambda bc: f'{str(llc_exe)}  {str(bc)}'
+    llc_arg_str = '-O=0 -mcpu=skylake -mattr=+clwb'
+    llc_arg_str_fn = lambda bc: f'{str(llc_exe)} {llc_arg_str} {str(bc)}'
 
     # 3. clang to compile the assembly file and link libraries.
     clang_exe = llvm_path / 'clang'

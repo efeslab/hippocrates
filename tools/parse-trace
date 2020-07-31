@@ -302,13 +302,18 @@ class TraceParser:
             i = 0
             while i < len(lines):
                 if not start_trace:
-                    if 'START|' in lines[i]:
+                    if 'START|' in lines[i] or \
+                        '|STORE' in lines[i] or \
+                        '|FLUSH' in lines[i] or \
+                        '|FENCE' in lines[i]:
+                        print('Identified trace start')
                         start_trace = True
                         for te in self._parse_pmemcheck_events(lines[i], timestamp):
                             report.add_trace_event(te)
                             timestamp += 1
                 elif start_trace and not stop_trace:
                     if '|STOP' in lines[i]:
+                        print('Identified trace end')
                         stop_trace = True
                     else:
                         for te in self._parse_pmemcheck_events(lines[i], timestamp):
@@ -390,6 +395,7 @@ class TraceParser:
                         nbugs_remaining = None
                 else:
                     # End of interesting stuff.
+                    print('Done!')
                     break
                 i += 1
 

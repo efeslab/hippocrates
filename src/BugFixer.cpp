@@ -99,7 +99,9 @@ bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
                     errs() << "STORE OVERLAP: " << addr.str() << "\n";
                 addrInfo += addr;
                 opIndices.push_back(i);
-                if (addrInfo == bugAddr) {
+                // This doesn't quite make sense to me, but I'll take it.
+                // In theory, it should add up to be exact.
+                if (addrInfo.contains(bugAddr)) {
                     errs() << "\tACCUMULATED: " << addrInfo.str() << "\n";
                     errs() << "\tCOMPLETE\n";
                     missingFlush = true;
