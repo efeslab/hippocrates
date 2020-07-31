@@ -61,3 +61,9 @@ add_custom_command(OUTPUT ${PMCHK_INSTALL_DIR}/bin/valgrind
 add_custom_target(PMEMCHECK ALL : # no-op command
                   DEPENDS ${PMCHK_INSTALL_DIR}/bin/valgrind
                   COMMENT "PMEMCheck dependencies complete")
+
+################################################################################
+# RECIPE
+################################################################################
+
+add_subdirectory(RECIPE/P-CLHT)

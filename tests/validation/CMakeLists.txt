@@ -27,23 +27,26 @@ configure_file(testconfig.sh ${CMAKE_CURRENT_BINARY_DIR})
 # Issue: https://github.com/pmem/issues/issues/440
 # obj_list_recovery/TEST0, TEST1, TEST2
 # Status: Need to copy tool.
-#add_pmdk_unit_test(TEST_CASE obj_list_recovery
-#                   TEST_FILE TEST0
-#                   COMMIT_HASH 8bbb0af9c
-#                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
-#                   PMDK_TARGET VALIDATION_PMDK)
+add_pmdk_unit_test(TEST_CASE obj_list_recovery
+                  TEST_FILE TEST0
+                  COMMIT_HASH 8bbb0af9c
+                  PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+                  PMDK_TARGET VALIDATION_PMDK
+                  SUITE UNKNOWN)
 
-#add_pmdk_unit_test(TEST_CASE obj_list_recovery
-#                   TEST_FILE TEST1
-#                   COMMIT_HASH 8bbb0af9c
-#                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
-#                   PMDK_TARGET VALIDATION_PMDK)
+add_pmdk_unit_test(TEST_CASE obj_list_recovery
+                  TEST_FILE TEST1
+                  COMMIT_HASH 8bbb0af9c
+                  PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+                  PMDK_TARGET VALIDATION_PMDK
+                  SUITE UNKNOWN)
 
-#add_pmdk_unit_test(TEST_CASE obj_list_recovery
-#                   TEST_FILE TEST2
-#                   COMMIT_HASH 8bbb0af9c
-#                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
-#                   PMDK_TARGET VALIDATION_PMDK)
+add_pmdk_unit_test(TEST_CASE obj_list_recovery
+                  TEST_FILE TEST2
+                  COMMIT_HASH 8bbb0af9c
+                  PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+                  PMDK_TARGET VALIDATION_PMDK
+                  SUITE UNKNOWN)
 
 # Issue: https://github.com/pmem/issues/issues/441
 # obj_locks/TEST0
@@ -293,38 +296,43 @@ add_pmdk_unit_test(TEST_CASE pmem_memset
 
 # Issue: https://github.com/pmem/issues/issues/463
 # Status: needs pmempool
-# add_pmdk_unit_test(TEST_CASE pmempool_sync
-#                    TEST_FILE TEST0
-#                    COMMIT_HASH 0fd509d73
-#                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
-#                    PMDK_TARGET VALIDATION_PMDK)
+add_pmdk_unit_test(TEST_CASE pmempool_sync
+                   TEST_FILE TEST0
+                   COMMIT_HASH 0fd509d73
+                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+                   PMDK_TARGET VALIDATION_PMDK
+                   SUITE UNKNOWN)
 
 
 # Issue: https://github.com/pmem/issues/issues/465
 # libpmempool_api/TEST1, TEST10, TEST11, TEST13
-# add_pmdk_unit_test(TEST_CASE libpmempool_sync
-#                    TEST_FILE TEST1
-#                    COMMIT_HASH 0fd509d73
-#                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
-#                    PMDK_TARGET VALIDATION_PMDK)
+add_pmdk_unit_test(TEST_CASE libpmempool_sync
+                   TEST_FILE TEST1
+                   COMMIT_HASH 0fd509d73
+                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+                   PMDK_TARGET VALIDATION_PMDK
+                   SUITE UNKNOWN)
 
-# add_pmdk_unit_test(TEST_CASE libpmempool_sync
-#                    TEST_FILE TEST10
-#                    COMMIT_HASH 0fd509d73
-#                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
-#                    PMDK_TARGET VALIDATION_PMDK)
+add_pmdk_unit_test(TEST_CASE libpmempool_sync
+                   TEST_FILE TEST10
+                   COMMIT_HASH 0fd509d73
+                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+                   PMDK_TARGET VALIDATION_PMDK
+                   SUITE UNKNOWN)
 
-# add_pmdk_unit_test(TEST_CASE libpmempool_sync
-#                    TEST_FILE TEST11
-#                    COMMIT_HASH 0fd509d73
-#                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
-#                    PMDK_TARGET VALIDATION_PMDK)
+add_pmdk_unit_test(TEST_CASE libpmempool_sync
+                   TEST_FILE TEST11
+                   COMMIT_HASH 0fd509d73
+                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+                   PMDK_TARGET VALIDATION_PMDK
+                   SUITE UNKNOWN)
 
-# add_pmdk_unit_test(TEST_CASE libpmempool_sync
-#                    TEST_FILE TEST13
-#                    COMMIT_HASH 0fd509d73
-#                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
-#                    PMDK_TARGET VALIDATION_PMDK)
+add_pmdk_unit_test(TEST_CASE libpmempool_sync
+                   TEST_FILE TEST13
+                   COMMIT_HASH 0fd509d73
+                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+                   PMDK_TARGET VALIDATION_PMDK
+                   SUITE UNKNOWN)
 
 # Issue: https://github.com/pmem/issues/issues/466
 # Status: 
@@ -338,27 +346,38 @@ add_pmdk_unit_test(TEST_CASE libpmempool_sync
 
 # Issue: https://github.com/pmem/issues/issues/535
 # pmemobjcli/TEST0
-# add_pmdk_unit_test(TEST_CASE pmemobjcli
-#                    TEST_FILE TEST0
-#                    COMMIT_HASH 60e24d2 
-#                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
-#                    PMDK_TARGET VALIDATION_PMDK)
+add_pmdk_unit_test(TEST_CASE pmemobjcli
+                   TEST_FILE TEST0
+                   TEST_PATCH pmemobjcli_TEST0_60e24d2.patch
+                   COMMIT_HASH 60e24d2 
+                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+                   PMDK_TARGET VALIDATION_PMDK
+                   SUITE UNKNOWN)
 
 # Issue: https://github.com/pmem/issues/issues/585
 # Status: requires pmempool
-# add_pmdk_unit_test(TEST_CASE rpmemd_db
-#                    TEST_FILE TEST0
-#                    COMMIT_HASH 60e24d2 
-#                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
-#                    PMDK_TARGET VALIDATION_PMDK)
+add_pmdk_unit_test(TEST_CASE rpmemd_db
+                   TEST_FILE TEST0
+                   COMMIT_HASH 60e24d2 
+                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+                   PMDK_TARGET VALIDATION_PMDK
+                   SUITE UNKNOWN)
 
 # Issue: https://github.com/pmem/issues/issues/940
+# obj_first_next/TEST0, TEST1
 add_pmdk_unit_test(TEST_CASE obj_first_next
                    TEST_FILE TEST0
                    COMMIT_HASH e71dfa41b
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
-                   SUITE UNKNOWN)
+                   SUITE PASSING)
+
+add_pmdk_unit_test(TEST_CASE obj_first_next
+                   TEST_FILE TEST1
+                   COMMIT_HASH e71dfa41b
+                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
+                   PMDK_TARGET VALIDATION_PMDK
+                   SUITE PASSING)
 
 # Issue: https://github.com/pmem/issues/issues/942
 # Status: PASSING (weird exit)
@@ -377,7 +396,7 @@ add_pmdk_unit_test(TEST_CASE obj_memops
                    COMMIT_HASH e71dfa41b
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
-                   SUITE REPRO)
+                   SUITE PASSING)
 
 # Issue: https://github.com/pmem/issues/issues/945
 # pmem_memset/TEST0
@@ -398,7 +417,7 @@ add_pmdk_unit_test(TEST_CASE obj_pmalloc_basic
                    COMMIT_HASH e71dfa41b
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
-                   SUITE UNKNOWN)
+                   SUITE TIMEOUT)
 
 # Issue: https://github.com/pmem/issues/issues/1103 
 # Status: TOOL TEST

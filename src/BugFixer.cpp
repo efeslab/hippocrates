@@ -398,8 +398,6 @@ bool BugFixer::raiseFixLocation(llvm::Instruction *startInst, const FixDesc &des
     int idx = 0;
     Instruction *curr = nullptr;
 
-    size_t minAliases = UINT64_MAX;
-
     while (idx < stack.size()) {
         if (!startInst && !mapper_.contains(stack[idx])) {
             errs() << "LI: " << stack[idx].str() << " NOT CONTAINED\n";

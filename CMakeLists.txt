@@ -13,11 +13,11 @@ add_definitions(${LLVM_DEFINITIONS})
 # You don't need to change ${LLVM_INCLUDE_DIRS} since it is already defined.
 include_directories(${LLVM_INCLUDE_DIRS})
 
+include("${CMAKE_SOURCE_DIR}/cmake/functions.cmake")
+
 add_subdirectory(deps)
 
-include("${CMAKE_SOURCE_DIR}/cmake/functions.cmake")
 # -- This sets these variables so that they're available in the lower scope.
-
 get_property(YAMLCPP_LIBS GLOBAL PROPERTY yaml_cpp_lib_dir)
 get_property(YAMLCPP_INCLUDE GLOBAL PROPERTY yaml_cpp_include_dir)
 

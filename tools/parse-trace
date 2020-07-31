@@ -344,10 +344,11 @@ class TraceParser:
                     frames = []
                     while 'by' in lines[i+st] or st == 0:
                         # We want to capture this stack information.
-                        split_word = 'at' if st == 0 else 'by'
+                        split_word = ' at ' if st == 0 else ' by '
                         sf_raw = lines[i+st].split(split_word)[-1].strip()
                         m = self.TRACE_EVENT_RE.match(sf_raw)
                         if m is None:
+                            print(f'{__file__}: Match is none!')
                             embed()
                         assert (m is not None), f'"{sf_raw}" does not conform!'
                         sf = {'function': m.group(1), 'file': m.group(2), 'line': int(m.group(3))}
