@@ -13,3 +13,6 @@
 [submodule "deps/valgrind-pmem"]
 	path = deps/valgrind-pmem
 	url = git@github.com:efeslab/valgrind.git
+[submodule "deps/RECIPE"]
+	path = deps/RECIPE
+	url = git@github.com:efeslab/RECIPE.git
