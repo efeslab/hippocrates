@@ -34,9 +34,12 @@ struct AddressInfo {
     // Methods for checking overlap with others/cache lines.
     bool isSingleCacheLine(void) const;
     bool overlaps(const AddressInfo &other) const;
+
+    // These are equal if the cache lines equal
     bool operator==(const AddressInfo &other) const;
 
     void operator+=(const AddressInfo &other);
+
 
     std::string str() const {
         std::stringstream buffer;

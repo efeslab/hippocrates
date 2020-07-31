@@ -94,27 +94,30 @@ bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
                 assert(addr.isSingleCacheLine() && "don't know how to handle!");
                 /* In this case, we need to validate that there are a bunch of stores that
                     when summed together */
-                errs() << "STORE OVERLAP: " << addr.str() << "\n";
+                if (!addrInfo.length)
+                    errs() << "STORE OVERLAP: " << addr.str() << "\n";
                 addrInfo += addr;
                 opIndices.push_back(i);
                 if (addrInfo == bugAddr) {
+                    errs() << "\tACCUMULATED: " << addrInfo.str() << "\n";
                     errs() << "\tCOMPLETE\n";
                     missingFlush = true;
                     break;
                 } else {
-                    errs() << "\tACCUMULATED: " << addrInfo.str() << "\n";
+                    // errs() << "\tACCUMULATED: " << addrInfo.str() << "\n";
                 }
             } else if (event.type == TraceEvent::FLUSH &&
                         event.addresses.front().overlaps(te.addresses.front())) {
                 assert(addr.isSingleCacheLine() && "don't know how to handle!");
                 errs() << "FLUSH: " << addr.str() << "\n";
+                errs() << "\tACCUMULATED: " << addrInfo.str() << "\n";
                 assert(missingFence == true &&
                         "Shouldn't be a bug in this case, has flush and fence");
                 opIndices.push_back(i);
                 break;
             }
         } else if (event.type == TraceEvent::FENCE) {
-            errs() << "FENCE\n";
+            // errs() << "FENCE\n";
             missingFence = false;
             missingFlush = true;
         }

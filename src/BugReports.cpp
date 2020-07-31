@@ -28,7 +28,7 @@ bool AddressInfo::isSingleCacheLine(void) const {
 }
 
 bool AddressInfo::overlaps(const AddressInfo &other) const {
-    return start() < other.end() && other.start() < end();
+    return start() <= other.end() && other.start() <= end();
 }
 
 bool AddressInfo::operator==(const AddressInfo &other) const {
