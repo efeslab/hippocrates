@@ -352,7 +352,7 @@ add_pmdk_unit_test(TEST_CASE pmemobjcli
                    COMMIT_HASH 60e24d2 
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
-                   SUITE UNKNOWN)
+                   SUITE NO_REPRO)
 
 # Issue: https://github.com/pmem/issues/issues/585
 # Status: requires pmempool
