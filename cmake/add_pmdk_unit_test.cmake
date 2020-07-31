@@ -25,6 +25,7 @@ endfunction()
 function(add_pmdk_unit_test)
     check_wllvm()
 
+    # This is for some tests that need the pmempool exe or whatnot
     set(options)                                                                  
     set(oneValueArgs TEST_CASE TEST_FILE TEST_PATCH 
                      PMDK_PATH PMDK_TARGET COMMIT_HASH SUITE)                                                       
@@ -61,6 +62,7 @@ function(add_pmdk_unit_test)
     set(LIB_ROOT "${FN_ARGS_PMDK_PATH}/src/debug")
     set(TEST_PATH "${TEST_ROOT}/${FN_ARGS_TEST_CASE}")
     set(TOOL_PATH "${TEST_ROOT}/tools")
+    set(SRC_TOOLS "${FN_ARGS_PMDK_PATH}/src/tools")
     set(TARGET_BIN "${CMAKE_CURRENT_BINARY_DIR}/${FN_ARGS_TARGET}")
     # if(NOT EXISTS ${TEST_PATH} OR NOT EXISTS ${TOOL_PATH})
     #     message(FATAL_ERROR "${TEST_PATH} does not exist!")
@@ -82,7 +84,7 @@ function(add_pmdk_unit_test)
                     COMMAND mkdir -p "${DEST_DIR}"
                     COMMAND cp -ruv ${TEST_PATH}/* "${DEST_DIR}"
                     # Copy tool files first.
-                    COMMAND cp -uv "${TOOL_PATH}/pmempool/pmempool" "${DEST_DIR}"
+                    COMMAND cp -uv "${SRC_TOOLS}/pmempool/pmempool" "${DEST_DIR}"
                     COMMAND cp -uv "${TOOL_PATH}/pmemobjcli/pmemobjcli" "${DEST_DIR}"
                     COMMAND extract-bc "${DEST_DIR}/${FN_ARGS_TEST_CASE}"
                                 -o "${DEST_DIR}/${FN_ARGS_TEST_CASE}.bc"
@@ -90,8 +92,15 @@ function(add_pmdk_unit_test)
                     COMMAND cp -v "${TEST_ROOT}/match" "${CMAKE_CURRENT_BINARY_DIR}"
                     COMMAND ln -vf "${TARGET_BIN}/libpmem.so" "${TARGET_BIN}/libpmem.so.1"
                     COMMAND ln -vf "${TARGET_BIN}/libpmemobj.so" "${TARGET_BIN}/libpmemobj.so.1"
+                    COMMAND ln -vf "${TARGET_BIN}/libpmempool.so" "${TARGET_BIN}/libpmempool.so.1"
+                    COMMAND ln -vf "${TARGET_BIN}/libpmemblk.so" "${TARGET_BIN}/libpmemblk.so.1"
+                    COMMAND ln -vf "${TARGET_BIN}/libpmemlog.so" "${TARGET_BIN}/libpmemlog.so.1"
                     COMMAND extract-bc -o ${TARGET_BIN}/libpmem.so.1.bc ${TARGET_BIN}/libpmem.so.1
                     COMMAND extract-bc -o ${TARGET_BIN}/libpmemobj.so.1.bc ${TARGET_BIN}/libpmemobj.so.1
+                    COMMAND extract-bc -o ${TARGET_BIN}/libpmempool.so.1.bc ${TARGET_BIN}/libpmempool.so.1
+                    COMMAND extract-bc -o ${TARGET_BIN}/libpmemblk.so.1.bc ${TARGET_BIN}/libpmemblk.so.1
+                    COMMAND extract-bc -o ${TARGET_BIN}/libpmemlog.so.1.bc ${TARGET_BIN}/libpmemlog.so.1
+                    COMMAND patchelf --set-rpath "${DEST_DIR}" "${DEST_DIR}/pmempool"
                     COMMAND patchelf --set-rpath "${DEST_DIR}" "${DEST_DIR}/${FN_ARGS_TEST_CASE}"
                     DEPENDS "${FN_ARGS_TARGET}_build"
                     COMMENT "Copying and extracting files...")
@@ -109,14 +118,18 @@ function(add_pmdk_unit_test)
     
     set(DEP_LIST "${FN_ARGS_TARGET}_copy" "${FN_ARGS_TARGET}_tooling")
     
-    if (NOT FN_ARGS_TEST_PATCH STREQUAL "")
+    if (FN_ARGS_TEST_PATCH)
+        # message(FATAL_ERROR "PATCH FILE: ${FN_ARGS_TEST_PATCH}")
         add_custom_target("${FN_ARGS_TARGET}_patching"
-                          COMMAND patch -o "${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}.patched" "${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}" "${FN_ARGS_TEST_PATCH}"
-                          COMMAND mv "${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}" "${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}.original"
-                          COMMAND mv "${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}.patched" "${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}"
+                          COMMAND patch -f -o "${FN_ARGS_TARGET}/${FN_ARGS_TEST_FILE}.patched" 
+                                    "${FN_ARGS_TARGET}/${FN_ARGS_TEST_FILE}" "${CMAKE_CURRENT_SOURCE_DIR}/${FN_ARGS_TEST_PATCH}"
+                          COMMAND cp "${FN_ARGS_TARGET}/${FN_ARGS_TEST_FILE}" 
+                                      "${FN_ARGS_TARGET}/${FN_ARGS_TEST_FILE}.original"
+                          COMMAND cp "${FN_ARGS_TARGET}/${FN_ARGS_TEST_FILE}.patched" 
+                                     "${FN_ARGS_TARGET}/${FN_ARGS_TEST_FILE}"
                           DEPENDS "${FN_ARGS_TARGET}_tooling"
                           COMMENT "Patching with patch ${FN_ARGS_TEST_PATCH}...")
-        # list(APPEND DEP_LIST "${FN_ARGS_TARGET}_patching")
+        list(APPEND DEP_LIST "${FN_ARGS_TARGET}_patching")
     endif()
                       
     add_custom_target(${FN_ARGS_TARGET} ALL : # no-op

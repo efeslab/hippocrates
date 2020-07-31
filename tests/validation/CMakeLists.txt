@@ -361,13 +361,14 @@ add_pmdk_unit_test(TEST_CASE obj_first_next
                    SUITE UNKNOWN)
 
 # Issue: https://github.com/pmem/issues/issues/942
-# Status: REPRO'D, cannot fix?
+# Status: PASSING (weird exit)
 add_pmdk_unit_test(TEST_CASE obj_mem
                    TEST_FILE TEST0
+                   TEST_PATCH obj_mem_TEST0_e71dfa41b.patch
                    COMMIT_HASH e71dfa41b
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
-                   SUITE UNKNOWN)
+                   SUITE PASSING)
 
 # Issue: https://github.com/pmem/issues/issues/943
 # Status: REPRO'D (10m timeout)

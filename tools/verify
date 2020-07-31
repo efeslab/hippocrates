@@ -88,6 +88,8 @@ class ToolRunner:
         # res = subprocess.run(runtests_args, cwd=self.exe_path.parent.parent, 
         #     env=new_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         res = subprocess.run(runtests_args, cwd=self.exe_path.parent.parent, env=new_env)
+        if res.returncode == 0:
+            embed()
         assert (res.returncode != 0), 'Test was successful, meaning no bugs!'
         assert pmemcheck_log.exists(), f'pmemcheck log "{str(pmemcheck_log)}" does not exist!'
 
@@ -105,8 +107,6 @@ class ToolRunner:
         res = subprocess.run(parse_args)
         res.check_returncode()
         assert trace_file.exists()
-        embed()
-        exit(-1)
 
         # 3. Link the bitcode with the library so that opt can find the functions.
         # -- First, ensure bitcode was auto-extracted properly.
@@ -167,7 +167,7 @@ class ToolRunner:
         # res = subprocess.run(runtests_args, cwd=self.exe_path.parent.parent, 
         #     env=new_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         print(runtests_str)
-        res.check_returncode()
+        assert (res.returncode != 1), 'Test failed!'
 
         return True
 
