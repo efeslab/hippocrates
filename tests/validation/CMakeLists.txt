@@ -177,14 +177,14 @@ add_pmdk_unit_test(TEST_CASE pmem_memcpy
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
-                   SUITE FAILING)
+                   SUITE PASSING)
 
 add_pmdk_unit_test(TEST_CASE pmem_memcpy
                    TEST_FILE TEST2
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
-                   SUITE FAILING)
+                   SUITE PASSING)
 
 add_pmdk_unit_test(TEST_CASE pmem_memcpy
                    TEST_FILE TEST3
@@ -223,7 +223,7 @@ add_pmdk_unit_test(TEST_CASE pmem_memmove
                    COMMIT_HASH 0fd509d73
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
-                   SUITE FAILING)
+                   SUITE PASSING)
 
 add_pmdk_unit_test(TEST_CASE pmem_memmove
                    TEST_FILE TEST4
@@ -244,7 +244,7 @@ add_pmdk_unit_test(TEST_CASE pmem_memmove
                    COMMIT_HASH 0fd509d73
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
-                   SUITE FAILING)
+                   SUITE PASSING)
 
 add_pmdk_unit_test(TEST_CASE pmem_memmove
                    TEST_FILE TEST7
@@ -282,13 +282,14 @@ add_pmdk_unit_test(TEST_CASE pmem_memmove
                    SUITE PASSING)
 
 # Issue: https://github.com/pmem/issues/issues/461
-# Status: REPRO'D
+# pmem_memset/TEST1
+# Status: PASSING
 add_pmdk_unit_test(TEST_CASE pmem_memset
                    TEST_FILE TEST1
                    COMMIT_HASH 0fd509d73
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
-                   SUITE UNKNOWN)
+                   SUITE PASSING)
 
 # Issue: https://github.com/pmem/issues/issues/463
 # Status: needs pmempool

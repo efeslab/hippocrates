@@ -82,16 +82,17 @@ bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
         if (event.addresses.size()) {
             auto &addr = event.addresses.front();
 
-            if (event.type == TraceEvent::STORE && addr == bugAddr) {
-                assert(addr.isSingleCacheLine() && "don't know how to handle!");
-                /* This is the easy case, it's clear that none of the range was
-                persisted. */
-                errs() << "STORE: " << addr.str() << "\n";
-                missingFlush = true;
-                opIndices.push_back(i);
-                break;
-            } else if (event.type == TraceEvent::STORE && addr.overlaps(bugAddr)) {
-                assert(addr.isSingleCacheLine() && "don't know how to handle!");
+            // if (event.type == TraceEvent::STORE && addr == bugAddr) {
+            //     assert(addr.isSingleCacheLine() && "don't know how to handle!");
+            //     /* This is the easy case, it's clear that none of the range was
+            //     persisted. */
+            //     errs() << "STORE: " << addr.str() << "\n";
+            //     missingFlush = true;
+            //     opIndices.push_back(i);
+            //     break;
+            // } else 
+            if (event.type == TraceEvent::STORE && addr.overlaps(bugAddr)) {
+                // assert(addr.isSingleCacheLine() && "don't know how to handle!");
                 /* In this case, we need to validate that there are a bunch of stores that
                     when summed together */
                 if (!addrInfo.length)
