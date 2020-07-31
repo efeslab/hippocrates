@@ -192,6 +192,10 @@ public:
 
     const std::list<int> &bugs() const { return bugs_; }
 
+    size_t size() const { return events_.size(); }
+
+    bool empty() const { return events_.empty(); }
+
     std::string str() const;
 
     template<typename T>

@@ -48,6 +48,10 @@ struct PmBugFixerPass : public ModulePass {
         YAML::Node trace_info_doc = YAML::LoadFile(TraceFile);
         TraceInfo ti = TraceInfoBuilder(trace_info_doc).build();
         // errs() << "TraceInfo string:\n" << ti.str() << '\n';
+        if (ti.empty()) {
+            errs() << "Err: trace is empty!!!\n";;
+            return false;
+        }
 
         if (WeakClflush) {
             errs() << "Err: --weak-clflush set, but nothing to do!\n";
