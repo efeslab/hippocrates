@@ -1,10 +1,19 @@
 from argparse import ArgumentParser
 from enum import Enum, auto
 from pathlib import Path
+from IPython import embed
 
 import collections
 import re
+
+# https://pyyaml.org/wiki/PyYAMLDocumentation
 import yaml
+try:
+    from yaml import CLoader as Loader, CDumper as Dumper
+except ImportError:
+    print(f'Could not import CLoader/CDumper, gonna be slow')
+    exit(-1)
+    from yaml import Loader, Dumper
 
 class BugReportSource(Enum):
     GENERIC = auto()
@@ -124,12 +133,41 @@ class BugReport:
 
     def add_trace_event(self, te: TraceEvent) -> None:
         self._add_internal(**te)
+
+    def _optimize(self):
+        ''' Remove everything that isn't related to a bug. '''
+        is_bug = lambda x: x['event'] in ['ASSERT_PERSISTED', 'ASSERT_ORDERED', 'REQUIRED_FLUSH']
+        bugs = [x for x in self.trace if is_bug(x)]
+        bug_addresses = []
+        for bug in bugs:
+            if bug['event'] == 'ASSERT_ORDERED':
+                a1 = (bug['address_a'], bug['address_a'] + bug['length_a'])
+                a2 = (bug['address_b'], bug['address_b'] + bug['length_b'])
+                bug_addresses += [a1, a2]
+            else:
+                addr = (bug['address'], bug['address'] + bug['length'])
+                bug_addresses += [addr]
+
+        new_trace = []
+        for te in self.trace:
+            if te in bugs or te['event'] == 'FENCE':
+                new_trace += [te]
+            else:
+                address_range = (te['address'], te['address'] + te['length'])
+                for bug_addr in bug_addresses:
+                    if bug_addr[0] < address_range[1] and address_range[0] < bug_addr[1]:
+                        new_trace += [te]
+                        break
+                    
+        print(f'Optimized from {len(self.trace)} trace events to {len(new_trace)} trace events.')
+        self.trace = new_trace
     
     def dump(self):
         self._validate_metadata()
-        print('Prepare to dump.')
+        self._optimize()
+        print(f'Prepare to dump.\n\tNum items: {len(self.trace)}')
         report = {'trace': self.trace, 'metadata': self.metadata}
-        raw = yaml.dump(report, None)
+        raw = yaml.dump(report, None, Dumper=Dumper)
         print('Prepare to write.')
         with self.output_file.open('w') as f:
             f.write(raw)

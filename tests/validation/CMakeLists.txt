@@ -26,7 +26,7 @@ configure_file(testconfig.sh ${CMAKE_CURRENT_BINARY_DIR})
 
 # Issue: https://github.com/pmem/issues/issues/440
 # obj_list_recovery/TEST0, TEST1, TEST2
-# Status: Need to copy tool.
+# Status: Need to copy obj_list....
 add_pmdk_unit_test(TEST_CASE obj_list_recovery
                   TEST_FILE TEST0
                   COMMIT_HASH 8bbb0af9c

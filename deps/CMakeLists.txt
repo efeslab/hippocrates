@@ -21,7 +21,7 @@ set(PMDK_LIB_DIR ${PMDK_INSTALL_DIR}/lib CACHE INTERNAL "")
 set(PMDK_LIBS ${PMDK_LIB_DIR} CACHE INTERNAL "")
 
 add_custom_command(OUTPUT ${PMDK_ROOT_DIR}/src/debug
-                   COMMAND make -C ${PMDK_ROOT_DIR} -j${NPROC}
+                   COMMAND make -C ${PMDK_ROOT_DIR} -j${NPROC} -DVALGRIND_ENABLED=1
                    COMMENT "Build PMDK dependency")
 add_custom_command(OUTPUT ${PMDK_INSTALL_DIR}
                    COMMAND make -C ${PMDK_ROOT_DIR} -j${NPROC} 

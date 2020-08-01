@@ -79,11 +79,11 @@ void extra_flush(void *pmem, size_t len, size_t nops, double ratio) {
             _mm_clflushopt(addr);
             count -= 1.0;
         }
-        _mm_sfence();
         // next
         addr = (addr + 64) >= addr_max ? addr_min : addr + 64;
-        count += ratio;
+        if (ratio > 0.0) count += ratio;
     }
+    _mm_sfence();
 }
 
 void extra_fence(void *pmem, size_t len, size_t nops, double ratio) {
@@ -197,6 +197,7 @@ int main(int argc, char *argv[]) {
         double per_op;
 
         usec = runner(correct, pmemaddr, mapped_len, nops);
+        //usec = config_runner(extra_flush, pmemaddr, mapped_len, nops, 0.001);
         per_op = (double)usec / (double)nops;
         printf("%lu,%f,", usec, per_op);
 
