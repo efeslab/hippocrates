@@ -195,14 +195,19 @@ class TraceParser:
 
     # byte_addr: func_name (file_name:line_no)
     TRACE_EVENT_RE = re.compile(r'\w+: (.+) \((.+):(\d+)\)')
+    TRACE_IMPRECISE_RE = re.compile(r'\w+: (.+) \(in (.+)\)')
 
     def _parse_pmemcheck_stackframe(self, frame):
         matches = self.TRACE_EVENT_RE.match(frame)
-        if matches is None:
-            # Happens in the linker
-            return None
-        return {'function': matches.group(1), 'file': matches.group(2),
-                'line': int(matches.group(3))}
+        if matches is not None:
+            return {'function': matches.group(1), 'file': matches.group(2),
+                    'line': int(matches.group(3))}
+        
+        # Happens in the linker
+        matches = self.TRACE_IMPRECISE_RE.match(frame)
+        if matches is not None:
+            return {'function': matches.group(1), 'file': matches.group(2),
+                    'line': -1}
 
     def _parse_pmemcheck_events(self, line, timestamp):
         '''
@@ -226,6 +231,10 @@ class TraceParser:
                     if res is None:
                         break
                     stack += [res]
+            
+                if not stack:
+                    embed()
+                assert stack, 'Empty stack!'
 
                 yield TraceEvent(timestamp=timestamp, event=event_type,
                                   is_bug=False, stack=stack, **stack[0])
@@ -286,8 +295,10 @@ class TraceParser:
         last_bug_no = -1
         is_perf = False
 
-        bug_re = re.compile(r'==\d+==\s+\[(\d+)\]\s+ at \w+: \w+ \(\S+\) ==\d+==\s+Address: (\w+)\s+size: (\d+)\s+state: (\w+)')
-        perf_re = re.compile(r'==\d+==\s+\[(\d+)\]\s+ at \w+: \w+ \(\S+\) ==\d+==\s+Address: (\w+)\s+size: (\d+)')
+        bug_re = re.compile(
+            r'==\d+==\s+\[(\d+)\]\s+ at \w+: \S+ \(.+\) ==\d+==\s+Address: (\w+)\s+size: (\d+)\s+state: (\w+)')
+        perf_re = re.compile(
+            r'==\d+==\s+\[(\d+)\]\s+ at \w+: \S+ \(.+\) ==\d+==\s+Address: (\w+)\s+size: (\d+)')
 
         # We want to insert these in specific places
         # (addr, size, fn, file, line) describes the original assignment
@@ -346,13 +357,9 @@ class TraceParser:
                         # We want to capture this stack information.
                         split_word = ' at ' if st == 0 else ' by '
                         sf_raw = lines[i+st].split(split_word)[-1].strip()
-                        m = self.TRACE_EVENT_RE.match(sf_raw)
-                        if m is None:
-                            print(f'{__file__}: Match is none!')
-                            embed()
-                        assert (m is not None), f'"{sf_raw}" does not conform!'
-                        sf = {'function': m.group(1), 'file': m.group(2), 'line': int(m.group(3))}
-                        frames += [sf]; st += 1
+                        sf = self._parse_pmemcheck_stackframe(sf_raw)
+                        frames += [sf]
+                        st += 1
 
                     bug_report = f'{lines[i].strip()} {lines[i+st].strip()}'
                     i += st
@@ -373,6 +380,8 @@ class TraceParser:
                                         is_bug=True, stack=frames, **frames[0])
                     else:
                         matches = perf_re.match(bug_report)
+                        if matches is None:
+                            embed()
                         assert (matches is not None), f'"{bug_report}" does not match "{perf_re}"'
                         bug_no = int(matches.group(1))
                         addr = int(matches.group(2), base=16)
@@ -387,13 +396,14 @@ class TraceParser:
 
                     if bug_no != last_bug_no + 1:
                         print(f'{bug_no} != {last_bug_no + 1}')
-                    assert(bug_no == last_bug_no + 1)
+                    assert bug_no == last_bug_no + 1, f'{bug_no} != {last_bug_no + 1}'
                     last_bug_no = bug_no
 
                     nbugs_remaining -= 1
                     if nbugs_remaining == 0 and not is_perf:
                         nbugs_total = None
                         nbugs_remaining = None
+                        last_bug_no = -1
                 else:
                     # End of interesting stuff.
                     print('Done!')
