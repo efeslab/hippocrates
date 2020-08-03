@@ -265,11 +265,68 @@ std::list<Value*> TraceEvent::pmValues(const BugLocationMapper &mapper) const {
                         break;
                     }  
                     case FLUSH: {
-                        auto *cb = dyn_cast<CallBase>(i);
-                        assert(cb && "bad trace!");
-                        Function *f = utils::getFlush(cb);
-                        assert(f && "bad trace!");
-                        pmAddrs.push_back(cb->getArgOperand(0));
+                        if (auto *cb = dyn_cast<CallBase>(i)) {
+                            Function *f = utils::getFlush(cb);
+                            if (f) {
+                                pmAddrs.push_back(cb->getArgOperand(0));
+                            } else if (auto *ci = dyn_cast<CallInst>(cb)) {
+                                if (ci->isInlineAsm()) {
+                                    bool isFlushAsm = false;
+                                    // Get the inline ASM string
+                                    auto *ia = dyn_cast<InlineAsm>(ci->getCalledValue());
+                                    assert(ia);
+                                    auto str = ia->getAsmString();
+                                    errs() << str << "\n";
+                                    if (str == ".byte 0x66; xsaveopt $0") {
+                                        isFlushAsm = true;
+                                    } else {
+                                        errs() << "'" << str << "' != " << ".byte 0x66; xsaveopt $0" << "\n";
+                                    }
+                                    // Check if it is
+                                    if (isFlushAsm) {
+                                        pmAddrs.push_back(cb->getArgOperand(0));
+                                    }
+                                }
+                            }
+
+                            break;
+                        } else if (auto *si = dyn_cast<StoreInst>(i)) {
+                            /**
+                             * This could be a VALGRIND_DO_FLUSH, so we should
+                             * see if there's the magic number for the request.
+                             */
+                            errs() << *si << "\n";
+                            Value *v = si->getValueOperand();
+                            if (auto *ci = dyn_cast<ConstantInt>(v)) {
+                                if (ci->getZExtValue() == 1346568197) {
+                                    errs() << "We found valgrind value!\n";
+                                    // The very next instruction should have what we want.
+                                    Instruction *curr = si->getNextNonDebugInstruction();
+                                    StoreInst *pmStore = dyn_cast<StoreInst>(curr);
+                                    while (!pmStore) {
+                                        curr = curr->getNextNonDebugInstruction();
+                                        assert(curr);
+                                        pmStore = dyn_cast<StoreInst>(curr);
+                                    }
+                                    assert(pmStore);
+                                    errs() << "PM store:" << *pmStore << "\n"; 
+                                    errs() << "\tAddr:" << *pmStore->getValueOperand() << "\n";
+                                    Value *pmAddr = pmStore->getValueOperand();
+                                    if (!pmAddr->getType()->isPointerTy()) {
+                                        if (auto *pi = dyn_cast<PtrToIntInst>(pmAddr)) {
+                                            pmAddr = pi->getPointerOperand();
+                                        }
+                                    }
+                                    errs() << "\tAddr (no cast):" << *pmAddr << "\n";
+                                    assert(pmAddr->getType()->isPointerTy());
+                                    pmAddrs.push_back(pmAddr);
+                                    break;
+                                }
+                                // Fall-through, looking for magic VALGRIND number
+                            }
+                            // Fall-through, we already checked for valgrind
+                        }
+                        
                         break;
                     }        
                     default:

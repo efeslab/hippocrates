@@ -293,6 +293,31 @@ Instruction *GenericFixGenerator::insertFence(Instruction *i) {
 #endif
 }
 
+static CallBase *modifyCall(CallBase *cb, Function *newFn) {
+    // May need to do some casts.
+    IRBuilder<> builder(cb);
+    std::list<Value *> newArgs;
+    for (unsigned i = 0; i < newFn->arg_size(); ++i) {
+        // Get value
+        Value *op = cb->getArgOperand(i);
+        // Get new type
+        Argument *arg = newFn->arg_begin() + i;
+        // errs() << "\tARG:" << *arg << "\n";
+        Type *newType = arg->getType();
+        // Create the conversion
+        // errs() << "\tOP:" << *op << "\n";
+        // errs() << "\tTY:" << *newType << "\n";
+        Value *newOp = builder.CreateBitOrPointerCast(op, newType);
+        // Replace arg
+        cb->setArgOperand(i, newOp);
+    }
+
+    // Now, replace the call.
+    cb->setCalledFunction(newFn);
+    errs() << "cb:" << *cb << "\n";
+    return cb;
+}
+
 Instruction *GenericFixGenerator::insertPersistentSubProgram(
     BugLocationMapper &mapper,
     Instruction *startInst,
@@ -302,11 +327,28 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
     errs() << __PRETTY_FUNCTION__ << " BEGIN\n";
 
     if (!mapper.contains(callstack[0])) {
-        assert(1 == idx && "don't know how to handle nested unknowns!");
+        // assert(1 == idx && "don't know how to handle nested unknowns!");
+        if (idx != 1) {
+            errs() << "don't know how to handle nested unknowns, abort!\n";
+            return nullptr;
+        }
+
         auto *cb = dyn_cast<CallBase>(startInst);
         assert(cb && "has to be calling something!");
         Function *f = cb->getCalledFunction();
         assert(f && "don't know what to do!");
+        if (f->isDeclaration()) {  
+            std::string declName(utils::demangle(f->getName().data()));
+            errs() << *cb << "\n";
+            errs() << "DECL: " << declName << "\n";
+
+            Function *pmVersion = getPersistentVersion(declName.c_str());
+            CallBase *modCb = modifyCall(cb, pmVersion);
+            errs() << *modCb << "\n";
+
+            return modifyCall(cb, pmVersion);
+        }
+
         if (f->getIntrinsicID() != Intrinsic::not_intrinsic) {
             Function *newFn = nullptr;
             switch (f->getIntrinsicID()) {
@@ -330,28 +372,8 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
 
             errs() << *newFn << "\n";
             errs() << *cb << "\n";
-            // May need to do some casts.
-            IRBuilder<> builder(cb);
-            std::list<Value *> newArgs;
-            for (unsigned i = 0; i < newFn->arg_size(); ++i) {
-                // Get value
-                Value *op = cb->getArgOperand(i);
-                // Get new type
-                Argument *arg = newFn->arg_begin() + i;
-                // errs() << "\tARG:" << *arg << "\n";
-                Type *newType = arg->getType();
-                // Create the conversion
-                // errs() << "\tOP:" << *op << "\n";
-                // errs() << "\tTY:" << *newType << "\n";
-                Value *newOp = builder.CreateBitOrPointerCast(op, newType);
-                // Replace arg
-                cb->setArgOperand(i, newOp);
-            }
-
-            // Now, replace the call.
-            cb->setCalledFunction(newFn);
-            errs() << "cb:" << *cb << "\n";
-            return cb;
+            
+            return modifyCall(cb, newFn);
         }
     }
 

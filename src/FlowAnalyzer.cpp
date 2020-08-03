@@ -65,13 +65,8 @@ void PmDesc::addKnownPmValue(Value *pmv) {
     else pm_locals_.insert(ptsSet.begin(), ptsSet.end());
 }
 
-bool PmDesc::pointsToPm(llvm::Value *pmv) {
-    std::unordered_set<const llvm::Value *> ptsSet;
-    bool res = getPointsToSet(pmv, ptsSet);
-    if (!res) {
-        errs() << "COULD NOT GET: " << *pmv << "\n";
-    }
-    assert(res && "could not get!");
+size_t PmDesc::getNumPmAliases(
+    const std::unordered_set<const llvm::Value *> &ptsSet) const {
 
     std::unordered_set<const llvm::Value *> pm_values;
     pm_values.insert(pm_locals_.begin(), pm_locals_.end());
@@ -94,7 +89,20 @@ bool PmDesc::pointsToPm(llvm::Value *pmv) {
         }
     }
 
-    return !intersect.empty();
+    return intersect.size();
+}
+
+bool PmDesc::pointsToPm(llvm::Value *pmv) {
+    std::unordered_set<const llvm::Value *> ptsSet;
+    bool res = getPointsToSet(pmv, ptsSet);
+    if (!res) {
+        errs() << "COULD NOT GET: " << *pmv << "\n";
+    }
+    assert(res && "could not get!");
+
+    size_t numPm = getNumPmAliases(ptsSet);
+
+    return numPm > 0;
 }
 
 bool PmDesc::isSubsetOf(const PmDesc &possSuper) {
@@ -207,7 +215,7 @@ ContextBlock::Shared ContextBlock::create(FnContext::Shared ctx,
     node->first = first;
     node->last = first;
     node->traceInst = trace;
-    errs() << "CREATE BEGIN ------\n";
+    // errs() << "CREATE BEGIN ------\n";
 
     // -- Scroll down to find the last instruction.
     while (Instruction *tmp = node->last->getNextNonDebugInstruction()) {
@@ -217,15 +225,15 @@ ContextBlock::Shared ContextBlock::create(FnContext::Shared ctx,
         if (CallBase *cb = dyn_cast<CallBase>(tmp)) {
             Function *f = cb->getCalledFunction();
             if (f && !f->isDeclaration() && !f->isIntrinsic()) {
-                errs() << "BREAK\n";
+                // errs() << "BREAK\n";
                 break;
             }
         }  
     }
 
     
-    errs() << node->str() << "\n";
-    errs() << "CREATE END ------\n";
+    // errs() << node->str() << "\n";
+    // errs() << "CREATE END ------\n";
 
     return node;
 }
@@ -252,12 +260,29 @@ ContextBlock::Shared ContextBlock::create(const BugLocationMapper &mapper,
 
         for (auto *inst : mapper[caller]) {
             if (auto *cb = dyn_cast<CallBase>(inst)) {
+                Function *f = cb->getCalledFunction();
+                if (f) {
+                    if (f->getIntrinsicID() == Intrinsic::dbg_declare) {
+                        continue;
+                    }
+
+                    std::string fname = utils::demangle(f->getName().data());
+                    if (fname.find(callee.function) == std::string::npos) {
+                        errs() << fname << " !find " << callee.function << "\n";
+                        continue;
+                    }
+                } 
+
                 errs() << "POSSIBLE: " << *cb << "\n";
                 possibleCallSites.push_back(cb);
             }
         }
 
         assert(possibleCallSites.size() > 0 && "don't know how to handle!");
+        if (possibleCallSites.size() > 1) {
+            errs() << "Too many options! Abort.\n";
+            return nullptr;
+        }
         assert(possibleCallSites.size() == 1 && "don't know how to handle!");
 
         Instruction *possible = possibleCallSites.front();
@@ -266,7 +291,23 @@ ContextBlock::Shared ContextBlock::create(const BugLocationMapper &mapper,
 
         Function *f = callInst->getCalledFunction();
         if (!f) {
+            errs() << "Try get function pointer function (" << callee.function << ")\n";
             f = mapper.module().getFunction(callee.function);
+            if (!f) {
+                std::list<Function*> fnCandidates;
+                for (Function &fn : mapper.module()) {
+                    std::string fnName(fn.getName().data());
+                    if (fnName.find(callee.function) != std::string::npos) {
+                        // Skip false matches
+                        auto ending = fnName.substr(fnName.find(callee.function) + callee.function.size());
+                        if (ending[0] != '.') continue; // name mangling
+                        errs() << "\t\t--- " << fnName << "\n"; 
+                        fnCandidates.push_back(&fn);
+                    }
+                }
+                assert(fnCandidates.size() == 1 && "wat");
+                f = fnCandidates.front();
+            }
         }
         assert(f && "don't know what's going on!!");
         
@@ -283,15 +324,20 @@ ContextBlock::Shared ContextBlock::create(const BugLocationMapper &mapper,
     if (!mapper.contains(curr)) {
         errs() << "stack[0] " << curr.str() << "\n";
         errs() << "location " << te.location.str() << "\n";
-        assert(false && "does not contain!!!");
+        /**
+         * TODO: Any way around this? Doesn't seem like it.
+         */
+        return nullptr;
     }
     // We use this to figure out the first and last instruction in the window.
     std::list<Instruction*> possibleLocs;
     for (auto *inst : mapper[curr]) {
+        errs() << "POSS: " << *inst << " in " << inst->getFunction()->getName() << "\n";
         possibleLocs.push_back(inst);
     }
     assert(possibleLocs.size() > 0 && "don't know how to handle!");
-    assert(possibleLocs.size() == 1 && "don't know how to handle!");
+    // Not sure why we did this.
+    // assert(possibleLocs.size() == 1 && "don't know how to handle!");
 
     Instruction *nodeFirst = possibleLocs.front();
     Instruction *traceInst = nodeFirst;
@@ -363,24 +409,40 @@ ContextGraph<T>::constructSuccessors(ContextGraph<T>::GraphNodePtr node) {
      */
 
     if (ReturnInst *ri = dyn_cast<ReturnInst>(last)) {
-        auto newCtx = node->block->ctx->doReturn(ri);
-        // The next instruction isn't too complicated
-        CallBase *cb = node->block->ctx->caller();
-        Instruction *next = cb->getNextNonDebugInstruction();
-        assert(next && "bad assumptions!");
-        successors.emplace_back(newCtx, next);
+        if (node->block->ctx->canReturn()) {
+            auto newCtx = node->block->ctx->doReturn(ri);
+            // The next instruction isn't too complicated
+            CallBase *cb = node->block->ctx->caller();
+            Instruction *next = cb->getNextNonDebugInstruction();
+            assert(next && "bad assumptions!");
+            successors.emplace_back(newCtx, next);
+        } 
     }
 
     /**
      * If this is a call instruction, we need to do the call.
+     * 
+     * However, we ALSO need to check for infinite recursion. So, we need some
+     * way to limit downward descent.
+     * 
+     * One way to handle this is that if we get to a point where the function 
+     * call is repeated above or has no PM values, we just skip to the next
+     * instruction.
      */
     else if (CallBase *cb = dyn_cast<CallBase>(last)) {
         // We just need the function.
         Function *f = cb->getCalledFunction();
         assert(f && "don't know how to handle this yet!");
-        auto newCtx = node->block->ctx->doCall(f, cb);
-        Instruction *next = &f->getEntryBlock().front();
-        successors.emplace_back(newCtx, next);
+
+        // Check recursion.
+        if (node->block->ctx->contains(cb)) {
+            // Here, we just advance to the next instruction instead.
+            successors.emplace_back(node->block->ctx, cb->getNextNonDebugInstruction());
+        } else {
+            auto newCtx = node->block->ctx->doCall(f, cb);
+            Instruction *next = &f->getEntryBlock().front();
+            successors.emplace_back(newCtx, next);
+        }
     }
 
     /**
@@ -437,28 +499,35 @@ void ContextGraph<T>::construct(ContextBlock::Shared end) {
 
         // Pre-check
         errs() << "------B\n";
-        errs() << "Traverse " << n->block->str() << "\n";
+        errs() << "SZ: " << frontier.size() << ", TOTAL: " << nnodes << "\n";
+
+        if (n->constructed) {
+            errs() << "Already constructed! DO NOTHING\n";
+            nnodes--;
+            errs() << "------E\n";
+            continue;
+        }
+
+        // errs() << "Traverse " << n->block->str() << "\n";
         if (*n->block == *end) {
             errs() << "equals end!!! End traversal\n";
             // This counts as "construction"
-            if (n->constructed) {
-                errs() << "Already constructed! DO NOTHING\n";
-                nnodes--;
-            } else {
-                n->constructed = true;
-                // Update the trace instruction too
-                n->block->traceInst = end->traceInst;
-                leaves.push_back(n);
-            }
+            n->constructed = true;
+            // Update the trace instruction too
+            n->block->traceInst = end->traceInst;
+            leaves.push_back(n);
             
             errs() << "------E\n";
             continue;
-        } else {
-            errs() << "NE:\n" << end->str() << "\nEND NE\n";
         }
+        //  else {
+            // errs() << "NE:\n" << end->str() << "\nEND NE\n";
+        // }
 
         // Construct successors.
+        assert(!n->constructed && "SEEMS WASTEFUL BRONT");
         auto successors = constructSuccessors(n);
+        n->constructed = true;
 
         for (auto childNode : successors) {
             // Set parent-child relations
@@ -472,6 +541,10 @@ void ContextGraph<T>::construct(ContextBlock::Shared end) {
             if (!childNode->constructed) {
                 nnodes++;
                 frontier.push_back(childNode);
+                errs() << "\tnew child!\n";
+                errs() << childNode->block->str() << "\n";
+            } else {
+                errs() << "\tconstructed child!\n";
             }
         }
 

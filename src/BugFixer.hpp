@@ -122,6 +122,11 @@ private:
     bool addFixToMapping(llvm::Instruction *i, FixDesc desc);
 
     /**
+     * Same as above, but with a range of instructions.
+     */
+    bool addFixToMapping(llvm::Instruction *first, llvm::Instruction *last, FixDesc desc);
+
+    /**
      * Handle fix generation for a missing persist call.
      */
     bool handleAssertPersisted(const TraceEvent &te, int bug_index);

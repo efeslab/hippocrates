@@ -42,15 +42,20 @@ namespace pmfix {
          */
         std::unordered_set<const llvm::Value *> pm_locals_;
         std::unordered_set<const llvm::Value *> pm_globals_;
-        
+
+    public:
+        PmDesc(llvm::Module &m);
+
         /**
          * Goes through the cache.
          */
         bool getPointsToSet(const llvm::Value *v,                                  
                             std::unordered_set<const llvm::Value *> &ptsSet);
 
-    public:
-        PmDesc(llvm::Module &m);
+        /**
+         * Get the number of the aliases that point to PM.
+         */
+        size_t getNumPmAliases(const std::unordered_set<const llvm::Value *> &ptsSet) const;
 
         /** 
          * Add a known PM value.
