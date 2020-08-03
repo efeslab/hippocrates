@@ -21,10 +21,15 @@ set(PMDK_LIB_DIR ${PMDK_INSTALL_DIR}/lib CACHE INTERNAL "")
 set(PMDK_LIBS ${PMDK_LIB_DIR} CACHE INTERNAL "")
 
 add_custom_command(OUTPUT ${PMDK_ROOT_DIR}/src/debug
-                   COMMAND make -C ${PMDK_ROOT_DIR} -j${NPROC} -DVALGRIND_ENABLED=1
+                   COMMAND git -C ${PMDK_ROOT_DIR} checkout 1.6
+                   COMMAND make CC=wllvm CXX=wllvm++ 
+                            EXTRA_CFLAGS="-DVALGRIND_ENABLED=1 -DVG_PMEMCHECK_ENABLED=1"
+                             -C ${PMDK_ROOT_DIR} -j${NPROC}
                    COMMENT "Build PMDK dependency")
 add_custom_command(OUTPUT ${PMDK_INSTALL_DIR}
-                   COMMAND make -C ${PMDK_ROOT_DIR} -j${NPROC} 
+                   COMMAND make CC=wllvm CXX=wllvm++
+                            EXTRA_CFLAGS="-DVALGRIND_ENABLED=1 -DVG_PMEMCHECK_ENABLED=1"
+                            -C ${PMDK_ROOT_DIR} -j${NPROC} 
                            install prefix=${PMDK_INSTALL_DIR}
                    DEPENDS ${PMDK_ROOT_DIR}/src/debug
                    COMMENT "Install PMDK dependency")

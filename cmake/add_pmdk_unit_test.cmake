@@ -43,7 +43,7 @@ function(add_pmdk_unit_test)
     endif()
 
     # 1. Checkout
-    set(EXTRA_FLAGS "-g -O0 -Wno-error -DUSE_VALGRIND=1 -I${PMCHK_INCLUDE_DIR}")
+    set(EXTRA_FLAGS "-g -O0 -Wno-error -DUSE_VALGRIND=1 -DVALGRIND_ENABLED=1 -DVG_PMEMCHECK_ENABLED=1 -I${PMCHK_INCLUDE_DIR}")
     add_custom_target("${FN_ARGS_TARGET}_checkout"
                       COMMAND git checkout ${FN_ARGS_COMMIT_HASH}
                       COMMAND git clean -fxd
@@ -85,6 +85,7 @@ function(add_pmdk_unit_test)
                     COMMAND cp -ruv ${TEST_PATH}/* "${DEST_DIR}"
                     # Copy tool files first.
                     COMMAND cp -uv "${SRC_TOOLS}/pmempool/pmempool" "${DEST_DIR}"
+                    COMMAND cp -uv "${SRC_TOOLS}/pmempool/pmempool.static-nondebug" "${DEST_DIR}"
                     COMMAND cp -uv "${TOOL_PATH}/pmemobjcli/pmemobjcli" "${DEST_DIR}"
                     COMMAND cp -uv "${TOOL_PATH}/pmemobjcli/*.posc" "${DEST_DIR}"
                     COMMAND cp -uv "${TOOL_PATH}/pmemobjcli/.pmemobjcli.o.bc" "${DEST_DIR}/pmemobjcli.bc"
