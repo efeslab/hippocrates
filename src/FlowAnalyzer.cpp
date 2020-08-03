@@ -5,8 +5,6 @@
 #include <deque>
 #include <utility>
 
-#include <cxxabi.h>
-
 #include "llvm/IR/CFG.h"
 
 #include "FlowAnalyzer.hpp"
@@ -230,22 +228,6 @@ ContextBlock::Shared ContextBlock::create(FnContext::Shared ctx,
     errs() << "CREATE END ------\n";
 
     return node;
-}
-
-static std::string demangle(const char *name) {
-    int status;
-    char *realname;
-    std::string ret;
-
-    realname = abi::__cxa_demangle(name, 0, 0, &status);
-    if (!status) {
-        ret = std::string(realname);
-    } else {
-        ret = std::string(name);
-    }
-    free(realname);
-
-    return ret;
 }
 
 ContextBlock::Shared ContextBlock::create(const BugLocationMapper &mapper, 

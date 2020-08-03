@@ -36,6 +36,8 @@ namespace utils {
 
     #pragma region PMFix
 
+    std::string demangle(const char *name);
+
     /**
      * If this references a kind of flush, return the function, else false.
      */

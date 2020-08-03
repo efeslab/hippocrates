@@ -1,8 +1,26 @@
 #include "PassUtils.hpp"
 
+#include <cxxabi.h>
+
 using namespace pmfix;
 
 #pragma region PMFix
+
+std::string utils::demangle(const char *name) {
+    int status;
+    char *realname;
+    std::string ret;
+
+    realname = abi::__cxa_demangle(name, 0, 0, &status);
+    if (!status) {
+        ret = std::string(realname);
+    } else {
+        ret = std::string(name);
+    }
+    free(realname);
+
+    return ret;
+}
 
 Function *utils::getFlush(CallBase *cb) {
     Function *f = cb->getCalledFunction();

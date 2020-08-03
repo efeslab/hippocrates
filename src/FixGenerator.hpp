@@ -22,6 +22,9 @@ namespace pmfix {
 class FixGenerator {
 private:
 
+    /**
+     * Direct lookup.
+     */
     llvm::Function *getPersistentIntrinsic(const char *name) const;
 
 protected:
@@ -29,6 +32,11 @@ protected:
 
     /** PURE UTILITY
      */
+
+    /**
+     * Adds the name prefix.
+     */
+    llvm::Function *getPersistentVersion(const char *name) const;
 
     llvm::Function *getClwbDefinition() const;
 

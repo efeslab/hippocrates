@@ -7,6 +7,8 @@
 
 #include "llvm/IR/DIBuilder.h"
 
+#include "PassUtils.hpp"
+
 #include <unordered_set>
 
 using namespace pmfix;
@@ -31,8 +33,17 @@ llvm::Function *FixGenerator::getSfenceDefinition() const {
 
 llvm::Function *FixGenerator::getPersistentIntrinsic(const char *name) const {
     Function *fn = module_.getFunction(name);
+    if (!fn) {
+        errs() << __FUNCTION__ << ": PMFIXER(" << name << ") not found!\n";
+    }
     assert(fn && "Could not find persistent intrinsic! Likely forgot to link with intrinsics library.");
     return fn;
+}
+
+llvm::Function *FixGenerator::getPersistentVersion(const char *name) const {
+    static std::string prefix("PMFIXER_");
+    auto fullName = prefix + std::string(name);
+    return getPersistentIntrinsic(fullName.c_str());
 }
 
 llvm::Function *FixGenerator::getPersistentMemcpy() const {

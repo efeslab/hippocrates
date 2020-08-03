@@ -12,6 +12,10 @@ void PMFIXER(store_nt)(void) {
     __builtin_nontemporal_store(0, &i);
 }
 
+/**
+ * Memory functions.
+ */
+
 void PMFIXER(memset)(uint8_t *s, uint8_t c, size_t n, bool _unused) {
     for (size_t i = 0; i < n; ++i) {
         int *ptr = (int*)(s + i);
@@ -66,4 +70,31 @@ void PMFIXER(memmove)(uint8_t *d, uint8_t *s, size_t n, bool _unused) {
 	}
 
 	PMFIXER(memcpy)(d, s, n, _unused);
+}
+
+/**
+ * String functions.
+ */
+
+char *PMFIXER(strncpy)(char *dest, const char *src, size_t n) {
+    size_t i;
+
+    for (i = 0; i < n && src[i] != '\0'; i++) {
+        // dest[i] = src[i];
+        int *ptr = (int*)(dest + i);
+        int val = (int)(src[i]);
+        _mm_stream_si32(ptr, val);
+        VALGRIND_PMC_DO_FLUSH(ptr, sizeof(*ptr));
+    }     
+    for ( ; i < n; i++) {
+        // dest[i] = '\0';
+        int *ptr = (int*)(dest + i);
+        int val = (int)('\0');
+        _mm_stream_si32(ptr, val);
+        VALGRIND_PMC_DO_FLUSH(ptr, sizeof(*ptr));
+    }  
+
+    _mm_sfence();
+    
+    return dest;
 }
