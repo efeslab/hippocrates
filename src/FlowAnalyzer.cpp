@@ -5,6 +5,8 @@
 #include <deque>
 #include <utility>
 
+#include <cxxabi.h>
+
 #include "llvm/IR/CFG.h"
 
 #include "FlowAnalyzer.hpp"
@@ -148,6 +150,7 @@ FnContext::Shared FnContext::doCall(Function *f, CallBase *cb) {
 
 FnContext::Shared FnContext::doReturn(ReturnInst *ri) {
     FnContext::Shared p = parent_;
+    assert(p && "Can't return to a null parent!");
     // Propagate up PM values
     if (Value *v = ri->getReturnValue()) {
         // Integers cannot point to anything.
@@ -184,7 +187,7 @@ std::string FnContext::str(int indent) const {
     for (int i = 0; i < indent; ++i) istr += "\t";
 
     buffer << istr << "<FnContext>\n";
-    buffer << istr << "\tEntries: " << callStack_.size() << "\n";
+    buffer << istr << "\tCallstack Entries: " << callStack_.size() << "\n";
     buffer << pm_.str(indent + 1) << "\n";
     buffer << istr << "</FnContext>";
 
@@ -227,6 +230,22 @@ ContextBlock::Shared ContextBlock::create(FnContext::Shared ctx,
     errs() << "CREATE END ------\n";
 
     return node;
+}
+
+static std::string demangle(const char *name) {
+    int status;
+    char *realname;
+    std::string ret;
+
+    realname = abi::__cxa_demangle(name, 0, 0, &status);
+    if (!status) {
+        ret = std::string(realname);
+    } else {
+        ret = std::string(name);
+    }
+    free(realname);
+
+    return ret;
 }
 
 ContextBlock::Shared ContextBlock::create(const BugLocationMapper &mapper, 
@@ -493,6 +512,7 @@ ContextGraph<T>::ContextGraph(const BugLocationMapper &mapper,
     errs() << "CONSTRUCT ME\n\n";
 
     ContextBlock::Shared sblk = ContextBlock::create(mapper, start);
+    if (!sblk) return;
     ContextBlock::Shared eblk = ContextBlock::create(mapper, end);
     errs() << sblk->str() << "\n";
     errs() << eblk->str() << "\n";

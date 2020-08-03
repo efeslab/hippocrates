@@ -124,6 +124,15 @@ namespace pmfix {
          */
         FnContextPtr doCall(llvm::Function *f, llvm::CallBase *cb);
 
+        bool canReturn() const { return !!parent_; }
+
+        bool contains(llvm::CallBase *cb) const {
+            for (auto *i : callStack_) {
+                if (cb == i) return true;
+            }
+            return false;
+        }
+
         /**
          * Also handles propagation of PM back
          */
@@ -236,6 +245,8 @@ namespace pmfix {
         std::list<GraphNodePtr> roots;
         std::list<GraphNodePtr> leaves;
 
+        bool empty() const { return roots.empty() && leaves.empty(); }
+
         ContextGraph(const BugLocationMapper &mapper, 
                      const TraceEvent &start, 
                      const TraceEvent &end);
@@ -284,6 +295,11 @@ namespace pmfix {
                      const TraceEvent &end) 
             : m_(m), mapper_(mapper), start_(start), end_(end),
               graph_(mapper, start, end) {}
+
+        /**
+         * Return true if we can do anything at all, false otherwise.
+         */
+        bool canAnalyze() const { return !graph_.empty(); }
 
         /**
          * Return true if the end event is redundant across all paths.

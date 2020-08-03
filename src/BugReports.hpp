@@ -194,6 +194,8 @@ public:
 
     const std::list<int> &bugs() const { return bugs_; }
 
+    const std::vector<TraceEvent> &events() const { return events_; }
+
     size_t size() const { return events_.size(); }
 
     bool empty() const { return events_.empty(); }

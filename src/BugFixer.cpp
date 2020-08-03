@@ -12,6 +12,8 @@ using namespace llvm;
 #pragma region BugFixer
 
 bool BugFixer::addFixToMapping(Instruction *i, FixDesc desc) {
+    assert(desc.type > NO_FIX);
+
     if (!fixMap_.count(i)) {
         fixMap_[i] = desc;
         return true;
@@ -25,12 +27,20 @@ bool BugFixer::addFixToMapping(Instruction *i, FixDesc desc) {
     } else if (fixMap_[i].type == ADD_FENCE_ONLY && desc.type == ADD_FLUSH_ONLY) {
         fixMap_[i].type = ADD_FLUSH_AND_FENCE;
         return true;
+    } else if (fixMap_[i].type == ADD_FLUSH_AND_FENCE && 
+               (desc.type == ADD_FLUSH_ONLY || desc.type == ADD_FENCE_ONLY)) {
+        return false;
+    } else if (desc.type == ADD_FLUSH_AND_FENCE && 
+               (fixMap_[i].type == ADD_FLUSH_ONLY || fixMap_[i].type == ADD_FENCE_ONLY)) {
+        fixMap_[i].type = ADD_FLUSH_AND_FENCE;
+        return true;
     }
 
     if ((fixMap_[i].type == ADD_FLUSH_ONLY || fixMap_[i].type == ADD_FLUSH_AND_FENCE) &&
         desc.type == REMOVE_FLUSH_ONLY) {
         assert(false && "conflicting solutions!");
     }
+
     // (iangneal): future work
     // if (fixMap_[i] == REMOVE_FLUSH_ONLY && t == REMOVE_FENCE_ONLY) {
     //     fixMap_[i] = REMOVE_FLUSH_AND_FENCE;
@@ -40,7 +50,49 @@ bool BugFixer::addFixToMapping(Instruction *i, FixDesc desc) {
     //     return true;
     // }
 
+ 
+    errs() << "NEW: " << desc.type << " OLD: " << fixMap_[i].type << "\n";
+
     assert(false && "what");
+    return false;
+}
+
+bool BugFixer::addFixToMapping(Instruction *f, Instruction *l, FixDesc desc) {
+    #if 0
+    assert(desc.type > NO_FIX);
+
+
+    if (!fixMap_.count(i)) {
+        fixMap_[i] = desc;
+        return true;
+    } else if (fixMap_[i] == desc) {
+        return false;
+    }
+
+    if (fixMap_[i].type == ADD_FLUSH_ONLY && desc.type == ADD_FENCE_ONLY) {
+        fixMap_[i].type = ADD_FLUSH_AND_FENCE;
+        return true;
+    } else if (fixMap_[i].type == ADD_FENCE_ONLY && desc.type == ADD_FLUSH_ONLY) {
+        fixMap_[i].type = ADD_FLUSH_AND_FENCE;
+        return true;
+    } else if (fixMap_[i].type == ADD_FLUSH_AND_FENCE && 
+               (desc.type == ADD_FLUSH_ONLY || desc.type == ADD_FENCE_ONLY)) {
+        return false;
+    } else if (desc.type == ADD_FLUSH_AND_FENCE && 
+               (fixMap_[i].type == ADD_FLUSH_ONLY || fixMap_[i].type == ADD_FENCE_ONLY)) {
+        fixMap_[i].type = ADD_FLUSH_AND_FENCE;
+        return true;
+    }
+
+    if ((fixMap_[i].type == ADD_FLUSH_ONLY || fixMap_[i].type == ADD_FLUSH_AND_FENCE) &&
+        desc.type == REMOVE_FLUSH_ONLY) {
+        assert(false && "conflicting solutions!");
+    }
+ 
+    errs() << "NEW: " << desc.type << " OLD: " << fixMap_[i].type << "\n";
+
+    assert(false && "what");
+    #endif
     return false;
 }
 
@@ -519,10 +571,17 @@ bool BugFixer::doRepair(void) {
      * 
      * The final step. Now, we actually do the fixing.
      */
+    size_t nbugs = 0;
+    size_t nfixes = 0;
     for (auto &p : fixMap_) {
         bool res = fixBug(fixer, p.first, p.second);
         modified = modified || res;
+        nbugs += 1;
+        nfixes += (res ? 1 : 0);
     }
+
+    errs() << "Fixed " << nfixes << " of " << nbugs << " identified! (" 
+        << trace_.bugs().size() << " in trace)\n";
 
     return modified;
 }
