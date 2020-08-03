@@ -83,27 +83,29 @@ add_pmdk_unit_test(TEST_CASE obj_pvector
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
-                   SUITE UNKNOWN)
+                   SUITE NO_REPRO)
 
 # Issue: https://github.com/pmem/issues/issues/446
 # obj_redo_log/TEST0, TEST1
+# REPRO, doesn't want "static-debug", need to patch.
 add_pmdk_unit_test(TEST_CASE obj_redo_log
                    TEST_FILE TEST0
+                   TEST_PATCH obj_redo_log_TEST0_8bbb0af9c.patch
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
-                   SUITE UNKNOWN)
+                   SUITE PASSING)
 
 add_pmdk_unit_test(TEST_CASE obj_redo_log
                    TEST_FILE TEST1
+                   TEST_PATCH obj_redo_log_TEST1_8bbb0af9c.patch
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
-                   SUITE UNKNOWN)
+                   SUITE PASSING)
 
 # Issue: https://github.com/pmem/issues/issues/447
 # obj_toid/TEST0
-# Status: NOT REPRO
 # orig: 0fd509d73
 # 8bbb0af9c6fc96f1aa9fc17321d0896a74e15d34
 add_pmdk_unit_test(TEST_CASE obj_toid
@@ -111,7 +113,7 @@ add_pmdk_unit_test(TEST_CASE obj_toid
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
-                   SUITE UNKNOWN)
+                   SUITE PASSING)
 
 # Issue: https://github.com/pmem/issues/issues/448
 # obj_tx_alloc/TEST0
@@ -120,7 +122,7 @@ add_pmdk_unit_test(TEST_CASE obj_tx_alloc
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
-                   SUITE UNKNOWN)
+                   SUITE PASSING)
 
 # Issue: https://github.com/pmem/issues/issues/449
 # obj_tx_add_range/TEST0
@@ -129,7 +131,7 @@ add_pmdk_unit_test(TEST_CASE obj_tx_add_range
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
-                   SUITE UNKNOWN)
+                   SUITE PASSING)
 
 # Issue: https://github.com/pmem/issues/issues/450
 # obj_tx_add_range_direct/TEST0
@@ -138,12 +140,13 @@ add_pmdk_unit_test(TEST_CASE obj_tx_add_range_direct
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
-                   SUITE UNKNOWN)
+                   SUITE PASSING)
 
 # Issue: https://github.com/pmem/issues/issues/452
 # obj_constructor/TEST0, TEST2
 add_pmdk_unit_test(TEST_CASE obj_constructor
                    TEST_FILE TEST0
+                   TEST_PATCH obj_constructor_TEST0_8bbb0af9c.patch
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
@@ -358,6 +361,7 @@ add_pmdk_unit_test(TEST_CASE pmemobjcli
 # Status: requires pmempool
 add_pmdk_unit_test(TEST_CASE rpmemd_db
                    TEST_FILE TEST0
+                   TEST_PATCH rpmemd_db_TEST0_60e24d2.patch
                    COMMIT_HASH 60e24d2 
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
