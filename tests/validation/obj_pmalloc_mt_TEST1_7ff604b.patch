@@ -1,5 +1,4 @@
-45c45,46
+41c41
 < require_fs_type any
 ---
 > require_fs_type pmem
-> PMEMPOOL=./pmempool

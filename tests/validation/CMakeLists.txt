@@ -50,7 +50,7 @@ add_pmdk_unit_test(TEST_CASE obj_list_recovery
 
 # Issue: https://github.com/pmem/issues/issues/441
 # obj_locks/TEST0
-# Status: Passing? NOT REPRO
+# Status: NOT REPRO
 add_pmdk_unit_test(TEST_CASE obj_locks
                    TEST_FILE TEST0
                    COMMIT_HASH 8bbb0af9c
@@ -144,20 +144,21 @@ add_pmdk_unit_test(TEST_CASE obj_tx_add_range_direct
 
 # Issue: https://github.com/pmem/issues/issues/452
 # obj_constructor/TEST0, TEST2
+# TEST0 takes an eternity
 add_pmdk_unit_test(TEST_CASE obj_constructor
                    TEST_FILE TEST0
                    TEST_PATCH obj_constructor_TEST0_8bbb0af9c.patch
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
-                   SUITE UNKNOWN)
+                   SUITE REPRO)
 
 add_pmdk_unit_test(TEST_CASE obj_constructor
                    TEST_FILE TEST2
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
-                   SUITE UNKNOWN)
+                   SUITE PASSING)
 
 # Issue: https://github.com/pmem/issues/issues/458
 # pmemspoil/TEST0
@@ -170,7 +171,7 @@ add_pmdk_unit_test(TEST_CASE pmemspoil
 
 # Issue: https://github.com/pmem/issues/issues/459
 # pmem_memcpy/TEST0, TEST1, TEST2, TEST3 
-# Status: PASSING
+# Status: fix works!
 add_pmdk_unit_test(TEST_CASE pmem_memcpy
                    TEST_FILE TEST0
                    COMMIT_HASH 8bbb0af9c
@@ -289,7 +290,7 @@ add_pmdk_unit_test(TEST_CASE pmem_memmove
 
 # Issue: https://github.com/pmem/issues/issues/461
 # pmem_memset/TEST1
-# Status: PASSING
+# Status: fix works!
 add_pmdk_unit_test(TEST_CASE pmem_memset
                    TEST_FILE TEST1
                    COMMIT_HASH 0fd509d73
@@ -358,14 +359,14 @@ add_pmdk_unit_test(TEST_CASE pmemobjcli
                    SUITE NO_REPRO)
 
 # Issue: https://github.com/pmem/issues/issues/585
-# Status: requires pmempool
+# Status: Passes, weird exit, TODO
 add_pmdk_unit_test(TEST_CASE rpmemd_db
                    TEST_FILE TEST0
                    TEST_PATCH rpmemd_db_TEST0_60e24d2.patch
                    COMMIT_HASH 60e24d2 
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
-                   SUITE UNKNOWN)
+                   SUITE PASSING)
 
 # Issue: https://github.com/pmem/issues/issues/940
 # obj_first_next/TEST0, TEST1
@@ -384,7 +385,7 @@ add_pmdk_unit_test(TEST_CASE obj_first_next
                    SUITE PASSING)
 
 # Issue: https://github.com/pmem/issues/issues/942
-# Status: PASSING (weird exit)
+# Status: fix works! (weird exit)
 add_pmdk_unit_test(TEST_CASE obj_mem
                    TEST_FILE TEST0
                    TEST_PATCH obj_mem_TEST0_e71dfa41b.patch
