@@ -82,7 +82,7 @@ function(add_pmdk_unit_test)
 
     add_custom_target("${FN_ARGS_TARGET}_copy"
                     COMMAND mkdir -p "${DEST_DIR}"
-                    COMMAND cp -ruv ${TEST_PATH}/* "${DEST_DIR}"
+                    COMMAND cp -rv ${TEST_PATH}/* "${DEST_DIR}"
                     # Copy tool files first.
                     COMMAND cp -uv "${SRC_TOOLS}/pmempool/pmempool" "${DEST_DIR}"
                     COMMAND cp -uv "${SRC_TOOLS}/pmempool/pmempool.static-nondebug" "${DEST_DIR}"
