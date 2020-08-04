@@ -309,25 +309,18 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
     if (!mapper.contains(callstack[0])) {
         // assert(1 == idx && "don't know how to handle nested unknowns!");
         if (idx != 1) {
+            for (const auto &li : callstack) {
+                errs() << li.str() << "\n";
+            }
             errs() << "don't know how to handle nested unknowns, abort!\n";
+            errs() << "idx=" << idx << ", contains=" << mapper.contains(callstack[0]) << "\n";
             return nullptr;
         }
 
         auto *cb = dyn_cast<CallBase>(startInst);
         assert(cb && "has to be calling something!");
         Function *f = cb->getCalledFunction();
-        assert(f && "don't know what to do!");
-        if (f->isDeclaration()) {  
-            std::string declName(utils::demangle(f->getName().data()));
-            errs() << *cb << "\n";
-            errs() << "DECL: " << declName << "\n";
-
-            Function *pmVersion = getPersistentVersion(declName.c_str());
-            CallBase *modCb = modifyCall(cb, pmVersion);
-            errs() << *modCb << "\n";
-
-            return modifyCall(cb, pmVersion);
-        }
+        assert(f && "don't know what to do!");    
 
         if (f->getIntrinsicID() != Intrinsic::not_intrinsic) {
             Function *newFn = nullptr;
@@ -354,6 +347,18 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
             errs() << *cb << "\n";
             
             return modifyCall(cb, newFn);
+        }
+
+        if (f->isDeclaration()) {  
+            std::string declName(utils::demangle(f->getName().data()));
+            errs() << *cb << "\n";
+            errs() << "DECL: " << declName << "\n";
+
+            Function *pmVersion = getPersistentVersion(declName.c_str());
+            CallBase *modCb = modifyCall(cb, pmVersion);
+            errs() << *modCb << "\n";
+
+            return modifyCall(cb, pmVersion);
         }
     }
 

@@ -170,7 +170,8 @@ void BugLocationMapper::createMappings(Module &m) {
         for (BasicBlock &b : f) {
             for (Instruction &i : b) {
                 // Ignore instructions we don't care too much about.
-                if (!isa<StoreInst>(&i) && !isa<CallBase>(&i)) continue;
+                // if (!isa<StoreInst>(&i) && !isa<CallBase>(&i)) continue;
+                // Turns out we DO care.
                 insertMapping(&i);
             }
         }
@@ -217,6 +218,20 @@ void BugLocationMapper::createMappings(Module &m) {
 
         fixLocMap_[location] = locs;
     }
+
+    // errs() << "fix map\n";
+    // for (auto &p : fixLocMap_) {
+    //     if (p.first.function == "clht_gc_thread_init") {
+    //         errs() << p.first.str() << "\n";
+    //     }
+    // }
+    // errs() << "inst map\n";
+    // for (auto &p : locMap_) {
+    //     if (p.first.function == "clht_gc_thread_init") {
+    //         errs() << p.first.str() << "\n";
+    //     }
+    // }
+    // assert(false);
     
     assert(!fixLocMap_.empty() && "wat");
 }

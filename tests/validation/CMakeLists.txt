@@ -27,6 +27,7 @@ configure_file(testconfig.sh ${CMAKE_CURRENT_BINARY_DIR})
 # Issue: https://github.com/pmem/issues/issues/440
 # obj_list_recovery/TEST0, TEST1, TEST2
 # Status: Need to copy obj_list....
+# POST-DE-FACTO
 add_pmdk_unit_test(TEST_CASE obj_list_recovery
                   TEST_FILE TEST0
                   COMMIT_HASH 8bbb0af9c
@@ -51,6 +52,7 @@ add_pmdk_unit_test(TEST_CASE obj_list_recovery
 # Issue: https://github.com/pmem/issues/issues/441
 # obj_locks/TEST0
 # Status: NOT REPRO
+# POST-DE-FACTO
 add_pmdk_unit_test(TEST_CASE obj_locks
                    TEST_FILE TEST0
                    COMMIT_HASH 8bbb0af9c
@@ -78,6 +80,7 @@ add_pmdk_unit_test(TEST_CASE obj_persist_count
 # Issue: https://github.com/pmem/issues/issues/444
 # obj_pvector/TEST0
 # Status: 
+# POST-DE-FACTO
 add_pmdk_unit_test(TEST_CASE obj_pvector
                    TEST_FILE TEST0
                    COMMIT_HASH 8bbb0af9c
@@ -167,7 +170,7 @@ add_pmdk_unit_test(TEST_CASE pmemspoil
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
-                   SUITE UNKNOWN)
+                   SUITE REPRO)
 
 # Issue: https://github.com/pmem/issues/issues/459
 # pmem_memcpy/TEST0, TEST1, TEST2, TEST3 
@@ -370,6 +373,7 @@ add_pmdk_unit_test(TEST_CASE rpmemd_db
 
 # Issue: https://github.com/pmem/issues/issues/940
 # obj_first_next/TEST0, TEST1
+# POST-DE-FACTO
 add_pmdk_unit_test(TEST_CASE obj_first_next
                    TEST_FILE TEST0
                    COMMIT_HASH e71dfa41b
@@ -386,6 +390,7 @@ add_pmdk_unit_test(TEST_CASE obj_first_next
 
 # Issue: https://github.com/pmem/issues/issues/942
 # Status: fix works! (weird exit)
+# POST-DE-FACTO
 add_pmdk_unit_test(TEST_CASE obj_mem
                    TEST_FILE TEST0
                    TEST_PATCH obj_mem_TEST0_e71dfa41b.patch
@@ -396,6 +401,7 @@ add_pmdk_unit_test(TEST_CASE obj_mem
 
 # Issue: https://github.com/pmem/issues/issues/943
 # Status: REPRO'D (10m timeout)
+# POST-DE-FACTO
 add_pmdk_unit_test(TEST_CASE obj_memops
                    TEST_FILE TEST0
                    COMMIT_HASH e71dfa41b
@@ -406,6 +412,7 @@ add_pmdk_unit_test(TEST_CASE obj_memops
 # Issue: https://github.com/pmem/issues/issues/945
 # pmem_memset/TEST0
 # Status: FIX PASSES
+# POST-DE-FACTO
 add_pmdk_unit_test(TEST_CASE pmem_memset 
                    TEST_FILE TEST0
                    TEST_PATCH pmem_memset_TEST0_e71dfa41b.patch

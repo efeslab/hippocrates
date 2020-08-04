@@ -528,6 +528,13 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
         }
     }
 
+    if (idx == 4) {
+        for (const auto &li : *desc.dynStack) {
+            errs() << li.str() << "\n";
+        }
+        assert(false && "GOTCHA");
+    }
+
     bool success = false;
     if (raised) {
         auto desc = FixDesc(ADD_PERSIST_CALLSTACK_OPT, stack, idx);

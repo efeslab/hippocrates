@@ -21,7 +21,7 @@ def get_linker_strings():
     pmdk_required = ['daxctl', 'ndctl', 'rt', 'dl', 'unwind', 'lzma', ]
     pmdk_str = ' '.join(['-l'+lib for lib in pmdk_required])
     pmtest = str(pmtest_library.absolute())
-    return f'-L{pmtest} -Wl,-rpath={pmtest} -lpmtest -lpthread {pmdk_str}'
+    return f'-L{pmtest} -Wl,-rpath={pmtest} -lpmtest -lpthread -lc++ {pmdk_str}'
 
 def run_pass_and_compile(bitcode_file, bug_report, output_file, keep_files):
     # iangneal: inserted by CMAKE
@@ -68,7 +68,7 @@ def run_pass_and_compile(bitcode_file, bug_report, output_file, keep_files):
 
     clang_arg_str_fn = lambda asm: f'{str(clang_exe)} {cc_arg_str} {str(asm)} {get_linker_strings()} -o {str(output_file)}'
     
-    with TemporaryDirectory() as tempdir:
+    def do_all(tempdir):
         temppath = Path(tempdir)
         assert(temppath.exists())
         # 0. Link
@@ -98,6 +98,14 @@ def run_pass_and_compile(bitcode_file, bug_report, output_file, keep_files):
         ret.check_returncode()
         assert(output_file.exists())
 
+    if not keep_files:
+        with TemporaryDirectory() as tempdir:
+            do_all(tempdir)
+    else:
+        print(f'Not writing to temp dir, instead to {str(output_file.parent)}')
+        do_all(output_file.parent)
+        
+
 
 def main(): 
     parser = ArgumentParser(description='Apply the pm-bug-fixer LLVM pass to a given binary.')
@@ -110,9 +118,6 @@ def main():
                         help='Doesn\'t delete temporary files. Helpful for debugging.')
 
     args = parser.parse_args()
-
-    if args.keep_files:
-        raise Exception('--keep-files is not yet supported!')
 
     run_pass_and_compile(args.bitcode_file, args.bug_report, args.output_file, args.keep_files)
 
