@@ -1,0 +1,10 @@
+43,44c43,44
+< require_fs_type pmem non-pmem
+< require_build_type nondebug
+---
+> require_fs_type pmem 
+> require_build_type debug
+46a47,49
+> 
+> PMEMPOOL=./pmempool
+> PMEMSPOIL=./pmemspoil
