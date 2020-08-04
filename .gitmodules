@@ -16,3 +16,6 @@
 [submodule "deps/RECIPE"]
 	path = deps/RECIPE
 	url = git@github.com:efeslab/RECIPE.git
+[submodule "deps/whole-program-llvm"]
+	path = deps/whole-program-llvm
+	url = git@github.com:efeslab/whole-program-llvm.git

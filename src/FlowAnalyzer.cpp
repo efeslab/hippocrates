@@ -240,17 +240,35 @@ ContextBlock::Shared ContextBlock::create(FnContext::Shared ctx,
 
 ContextBlock::Shared ContextBlock::create(const BugLocationMapper &mapper, 
                                           const TraceEvent &te) {
+
     // Start from the top down.
     FnContext::Shared parent = FnContext::create(mapper.module());
+
+    errs() << te.str() << "\n\n";
+
     // [0] is the current location, which we use to set up the node itself.
     for (int i = te.callstack.size() - 1; i >= 1; --i) {
         const LocationInfo &caller = te.callstack[i];
         const LocationInfo &callee = te.callstack[i-1];
 
-        // errs() << "CALLER: " << caller.str() << "\n";
+        errs() << "CALLER: " << caller.str() << "\n";
         errs() << "CALLEE: " << callee.str() << "\n";
-
+        
         if (!caller.valid() || !mapper.contains(caller)) {
+            errs() << "SKIP: " << caller.valid() << " " << 
+                mapper.contains(caller) << "\n";
+            Function *f = mapper.module().getFunction(caller.function);
+            if (!f) {
+                errs() << "\tnull!\n";
+                f = mapper.module().getFunction("obj_alloc_construct.1488");
+                if (!f) errs() << "\t\talso null!\n";
+                else errs() << *f << "\n";
+                errs() << "DEMANGLES: " << utils::demangle("obj_alloc_construct.1488") << "\n";
+            }
+            else errs() << *f << "\n";
+
+
+
             continue;
         }
 
@@ -258,24 +276,36 @@ ContextBlock::Shared ContextBlock::create(const BugLocationMapper &mapper,
 
         std::list<CallBase*> possibleCallSites;
 
-        for (auto *inst : mapper[caller]) {
-            if (auto *cb = dyn_cast<CallBase>(inst)) {
-                Function *f = cb->getCalledFunction();
-                if (f) {
-                    if (f->getIntrinsicID() == Intrinsic::dbg_declare) {
-                        continue;
-                    }
+        for (auto &fLoc : mapper[caller]) {
+            assert(fLoc.isValid() && "wat");
+            errs() << "START LOC\n";
+            for (Instruction *inst = fLoc.first; 
+                 inst != fLoc.last->getNextNonDebugInstruction(); 
+                 inst = inst->getNextNonDebugInstruction()) 
+            {
+                errs() << *inst << "\n";
+                if (auto *cb = dyn_cast<CallBase>(inst)) {
+                    Function *f = cb->getCalledFunction();
+                    if (f) {
+                        if (f->getIntrinsicID() == Intrinsic::dbg_declare) {
+                            continue;
+                        }
 
-                    std::string fname = utils::demangle(f->getName().data());
-                    if (fname.find(callee.function) == std::string::npos) {
-                        errs() << fname << " !find " << callee.function << "\n";
-                        continue;
-                    }
-                } 
+                        std::string fname = utils::demangle(f->getName().data());
+                        if (fname.find(callee.function) == std::string::npos) {
+                            errs() << fname << " !find " << callee.function << "\n";
+                            continue;
+                        }
+                    } 
 
-                errs() << "POSSIBLE: " << *cb << "\n";
-                possibleCallSites.push_back(cb);
+                    errs() << "POSSIBLE: " << *cb << "\n";
+                    possibleCallSites.push_back(cb);
+                }
             }
+        }
+
+        if (possibleCallSites.empty()) {
+            errs() << "No calls to " << callee.function << "!\n";
         }
 
         assert(possibleCallSites.size() > 0 && "don't know how to handle!");
@@ -331,7 +361,7 @@ ContextBlock::Shared ContextBlock::create(const BugLocationMapper &mapper,
     }
     // We use this to figure out the first and last instruction in the window.
     std::list<Instruction*> possibleLocs;
-    for (auto *inst : mapper[curr]) {
+    for (auto *inst : mapper.insts(curr)) {
         errs() << "POSS: " << *inst << " in " << inst->getFunction()->getName() << "\n";
         possibleLocs.push_back(inst);
     }

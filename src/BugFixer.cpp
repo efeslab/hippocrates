@@ -11,88 +11,41 @@ using namespace llvm;
 
 #pragma region BugFixer
 
-bool BugFixer::addFixToMapping(Instruction *i, FixDesc desc) {
+bool BugFixer::addFixToMapping(const FixLoc &fl, FixDesc desc) {
+    assert(fl.isValid() && "bad range!!");
     assert(desc.type > NO_FIX);
 
-    if (!fixMap_.count(i)) {
-        fixMap_[i] = desc;
+    if (!fixMap_.count(fl)) {
+        fixMap_[fl] = desc;
         return true;
-    } else if (fixMap_[i] == desc) {
+    } else if (fixMap_[fl] == desc) {
         return false;
     }
 
-    if (fixMap_[i].type == ADD_FLUSH_ONLY && desc.type == ADD_FENCE_ONLY) {
-        fixMap_[i].type = ADD_FLUSH_AND_FENCE;
+    if (fixMap_[fl].type == ADD_FLUSH_ONLY && desc.type == ADD_FENCE_ONLY) {
+        fixMap_[fl].type = ADD_FLUSH_AND_FENCE;
         return true;
-    } else if (fixMap_[i].type == ADD_FENCE_ONLY && desc.type == ADD_FLUSH_ONLY) {
-        fixMap_[i].type = ADD_FLUSH_AND_FENCE;
+    } else if (fixMap_[fl].type == ADD_FENCE_ONLY && desc.type == ADD_FLUSH_ONLY) {
+        fixMap_[fl].type = ADD_FLUSH_AND_FENCE;
         return true;
-    } else if (fixMap_[i].type == ADD_FLUSH_AND_FENCE && 
+    } else if (fixMap_[fl].type == ADD_FLUSH_AND_FENCE && 
                (desc.type == ADD_FLUSH_ONLY || desc.type == ADD_FENCE_ONLY)) {
         return false;
     } else if (desc.type == ADD_FLUSH_AND_FENCE && 
-               (fixMap_[i].type == ADD_FLUSH_ONLY || fixMap_[i].type == ADD_FENCE_ONLY)) {
-        fixMap_[i].type = ADD_FLUSH_AND_FENCE;
+               (fixMap_[fl].type == ADD_FLUSH_ONLY || fixMap_[fl].type == ADD_FENCE_ONLY)) {
+        fixMap_[fl].type = ADD_FLUSH_AND_FENCE;
         return true;
     }
 
-    if ((fixMap_[i].type == ADD_FLUSH_ONLY || fixMap_[i].type == ADD_FLUSH_AND_FENCE) &&
-        desc.type == REMOVE_FLUSH_ONLY) {
-        assert(false && "conflicting solutions!");
-    }
-
-    // (iangneal): future work
-    // if (fixMap_[i] == REMOVE_FLUSH_ONLY && t == REMOVE_FENCE_ONLY) {
-    //     fixMap_[i] = REMOVE_FLUSH_AND_FENCE;
-    //     return true;
-    // } else if (fixMap_[i] == REMOVE_FENCE_ONLY && t == REMOVE_FLUSH_ONLY) {
-    //     fixMap_[i] = REMOVE_FLUSH_AND_FENCE;
-    //     return true;
-    // }
-
- 
-    errs() << "NEW: " << desc.type << " OLD: " << fixMap_[i].type << "\n";
-
-    assert(false && "what");
-    return false;
-}
-
-bool BugFixer::addFixToMapping(Instruction *f, Instruction *l, FixDesc desc) {
-    #if 0
-    assert(desc.type > NO_FIX);
-
-
-    if (!fixMap_.count(i)) {
-        fixMap_[i] = desc;
-        return true;
-    } else if (fixMap_[i] == desc) {
-        return false;
-    }
-
-    if (fixMap_[i].type == ADD_FLUSH_ONLY && desc.type == ADD_FENCE_ONLY) {
-        fixMap_[i].type = ADD_FLUSH_AND_FENCE;
-        return true;
-    } else if (fixMap_[i].type == ADD_FENCE_ONLY && desc.type == ADD_FLUSH_ONLY) {
-        fixMap_[i].type = ADD_FLUSH_AND_FENCE;
-        return true;
-    } else if (fixMap_[i].type == ADD_FLUSH_AND_FENCE && 
-               (desc.type == ADD_FLUSH_ONLY || desc.type == ADD_FENCE_ONLY)) {
-        return false;
-    } else if (desc.type == ADD_FLUSH_AND_FENCE && 
-               (fixMap_[i].type == ADD_FLUSH_ONLY || fixMap_[i].type == ADD_FENCE_ONLY)) {
-        fixMap_[i].type = ADD_FLUSH_AND_FENCE;
-        return true;
-    }
-
-    if ((fixMap_[i].type == ADD_FLUSH_ONLY || fixMap_[i].type == ADD_FLUSH_AND_FENCE) &&
+    if ((fixMap_[fl].type == ADD_FLUSH_ONLY || fixMap_[fl].type == ADD_FLUSH_AND_FENCE) &&
         desc.type == REMOVE_FLUSH_ONLY) {
         assert(false && "conflicting solutions!");
     }
  
-    errs() << "NEW: " << desc.type << " OLD: " << fixMap_[i].type << "\n";
+    errs() << "NEW: " << desc.type << " OLD: " << fixMap_[fl].type << "\n";
 
     assert(false && "what");
-    #endif
+
     return false;
 }
 
@@ -193,7 +146,8 @@ bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
             errs() << "Fix direct!\n";
             errs() << "\t\tLocation : " << last.location.str() << "\n";
             assert(mapper_[last.location].size() && "can't have no instructions!");
-            for (Instruction *i : mapper_[last.location]) {
+            for (const FixLoc &fLoc : mapper_[last.location]) {
+                Instruction *i = fLoc.last;
                 assert(i && "can't be null!");
                 errs() << "\t\tInstruction : " << *i << "\n";
                 if (!isa<StoreInst>(i)) {
@@ -224,7 +178,7 @@ bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
             }
             // Here, we can take advantage of the persistent subprogram thing.
             auto desc = FixDesc(ADD_FLUSH_AND_FENCE, last.callstack);
-            bool res = raiseFixLocation(nullptr, desc);
+            bool res = raiseFixLocation(FixLoc::NullLoc(), desc);
             if (res) errs() << "\tAdded high-level fix!\n";
             else errs() << "\tDid not add a fix!\n";
             added = res || added;
@@ -360,39 +314,21 @@ bool BugFixer::handleRequiredFlush(const TraceEvent &te, int bug_index) {
 
     // Then we can just remove the redundant flush.
     bool res = false;
-    for (Instruction *i : mapper_[redt.location]) {
+    for (auto &redtLoc : mapper_[redt.location]) {
         if (f.alwaysRedundant()) {
-            res = addFixToMapping(i, FixDesc(REMOVE_FLUSH_ONLY, redt.callstack));
+            res = addFixToMapping(redtLoc, FixDesc(REMOVE_FLUSH_ONLY, redt.callstack));
             errs() << "Always redundant! " << "\n";
         } else {
             std::list<Instruction*> redundantPaths = f.redundantPaths();
 
             if (redundantPaths.size()) {
                 assert(mapper_[orig.location].size() > 0 && "can't handle!"); 
-                // assert(mapper_[orig.location].size() == 1 && "can't handle!");
-
-                if (mapper_[orig.location].size() > 1) {
-                    
-                    Instruction *i = mapper_[orig.location].front();
-                    for (Instruction *q : mapper_[orig.location]) {
-                        // Make sure there are all in the same function
-                        assert(i->getFunction() == q->getFunction());
-                        // Are they all in the same basic block, do we dream?
-                        assert(i->getParent() == q->getParent());
-                    }
-                    
-                }
-
-                /** 
-                 * This is not great, but it SHOULD work.
-                 * 
-                 * The real answer is to have variable size fixes.
-                 */
-                for (Instruction *originalInst : mapper_[orig.location]) {
+                
+                for (const FixLoc &origLoc : mapper_[orig.location]) {
                     // Set dependent of the real fix
                     FixDesc remove(REMOVE_FLUSH_CONDITIONAL, redt.callstack, 
-                        originalInst, redundantPaths);
-                    bool ret = addFixToMapping(i, remove);
+                        origLoc, redundantPaths);
+                    bool ret = addFixToMapping(redtLoc, remove);
                     res = res || ret;
                 }
 
@@ -443,40 +379,40 @@ bool BugFixer::computeAndAddFix(const TraceEvent &te, int bug_index) {
     }
 }
 
-bool BugFixer::fixBug(FixGenerator *fixer, Instruction *i, FixDesc desc) {
+bool BugFixer::fixBug(FixGenerator *fixer, const FixLoc &fl, const FixDesc &desc) {
     switch (desc.type) {
         case ADD_FLUSH_ONLY: {
-            Instruction *n = fixer->insertFlush(i);
+            Instruction *n = fixer->insertFlush(fl);
             assert(n && "could not ADD_FLUSH_ONLY");
             break;
         }
         case ADD_FENCE_ONLY: {
-            Instruction *n = fixer->insertFence(i);
+            Instruction *n = fixer->insertFence(fl);
             assert(n && "could not ADD_FENCE_ONLY");
             break;
         }
         case ADD_FLUSH_AND_FENCE: {
-            Instruction *n = fixer->insertFlush(i);
+            Instruction *n = fixer->insertFlush(fl);
             assert(n && "could not add flush of FLUSH_AND_FENCE");
-            n = fixer->insertFence(n);
+            n = fixer->insertFence(FixLoc(n, n));
             assert(n && "could not add fence of FLUSH_AND_FENCE");
             break;
         }
         case ADD_PERSIST_CALLSTACK_OPT: {
             Instruction *n = fixer->insertPersistentSubProgram(
-                mapper_, i, *desc.dynStack, desc.stackIdx);
+                mapper_, fl, *desc.dynStack, desc.stackIdx);
             if (!n) {
                 errs() << "could not add persistent subprogram in ADD_PERSIST_CALLSTACK_OPT\n";
                 return false;
             }
             
             // assert(n && "could not add persistent subprogram in ADD_PERSIST_CALLSTACK_OPT!");
-            n = fixer->insertFence(n);
+            n = fixer->insertFence(FixLoc(n, n));
             assert(n && "could not add fence of ADD_PERSIST_CALLSTACK_OPT!");
             break;
         }
         case REMOVE_FLUSH_ONLY: {
-            bool success = fixer->removeFlush(i);
+            bool success = fixer->removeFlush(fl);
             assert(success && "could not remove flush of REMOVE_FLUSH_ONLY");
             break;
         }
@@ -488,7 +424,7 @@ bool BugFixer::fixBug(FixGenerator *fixer, Instruction *i, FixDesc desc) {
              * We also need to reset the conditionals on the "original" store.
              */
             bool success = fixer->removeFlushConditionally(
-                desc.original, i, desc.points);
+                FixLoc(desc.original), fl, desc.points);
             assert(success && 
                 "could not conditionally remove flush of REMOVE_FLUSH_CONDITIONAL");
             break;
@@ -503,8 +439,9 @@ bool BugFixer::fixBug(FixGenerator *fixer, Instruction *i, FixDesc desc) {
     return true;
 }
 
-bool BugFixer::raiseFixLocation(llvm::Instruction *startInst, const FixDesc &desc) {
+bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
     bool raised = false;
+    Instruction *startInst = fl.last;
 
     /**
      * We raise in two circumstances: if the instruction is in an "immutable"
@@ -523,7 +460,7 @@ bool BugFixer::raiseFixLocation(llvm::Instruction *startInst, const FixDesc &des
      */
     const std::vector<LocationInfo> &stack = *desc.dynStack;
     int idx = 0;
-    Instruction *curr = nullptr;
+    const FixLoc *curr = nullptr;
 
 #if 0
     // We can fairly easily fill this will values from the trace
@@ -569,18 +506,17 @@ bool BugFixer::raiseFixLocation(llvm::Instruction *startInst, const FixDesc &des
             continue;
         }
 
-        auto &instList = mapper_[stack[idx]];
-        if (instList.size() > 1) {
+        auto &fixLocList = mapper_[stack[idx]];
+        if (fixLocList.size() > 1) {
             // Make sure they're all in the same function, cuz then it's fine.
             std::unordered_set<Function*> fns;
-            for (auto *i : instList) fns.insert(i->getFunction());
+            for (auto &f : fixLocList) fns.insert(f.last->getFunction());
             assert(fns.size() == 1 && "don't know how to handle this weird code!");
         }
         
-        curr = instList.front();
-
-        
-        Function *f = curr->getFunction();
+        curr = &fixLocList.front();
+   
+        Function *f = curr->last->getFunction();
         if (immutableFns_.count(f)) {
             // Optimization 1: If it is immutable.
             errs() << "LI: " << stack[idx].str() << " RAISING ABOVE IMMUTABLE\n";
@@ -595,14 +531,14 @@ bool BugFixer::raiseFixLocation(llvm::Instruction *startInst, const FixDesc &des
     bool success = false;
     if (raised) {
         auto desc = FixDesc(ADD_PERSIST_CALLSTACK_OPT, stack, idx);
-        success = addFixToMapping(curr, desc);
+        success = addFixToMapping(*curr, desc);
     }
 
     return success;
 }
 
 bool BugFixer::runFixMapOptimization(void) {
-    std::list<Instruction*> moved;
+    std::list<FixLoc> moved;
     bool res = false;
     
     for (auto &p : fixMap_) {
@@ -617,8 +553,8 @@ bool BugFixer::runFixMapOptimization(void) {
         if (success) moved.push_back(p.first);
     }
 
-    for (auto *i : moved) {
-        assert(fixMap_.erase(i) && "couldn't remove!");
+    for (auto &fl : moved) {
+        assert(fixMap_.erase(fl) && "couldn't remove!");
     }
 
     return res;

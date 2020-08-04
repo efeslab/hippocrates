@@ -216,7 +216,9 @@ bool FixGenerator::makeAllStoresPersistent(llvm::Function *f, bool useNT) {
  * TODO: Metadata for inserted instructions?
  * TODO: What kind of flush? Determine on machine stuff I'm sure.
  */
-Instruction *GenericFixGenerator::insertFlush(Instruction *i) {
+Instruction *GenericFixGenerator::insertFlush(const FixLoc &fl) {
+    Instruction *i = fl.last;
+
     if (StoreInst *si = dyn_cast<StoreInst>(i)) {
         Value *addrExpr = si->getPointerOperand();
 
@@ -258,30 +260,8 @@ Instruction *GenericFixGenerator::insertFlush(Instruction *i) {
  * 
  * TODO: Metadata for inserted instructions?
  */
-Instruction *GenericFixGenerator::insertFence(Instruction *i) {
-#if 0
-    if (CallInst *ci = dyn_cast<CallInst>(i)) {
-        Function *f = ci->getCalledFunction();
-        
-        // Validate that this is a flush.
-        // TODO: could also be a non temporal store.
-        // (iangneal): getting the intrinsic ID is more type-safe
-        if (f->getIntrinsicID() != Intrinsic::x86_clwb) {
-            assert(false && "must be a clwb!");
-        }
-
-        // 1) Set up the IR Builder.
-        // -- want AFTER
-        IRBuilder<> builder(i->getNextNode());
-
-        // 2) Find and insert an sfence.
-        CallInst *sfenceCall = builder.CreateCall(getSfenceDefinition(), {});
-
-        return sfenceCall;
-    }
-
-    return nullptr;
-#else
+Instruction *GenericFixGenerator::insertFence(const FixLoc &fl) {
+    Instruction *i = fl.last;
     // 1) Set up the IR Builder.
     // -- want AFTER
     IRBuilder<> builder(i->getNextNode());
@@ -290,7 +270,6 @@ Instruction *GenericFixGenerator::insertFence(Instruction *i) {
     CallInst *sfenceCall = builder.CreateCall(getSfenceDefinition(), {});
 
     return sfenceCall;
-#endif
 }
 
 static CallBase *modifyCall(CallBase *cb, Function *newFn) {
@@ -320,11 +299,12 @@ static CallBase *modifyCall(CallBase *cb, Function *newFn) {
 
 Instruction *GenericFixGenerator::insertPersistentSubProgram(
     BugLocationMapper &mapper,
-    Instruction *startInst,
+    const FixLoc &fl,
     const std::vector<LocationInfo> &callstack, 
     int idx) {
     
     errs() << __PRETTY_FUNCTION__ << " BEGIN\n";
+    Instruction *startInst = fl.first;
 
     if (!mapper.contains(callstack[0])) {
         // assert(1 == idx && "don't know how to handle nested unknowns!");
@@ -382,15 +362,15 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
     for (int i = 0; i < idx; ++i) {
         errs() << "GFLI " << callstack[i].str() << "\n";
 
-        auto &instLoc = mapper[callstack[i]];
-        if (instLoc.size() > 1) {
+        auto &fixLocList = mapper[callstack[i]];
+        if (fixLocList.size() > 1) {
             // Make sure they're all in the same function, cuz then it's fine.
             std::unordered_set<Function*> fns;
-            for (auto *i : instLoc) fns.insert(i->getFunction());
+            for (auto &f : fixLocList) fns.insert(f.last->getFunction());
             assert(fns.size() == 1 && "don't know how to handle this weird code!");
         }
 
-        Instruction *currInst = instLoc.front();
+        Instruction *currInst = fixLocList.front().last;
         errs() << "CI:" << *currInst << "\n";
 
         Function *fn = currInst->getFunction();
@@ -401,11 +381,12 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
         assert(successful && "failed to make persistent!");
 
         // Now we need to replace the call.
-        auto &nextInstLoc = mapper[callstack[i+1]];
+        auto &nextFixLoc = mapper[callstack[i+1]];
         // assert(nextInstLoc.size() == 1 && "next still too big");
-        assert(!nextInstLoc.empty());
+        assert(!nextFixLoc.empty());
 
-        for (Instruction *ni : nextInstLoc) {
+        for (const FixLoc &nFix : nextFixLoc) {
+            Instruction *ni = nFix.last;
             errs() << *ni << " @ " << ni->getFunction()->getName() << "\n";
             if (auto *cb = dyn_cast<CallBase>(ni)) {
                 Function *cbFn = cb->getCalledFunction();
@@ -433,7 +414,8 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
 /**
  * This should just remove the flush.
  */
-bool GenericFixGenerator::removeFlush(Instruction *i) {
+bool GenericFixGenerator::removeFlush(const FixLoc &fl) {
+    Instruction *i = fl.last;
 
     if (CallInst *ci = dyn_cast<CallInst>(i)) {
         Function *f = ci->getCalledFunction();
@@ -452,7 +434,7 @@ bool GenericFixGenerator::removeFlush(Instruction *i) {
 }
 
 bool GenericFixGenerator::removeFlushConditionally(
-        llvm::Instruction *original, llvm::Instruction *redundant,
+        const FixLoc &orig, const FixLoc &redt,
         std::list<llvm::Instruction*> pathPoints) {
     assert(false && "Implement me!");
     return false;
@@ -467,7 +449,8 @@ bool GenericFixGenerator::removeFlushConditionally(
  * TODO: Metadata for inserted instructions?
  * TODO: What kind of flush? Determine on machine stuff I'm sure.
  */
-Instruction *PMTestFixGenerator::insertFlush(Instruction *i) {
+Instruction *PMTestFixGenerator::insertFlush(const FixLoc &fl) {
+    Instruction *i = fl.last;
 
     if (CallInst *ci = dyn_cast<CallInst>(i)) {
         Function *f = ci->getCalledFunction();
@@ -515,7 +498,8 @@ Instruction *PMTestFixGenerator::insertFlush(Instruction *i) {
  * 
  * TODO: Metadata for inserted instructions?
  */
-Instruction *PMTestFixGenerator::insertFence(Instruction *i) {
+Instruction *PMTestFixGenerator::insertFence(const FixLoc &fl) {
+    Instruction *i = fl.last;
 
     if (CallInst *ci = dyn_cast<CallInst>(i)) {
         Function *f = ci->getCalledFunction();
@@ -545,7 +529,7 @@ Instruction *PMTestFixGenerator::insertFence(Instruction *i) {
 
 Instruction *PMTestFixGenerator::insertPersistentSubProgram(
     BugLocationMapper &mapper,
-    Instruction *i,
+    const FixLoc &fl,
     const std::vector<LocationInfo> &callstack,
     int idx) {
 
@@ -557,7 +541,8 @@ Instruction *PMTestFixGenerator::insertPersistentSubProgram(
  * This has to remove the flush and the assertion, which needs to be in the same
  * basic block as the flush, in all likelihood.
  */
-bool PMTestFixGenerator::removeFlush(Instruction *i) {
+bool PMTestFixGenerator::removeFlush(const FixLoc &fl) {
+    Instruction *i = fl.last;
     assert(i && "must be non-null!");
     // We need to first find the flush and assertion.
 
@@ -591,11 +576,13 @@ bool PMTestFixGenerator::removeFlush(Instruction *i) {
     return true;
 }
 
-bool PMTestFixGenerator::removeFlushConditionally(Instruction *original, 
-                                                  Instruction *redundant, 
+bool PMTestFixGenerator::removeFlushConditionally(const FixLoc &orig,
+                                                  const FixLoc &redt,
                                                   std::list<Instruction*> pathPoints)
 {
 
+    Instruction *original = orig.last;
+    Instruction *redundant = redt.last;
     std::list<GlobalVariable*> conditions;
     for (Instruction *point : pathPoints) {
         GlobalVariable *gv = createConditionVariable(original, point);

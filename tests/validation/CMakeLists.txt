@@ -151,7 +151,7 @@ add_pmdk_unit_test(TEST_CASE obj_constructor
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
-                   SUITE REPRO)
+                   SUITE PASSING)
 
 add_pmdk_unit_test(TEST_CASE obj_constructor
                    TEST_FILE TEST2

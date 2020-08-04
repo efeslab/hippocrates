@@ -14,6 +14,8 @@
 #include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "llvm/Analysis/OrderedBasicBlock.h"
+
 using namespace llvm;
 using namespace pmfix;
 using namespace std;
@@ -102,6 +104,28 @@ std::string LocationInfo::str() const {
 
 #pragma endregion
 
+#pragma region FixLoc
+
+uint64_t FixLoc::Hash::operator()(const FixLoc &fl) const {
+    return std::hash<void*>{}((void*)fl.first) 
+            ^ std::hash<void*>{}((void*)fl.last); 
+}
+
+bool FixLoc::isValid() const {
+    // Make sure there are all in the same function
+    bool sameFn = first->getFunction() == last->getFunction();
+    // Are they all in the same basic block, do we dream?
+    bool sameBB = first->getParent() == last->getParent();
+    return sameFn && sameBB;
+}
+
+const FixLoc &FixLoc::NullLoc() {
+    static FixLoc empty = FixLoc();
+    return empty;
+}
+
+#pragma endregion
+
 #pragma region BugLocationMapper
 
 void BugLocationMapper::insertMapping(Instruction *i) {
@@ -153,6 +177,48 @@ void BugLocationMapper::createMappings(Module &m) {
     }
 
     assert(locMap_.size() && "no debug information found!!!");
+
+    /**
+     * Now, we do the fix mapping.
+     */
+    for (auto &p : locMap_) {
+        auto &location = p.first;
+        auto &instructions = p.second;
+
+        std::unordered_map<BasicBlock*, std::list<Instruction*>> blocks;
+        for (Instruction *q : instructions) {
+            if (auto *cb = dyn_cast<CallBase>(q)) {
+                Function *f = cb->getCalledFunction();
+                if (f && f->getIntrinsicID() == Intrinsic::dbg_declare) {
+                    continue;
+                }
+            }
+
+            blocks[q->getParent()].push_back(q);
+        }
+
+        std::list<FixLoc> locs;
+        for (auto &p : blocks) {
+            auto &insts = p.second;
+            assert(insts.size() && "wat");
+            // Need to find the first and last instruction
+            Instruction *first = insts.front();
+            Instruction *last = insts.back();
+
+            OrderedBasicBlock obb(p.first);
+
+            for (auto *ii : insts) {
+                if (obb.dominates(ii, first)) first = ii;
+                if (obb.dominates(last, ii)) last = ii;
+            }
+
+            locs.emplace_back(first, last);
+        }
+
+        fixLocMap_[location] = locs;
+    }
+    
+    assert(!fixLocMap_.empty() && "wat");
 }
 
 #pragma endregion
@@ -222,6 +288,74 @@ bool TraceEvent::callStacksEqual(const TraceEvent &a, const TraceEvent &b) {
     return true;
 }
 
+static Value *getGenericPmValues(const BugLocationMapper &mapper, const FixLoc &fLoc) {
+    Instruction *i = nullptr;
+    for (i = fLoc.first; i != fLoc.last; i = i->getNextNonDebugInstruction()) {
+        if (auto *cb = dyn_cast<CallBase>(i)) {
+            Function *f = utils::getFlush(cb);
+            if (f) {
+                return cb->getArgOperand(0);
+            } 
+            
+            if (auto *ci = dyn_cast<CallInst>(cb)) {
+                if (ci->isInlineAsm()) {
+                    bool isFlushAsm = false;
+                    // Get the inline ASM string
+                    auto *ia = dyn_cast<InlineAsm>(ci->getCalledValue());
+                    assert(ia);
+                    auto str = ia->getAsmString();
+                    errs() << str << "\n";
+                    if (str == ".byte 0x66; xsaveopt $0") {
+                        isFlushAsm = true;
+                    } else {
+                        errs() << "'" << str << "' != " << ".byte 0x66; xsaveopt $0" << "\n";
+                    }
+                    // Check if it is
+                    if (isFlushAsm) {
+                        return cb->getArgOperand(0);
+                    }
+                }
+            }
+        } else if (auto *si = dyn_cast<StoreInst>(i)) {
+            /**
+             * This could be a VALGRIND_DO_FLUSH, so we should
+             * see if there's the magic number for the request.
+             */
+            errs() << *si << "\n";
+            Value *v = si->getValueOperand();
+            if (auto *ci = dyn_cast<ConstantInt>(v)) {
+                if (ci->getZExtValue() == 1346568197) {
+                    errs() << "We found valgrind value!\n";
+                    // The very next instruction should have what we want.
+                    Instruction *curr = si->getNextNonDebugInstruction();
+                    StoreInst *pmStore = dyn_cast<StoreInst>(curr);
+                    while (!pmStore) {
+                        curr = curr->getNextNonDebugInstruction();
+                        assert(curr);
+                        pmStore = dyn_cast<StoreInst>(curr);
+                    }
+                    assert(pmStore);
+                    errs() << "PM store:" << *pmStore << "\n"; 
+                    errs() << "\tAddr:" << *pmStore->getValueOperand() << "\n";
+                    Value *pmAddr = pmStore->getValueOperand();
+                    if (!pmAddr->getType()->isPointerTy()) {
+                        if (auto *pi = dyn_cast<PtrToIntInst>(pmAddr)) {
+                            pmAddr = pi->getPointerOperand();
+                        }
+                    }
+                    errs() << "\tAddr (no cast):" << *pmAddr << "\n";
+                    assert(pmAddr->getType()->isPointerTy());
+                    return pmAddr;
+                }
+                // Fall-through, looking for magic VALGRIND number
+            }
+            // Fall-through, we already checked for valgrind
+        }
+    }
+
+    return nullptr;                      
+}
+
 std::list<Value*> TraceEvent::pmValues(const BugLocationMapper &mapper) const {
     std::list<Value*> pmAddrs;
 
@@ -232,13 +366,13 @@ std::list<Value*> TraceEvent::pmValues(const BugLocationMapper &mapper) const {
     assert(mapper.contains(location) && "wat");
     assert(type != INVALID && type != FENCE && "doesn't make sense!");
 
-    for (Instruction *i : mapper[location]) {
+    for (auto &fLoc : mapper[location]) {
         switch (source) {
             case PMTEST: {
                 switch (type) {
                     case STORE:
                     case FLUSH: {
-                        auto *cb = dyn_cast<CallBase>(i);
+                        auto *cb = dyn_cast<CallBase>(fLoc.last);
                         assert(cb && "bad trace!");
                         Function *f = cb->getCalledFunction();
                         assert(f && "bad trace!");
@@ -257,7 +391,7 @@ std::list<Value*> TraceEvent::pmValues(const BugLocationMapper &mapper) const {
                 switch (type) {
                     case STORE: {
                         assert(false && "DO ME");
-                        auto *cb = dyn_cast<CallBase>(i);
+                        auto *cb = dyn_cast<CallBase>(fLoc.last);
                         assert(cb && "bad trace!");
                         Function *f = utils::getFlush(cb);
                         assert(f && "bad trace!");
@@ -265,75 +399,17 @@ std::list<Value*> TraceEvent::pmValues(const BugLocationMapper &mapper) const {
                         break;
                     }  
                     case FLUSH: {
-                        if (auto *cb = dyn_cast<CallBase>(i)) {
-                            Function *f = utils::getFlush(cb);
-                            if (f) {
-                                pmAddrs.push_back(cb->getArgOperand(0));
-                            } else if (auto *ci = dyn_cast<CallInst>(cb)) {
-                                if (ci->isInlineAsm()) {
-                                    bool isFlushAsm = false;
-                                    // Get the inline ASM string
-                                    auto *ia = dyn_cast<InlineAsm>(ci->getCalledValue());
-                                    assert(ia);
-                                    auto str = ia->getAsmString();
-                                    errs() << str << "\n";
-                                    if (str == ".byte 0x66; xsaveopt $0") {
-                                        isFlushAsm = true;
-                                    } else {
-                                        errs() << "'" << str << "' != " << ".byte 0x66; xsaveopt $0" << "\n";
-                                    }
-                                    // Check if it is
-                                    if (isFlushAsm) {
-                                        pmAddrs.push_back(cb->getArgOperand(0));
-                                    }
-                                }
-                            }
-
-                            break;
-                        } else if (auto *si = dyn_cast<StoreInst>(i)) {
-                            /**
-                             * This could be a VALGRIND_DO_FLUSH, so we should
-                             * see if there's the magic number for the request.
-                             */
-                            errs() << *si << "\n";
-                            Value *v = si->getValueOperand();
-                            if (auto *ci = dyn_cast<ConstantInt>(v)) {
-                                if (ci->getZExtValue() == 1346568197) {
-                                    errs() << "We found valgrind value!\n";
-                                    // The very next instruction should have what we want.
-                                    Instruction *curr = si->getNextNonDebugInstruction();
-                                    StoreInst *pmStore = dyn_cast<StoreInst>(curr);
-                                    while (!pmStore) {
-                                        curr = curr->getNextNonDebugInstruction();
-                                        assert(curr);
-                                        pmStore = dyn_cast<StoreInst>(curr);
-                                    }
-                                    assert(pmStore);
-                                    errs() << "PM store:" << *pmStore << "\n"; 
-                                    errs() << "\tAddr:" << *pmStore->getValueOperand() << "\n";
-                                    Value *pmAddr = pmStore->getValueOperand();
-                                    if (!pmAddr->getType()->isPointerTy()) {
-                                        if (auto *pi = dyn_cast<PtrToIntInst>(pmAddr)) {
-                                            pmAddr = pi->getPointerOperand();
-                                        }
-                                    }
-                                    errs() << "\tAddr (no cast):" << *pmAddr << "\n";
-                                    assert(pmAddr->getType()->isPointerTy());
-                                    pmAddrs.push_back(pmAddr);
-                                    break;
-                                }
-                                // Fall-through, looking for magic VALGRIND number
-                            }
-                            // Fall-through, we already checked for valgrind
-                        }
-                        
+                        Value *pmv = getGenericPmValues(mapper, fLoc);
+                        assert(pmv && "bad trace!");
+                        pmAddrs.push_back(pmv);
                         break;
                     }        
                     default:
                         for (auto &ai : addresses) {
                             errs() << ai.str() << "\n";
                         }
-                        errs() << *i << "\n";
+                        errs() << "FIRST:" << *fLoc.first << 
+                            "\nLAST:" << fLoc.last << "\n";
                         assert(false && "wat");
                         break;
                 }

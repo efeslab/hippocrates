@@ -89,7 +89,8 @@ function(add_pmdk_unit_test)
                     COMMAND cp -uv "${TOOL_PATH}/pmemobjcli/pmemobjcli" "${DEST_DIR}"
                     COMMAND cp -uv "${TOOL_PATH}/pmemobjcli/*.posc" "${DEST_DIR}"
                     COMMAND cp -uv "${TOOL_PATH}/pmemobjcli/.pmemobjcli.o.bc" "${DEST_DIR}/pmemobjcli.bc"
-                    COMMAND extract-bc "${DEST_DIR}/${FN_ARGS_TEST_CASE}"
+                    COMMAND cp -uv "${TOOL_PATH}/pmemspoil/pmemspoil" "${DEST_DIR}"
+                    COMMAND extract-bc --force "${DEST_DIR}/${FN_ARGS_TEST_CASE}"
                                 -o "${DEST_DIR}/${FN_ARGS_TEST_CASE}.bc"
                     COMMAND cp -uv "${LIB_ROOT}/*.so" "${DEST_DIR}"
                     COMMAND cp -v "${TEST_ROOT}/match" "${CMAKE_CURRENT_BINARY_DIR}"
@@ -101,7 +102,7 @@ function(add_pmdk_unit_test)
                     COMMAND ln -vf "${TARGET_BIN}/libpmemlog.so" "${TARGET_BIN}/libpmemlog.so.1"
                     COMMAND extract-bc -o ${TARGET_BIN}/libpmem.so.1.bc ${TARGET_BIN}/libpmem.so.1
                     COMMAND extract-bc -o ${TARGET_BIN}/libpmemobj.so.1.bc ${TARGET_BIN}/libpmemobj.so.1
-                    COMMAND extract-bc -o ${TARGET_BIN}/libpmempool.so.1.bc ${TARGET_BIN}/libpmempool.so.1
+                    COMMAND extract-bc --force -o ${TARGET_BIN}/libpmempool.so.1.bc ${TARGET_BIN}/libpmempool.so.1
                     COMMAND extract-bc -o ${TARGET_BIN}/libpmemblk.so.1.bc ${TARGET_BIN}/libpmemblk.so.1
                     COMMAND extract-bc -o ${TARGET_BIN}/libpmemlog.so.1.bc ${TARGET_BIN}/libpmemlog.so.1
                     COMMAND patchelf --set-rpath "${DEST_DIR}" "${DEST_DIR}/pmempool"

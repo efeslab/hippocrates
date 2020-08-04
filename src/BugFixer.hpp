@@ -83,20 +83,20 @@ private:
         /**
          * Slightly jank, but these two fields are just for conditional flushing.
          */
-        llvm::Instruction *original;
+        FixLoc original;
         std::list<llvm::Instruction*> points;
 
         /* Methods and constructors */
 
         FixDesc() 
             : type(NO_FIX), dynStack(nullptr), stackIdx(0), 
-            original(nullptr), points() {}
+            original(), points() {}
         
         FixDesc(FixType t, const std::vector<LocationInfo> &l, int si=0) 
-            : type(t), dynStack(&l), stackIdx(si), original(nullptr), points() {}
+            : type(t), dynStack(&l), stackIdx(si), original(), points() {}
         
         FixDesc(FixType t, const std::vector<LocationInfo> &l, 
-                llvm::Instruction *o, std::list<llvm::Instruction*> p) 
+                const FixLoc &o, std::list<llvm::Instruction*> p) 
             : type(t), dynStack(&l), stackIdx(0), original(o), points(p) {}
 
         bool operator==(const FixDesc &f) const {
@@ -108,7 +108,7 @@ private:
         }
     };
 
-    std::unordered_map<llvm::Instruction*, FixDesc> fixMap_;
+    std::unordered_map<FixLoc, FixDesc, FixLoc::Hash> fixMap_;
 
     /**
      * Utility to update the fix map. This provides basic fix coalescing (i.e.,
@@ -118,13 +118,10 @@ private:
      * 
      * (iangneal): return value mostly for debugging.
      * (iangneal): Add some dependent fixes.
-     */
-    bool addFixToMapping(llvm::Instruction *i, FixDesc desc);
-
-    /**
+     *
      * Same as above, but with a range of instructions.
      */
-    bool addFixToMapping(llvm::Instruction *first, llvm::Instruction *last, FixDesc desc);
+    bool addFixToMapping(const FixLoc &loc, FixDesc desc);
 
     /**
      * Handle fix generation for a missing persist call.
@@ -154,7 +151,7 @@ private:
      * This is one fix map optimization. Adds the directive to do a higher-level
      * flush+fence fix.
      */
-    bool raiseFixLocation(llvm::Instruction *i, const FixDesc &desc);
+    bool raiseFixLocation(const FixLoc &fl, const FixDesc &desc);
 
     /**
      * Figure out how to fix the given bug and add the fix to the map. Generally
@@ -169,7 +166,7 @@ private:
     /**
      * Run the fix generator to fix the specified bug.
      */
-    bool fixBug(FixGenerator *fixer, llvm::Instruction *i, FixDesc desc);
+    bool fixBug(FixGenerator *fixer, const FixLoc &fl, const FixDesc &desc);
 
 public:
     BugFixer(llvm::Module &m, TraceInfo &ti);

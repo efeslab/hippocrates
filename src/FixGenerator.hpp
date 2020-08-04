@@ -3,6 +3,9 @@
  * 
  */
 
+#include <stdint.h>
+#include <functional>
+
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Function.h"
@@ -84,16 +87,16 @@ public:
      * successful.
      */
 
-    virtual llvm::Instruction *insertFlush(llvm::Instruction *i) = 0;
+    virtual llvm::Instruction *insertFlush(const FixLoc &fl) = 0;
 
-    virtual llvm::Instruction *insertFence(llvm::Instruction *i) = 0;
+    virtual llvm::Instruction *insertFence(const FixLoc &fl) = 0;
 
     /**
      *
      */
     virtual llvm::Instruction *insertPersistentSubProgram(
         BugLocationMapper &mapper,
-        llvm::Instruction *i,
+        const FixLoc &fl,
         const std::vector<LocationInfo> &callstack,
         int idx) = 0;
 
@@ -104,10 +107,10 @@ public:
     /**
      * Removes a single flush (at instruction i).
      */
-    virtual bool removeFlush(llvm::Instruction *i) = 0;
+    virtual bool removeFlush(const FixLoc &fl) = 0;
 
     virtual bool removeFlushConditionally(
-        llvm::Instruction *original, llvm::Instruction *redundant,
+        const FixLoc &orig, const FixLoc &redt,
         std::list<llvm::Instruction*> pathPoints) = 0;
 };
 
@@ -121,20 +124,20 @@ private:
 public:
     GenericFixGenerator(llvm::Module &m) : FixGenerator(m) {}
 
-    virtual llvm::Instruction *insertFlush(llvm::Instruction *i) override;
+    virtual llvm::Instruction *insertFlush(const FixLoc &fl) override;
 
-    virtual llvm::Instruction *insertFence(llvm::Instruction *i) override;
+    virtual llvm::Instruction *insertFence(const FixLoc &fl) override;
 
     virtual llvm::Instruction *insertPersistentSubProgram(
         BugLocationMapper &mapper,
-        llvm::Instruction *i,
+        const FixLoc &fl,
         const std::vector<LocationInfo> &callstack, 
         int idx) override;
 
-    virtual bool removeFlush(llvm::Instruction *i) override;
+    virtual bool removeFlush(const FixLoc &fl) override;
 
     virtual bool removeFlushConditionally(
-        llvm::Instruction *original, llvm::Instruction *redundant,
+        const FixLoc &orig, const FixLoc &redt,
         std::list<llvm::Instruction*> pathPoints) override;
 };
 
@@ -152,20 +155,20 @@ private:
 public:
     PMTestFixGenerator(llvm::Module &m) : FixGenerator(m) {}
 
-    virtual llvm::Instruction *insertFlush(llvm::Instruction *i) override;
+    virtual llvm::Instruction *insertFlush(const FixLoc &fl) override;
 
-    virtual llvm::Instruction *insertFence(llvm::Instruction *i) override;
+    virtual llvm::Instruction *insertFence(const FixLoc &fl) override;
 
     virtual llvm::Instruction *insertPersistentSubProgram(
         BugLocationMapper &mapper,
-        llvm::Instruction *i,
+        const FixLoc &fl,
         const std::vector<LocationInfo> &callstack, 
         int idx) override;
 
-    virtual bool removeFlush(llvm::Instruction *i) override;
+    virtual bool removeFlush(const FixLoc &fl) override;
 
     virtual bool removeFlushConditionally(
-        llvm::Instruction *original, llvm::Instruction *redundant,
+        const FixLoc &orig, const FixLoc &redt,
         std::list<llvm::Instruction*> pathPoints) override;
 };
 

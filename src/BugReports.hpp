@@ -82,6 +82,33 @@ struct LocationInfo {
 };
 
 /**
+ * Location for a fix to generate.
+ * 
+ * This should philosophically be a range of instructions within a single basic
+ * block.
+ */
+struct FixLoc {
+    llvm::Instruction *first;
+    llvm::Instruction *last;
+
+    struct Hash {
+        uint64_t operator()(const FixLoc &fl) const;
+    };
+
+    FixLoc() : first(nullptr), last(nullptr) {}
+    FixLoc(llvm::Instruction *i) : first(i), last(i) {}
+    FixLoc(llvm::Instruction *f, llvm::Instruction *l) : first(f), last(l) {}
+
+    bool isValid() const;
+    bool isSingleInst() const { return first == last; }
+    bool operator==(const FixLoc &other) const { 
+        return first == other.first && last == other.last;
+    }
+
+    static const FixLoc &NullLoc();
+};
+
+/**
  * Creates a map of source code location -> LLVM IR location. Then allows lookups
  * so that bugs can be mapped from trace info (which are at source level) to
  * somewhere in the IR so we can start fixing bugs.
@@ -99,6 +126,10 @@ private:
     std::unordered_map<LocationInfo, 
                        std::list<llvm::Instruction*>, 
                        LocationInfo::Hash> locMap_;
+    
+    std::unordered_map<LocationInfo, 
+                       std::list<FixLoc>, 
+                       LocationInfo::Hash> fixLocMap_;
 
     void insertMapping(llvm::Instruction *i);
 
@@ -107,10 +138,17 @@ private:
 public:
     BugLocationMapper(llvm::Module &m) : m_(m) { createMappings(m); }
 
-    bool contains(const LocationInfo &li) const { return locMap_.count(li); }
+    const std::list<FixLoc> &operator[](const LocationInfo &li) const 
+        { return fixLocMap_.at(li); }
 
-    const std::list<llvm::Instruction*> &operator[](const LocationInfo &li) const 
+    bool contains(const LocationInfo &li) const 
+        { return fixLocMap_.count(li); }
+
+    const std::list<llvm::Instruction*> &insts(const LocationInfo &li) const 
         { return locMap_.at(li); }
+
+    bool instsContains(const LocationInfo &li) const 
+        { return fixLocMap_.count(li); }
 
     llvm::Module &module() const { return m_; }
 
