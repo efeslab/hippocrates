@@ -251,7 +251,7 @@ ContextBlock::Shared ContextBlock::create(const BugLocationMapper &mapper,
         const LocationInfo &caller = te.callstack[i];
         const LocationInfo &callee = te.callstack[i-1];
 
-        errs() << "CALLER: " << caller.str() << "\n";
+        errs() << "\nCALLER: " << caller.str() << "\n";
         errs() << "CALLEE: " << callee.str() << "\n";
         
         if (!caller.valid() || !mapper.contains(caller)) {
@@ -278,11 +278,9 @@ ContextBlock::Shared ContextBlock::create(const BugLocationMapper &mapper,
 
         for (auto &fLoc : mapper[caller]) {
             assert(fLoc.isValid() && "wat");
-            errs() << "START LOC\n";
-            for (Instruction *inst = fLoc.first; 
-                 inst != fLoc.last->getNextNonDebugInstruction(); 
-                 inst = inst->getNextNonDebugInstruction()) 
-            {
+            errs() << "START LOC: \n";
+            // errs() << *fLoc.insts().front()->getFunction() << "\n";
+            for (Instruction *inst : fLoc.insts()) {
                 errs() << *inst << "\n";
                 if (auto *cb = dyn_cast<CallBase>(inst)) {
                     Function *f = cb->getCalledFunction();
@@ -597,7 +595,10 @@ ContextGraph<T>::ContextGraph(const BugLocationMapper &mapper,
     errs() << "CONSTRUCT ME\n\n";
 
     ContextBlock::Shared sblk = ContextBlock::create(mapper, start);
-    if (!sblk) return;
+    if (!sblk) {
+        errs() << "\tCONSTRUCT ABORT!\n";
+        return;
+    }
     ContextBlock::Shared eblk = ContextBlock::create(mapper, end);
     errs() << sblk->str() << "\n";
     errs() << eblk->str() << "\n";

@@ -1,0 +1,8 @@
+43c43
+< require_fs_type any
+---
+> require_fs_type pmem
+45a46,48
+> 
+> PMEMPOOL=./pmempool
+> PMEMOBJCLI=./pmemobjcli

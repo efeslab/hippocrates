@@ -105,6 +105,8 @@ struct FixLoc {
         return first == other.first && last == other.last;
     }
 
+    std::list<llvm::Instruction*> insts() const;
+
     static const FixLoc &NullLoc();
 };
 

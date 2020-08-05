@@ -317,8 +317,14 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
             return nullptr;
         }
 
-        auto *cb = dyn_cast<CallBase>(startInst);
-        assert(cb && "has to be calling something!");
+        std::list<CallBase*> candidates;
+        for (Instruction *i : fl.insts()) {
+            if (auto *c = dyn_cast<CallBase>(i)) candidates.push_back(c);
+        }
+        assert(!candidates.empty() && "has to be calling something!");
+        assert(candidates.size() == 1 && "don't know how to handle multiple calls yet!");
+
+        auto *cb = candidates.front();
         Function *f = cb->getCalledFunction();
         assert(f && "don't know what to do!");    
 

@@ -174,8 +174,8 @@ class ToolRunner:
 
     def run(self):
         print(f'{self.exe_path}: {self.tool_type.name}')
-        assert self.exe_path.exists(), f'{self.exe_path.name} does not exist!'
-        assert self.bc_path.exists(), f'{self.bc_path.name} was not extracted!'
+        # assert self.exe_path.exists(), f'{self.exe_path.name} does not exist!'
+        # assert self.bc_path.exists(), f'{self.bc_path.name} was not extracted!'
 
         if self.tool_type == ToolTypes.PMTEST:
             return self._run_pmtest()

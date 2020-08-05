@@ -26,7 +26,7 @@ function(add_pmdk_unit_test)
     check_wllvm()
 
     # This is for some tests that need the pmempool exe or whatnot
-    set(options)                                                                  
+    set(options SKIP_EXTRACT)                                                                  
     set(oneValueArgs TEST_CASE TEST_FILE TEST_PATCH 
                      PMDK_PATH PMDK_TARGET COMMIT_HASH SUITE)                                                       
     set(multiValueArgs SOURCES EXTRA_LIBS INCLUDE)                                         
@@ -40,6 +40,11 @@ function(add_pmdk_unit_test)
     set(FN_ARGS_TARGET "${FN_ARGS_TEST_CASE}_${FN_ARGS_TEST_FILE}_${FN_ARGS_COMMIT_HASH}")
     if(TARGET ${FN_ARGS_TARGET})
         message(FATAL_ERROR "${FN_ARGS_TARGET} already a target!")
+    endif()
+
+    set(EXTRACT_ADD "false")
+    if (${FN_ARGS_SKIP_EXTRACT}) 
+        set(EXTRACT_ADD "true")
     endif()
 
     # 1. Checkout
@@ -91,7 +96,7 @@ function(add_pmdk_unit_test)
                     COMMAND cp -uv "${TOOL_PATH}/pmemobjcli/.pmemobjcli.o.bc" "${DEST_DIR}/pmemobjcli.bc"
                     COMMAND cp -uv "${TOOL_PATH}/pmemspoil/pmemspoil" "${DEST_DIR}"
                     COMMAND extract-bc --force "${DEST_DIR}/${FN_ARGS_TEST_CASE}"
-                                -o "${DEST_DIR}/${FN_ARGS_TEST_CASE}.bc"
+                                -o "${DEST_DIR}/${FN_ARGS_TEST_CASE}.bc" || ${EXTRACT_ADD}
                     COMMAND cp -uv "${LIB_ROOT}/*.so" "${DEST_DIR}"
                     COMMAND cp -v "${TEST_ROOT}/match" "${CMAKE_CURRENT_BINARY_DIR}"
                     COMMAND cp -v "${TEST_ROOT}/RUNTESTS" "${CMAKE_CURRENT_BINARY_DIR}/RUNTESTS_${FN_ARGS_TARGET}"
@@ -106,7 +111,7 @@ function(add_pmdk_unit_test)
                     COMMAND extract-bc -o ${TARGET_BIN}/libpmemblk.so.1.bc ${TARGET_BIN}/libpmemblk.so.1
                     COMMAND extract-bc -o ${TARGET_BIN}/libpmemlog.so.1.bc ${TARGET_BIN}/libpmemlog.so.1
                     COMMAND patchelf --set-rpath "${DEST_DIR}" "${DEST_DIR}/pmempool"
-                    COMMAND patchelf --set-rpath "${DEST_DIR}" "${DEST_DIR}/${FN_ARGS_TEST_CASE}"
+                    COMMAND patchelf --set-rpath "${DEST_DIR}" "${DEST_DIR}/${FN_ARGS_TEST_CASE}" || ${EXTRACT_ADD}
                     DEPENDS "${FN_ARGS_TARGET}_build"
                     COMMENT "Copying and extracting files into DEST=${DEST_DIR}...")
     

@@ -112,6 +112,7 @@ uint64_t FixLoc::Hash::operator()(const FixLoc &fl) const {
 }
 
 bool FixLoc::isValid() const {
+    if (!first || !last) return false;
     // Make sure there are all in the same function
     bool sameFn = first->getFunction() == last->getFunction();
     // Are they all in the same basic block, do we dream?
@@ -122,6 +123,16 @@ bool FixLoc::isValid() const {
 const FixLoc &FixLoc::NullLoc() {
     static FixLoc empty = FixLoc();
     return empty;
+}
+
+std::list<Instruction*> FixLoc::insts() const {
+    std::list<Instruction*> ilist;
+    if (!isValid()) return ilist;
+
+    for (Instruction *t = first; t != last->getNextNonDebugInstruction();
+         t = t->getNextNonDebugInstruction()) ilist.push_back(t);
+    
+    return ilist;
 }
 
 #pragma endregion
