@@ -1,3 +1,4 @@
+#pragma once
 /**
  * Used to determine if there are any non-PM paths through the program.
  */

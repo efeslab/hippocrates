@@ -74,3 +74,18 @@ add_custom_target(PMEMCHECK ALL : # no-op command
 ################################################################################
 
 add_subdirectory(RECIPE/P-CLHT)
+
+################################################################################
+# Redis
+################################################################################
+
+#make USE_PMDK=yes STD=-std=gnu99
+#OPTIMIZATION=-O0
+set(REDIS_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/redis)
+add_custom_target(REDIS 
+                #   DEPENDS PMDK
+                  COMMAND make -C ${REDIS_ROOT_DIR} 
+                        CC=wllvm CXX=wllvm++
+                        OPTIMIZATION=-O0
+                        PMDK_DIR=${PMDK_ROOT_DIR} USE_PMDK=1
+                  COMMENT "Building redis-pmem...")       

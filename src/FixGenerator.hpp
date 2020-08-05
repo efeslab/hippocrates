@@ -60,10 +60,12 @@ protected:
      * resetBefore and an unconditional set at setAt.
      */
     llvm::GlobalVariable *createConditionVariable(
-        llvm::Instruction *resetBefore, llvm::Instruction *setAt);
+        const std::list<llvm::Instruction*> &resetBefore, 
+        llvm::Instruction *setAt);
 
     llvm::Instruction *createConditionalBlock(
-        llvm::Instruction *start, llvm::Instruction *end,
+        llvm::Instruction *start, 
+        llvm::Instruction *end,
         const std::list<llvm::GlobalVariable*> &conditions);
 
     /**
@@ -110,7 +112,8 @@ public:
     virtual bool removeFlush(const FixLoc &fl) = 0;
 
     virtual bool removeFlushConditionally(
-        const FixLoc &orig, const FixLoc &redt,
+        const std::list<FixLoc> &origs, 
+        const FixLoc &redt,
         std::list<llvm::Instruction*> pathPoints) = 0;
 };
 
@@ -137,7 +140,8 @@ public:
     virtual bool removeFlush(const FixLoc &fl) override;
 
     virtual bool removeFlushConditionally(
-        const FixLoc &orig, const FixLoc &redt,
+        const std::list<FixLoc> &origs, 
+        const FixLoc &redt,
         std::list<llvm::Instruction*> pathPoints) override;
 };
 
@@ -168,7 +172,8 @@ public:
     virtual bool removeFlush(const FixLoc &fl) override;
 
     virtual bool removeFlushConditionally(
-        const FixLoc &orig, const FixLoc &redt,
+        const std::list<FixLoc> &origs, 
+        const FixLoc &redt,
         std::list<llvm::Instruction*> pathPoints) override;
 };
 

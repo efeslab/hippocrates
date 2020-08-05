@@ -19,3 +19,6 @@
 [submodule "deps/whole-program-llvm"]
 	path = deps/whole-program-llvm
 	url = git@github.com:efeslab/whole-program-llvm.git
+[submodule "deps/redis"]
+	path = deps/redis
+	url = git@github.com:efeslab/redis-pmem.git

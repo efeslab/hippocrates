@@ -41,6 +41,18 @@ bool BugFixer::addFixToMapping(const FixLoc &fl, FixDesc desc) {
         desc.type == REMOVE_FLUSH_ONLY) {
         assert(false && "conflicting solutions!");
     }
+
+    if (fixMap_[fl].type == REMOVE_FLUSH_CONDITIONAL && 
+        desc.type == REMOVE_FLUSH_CONDITIONAL) {
+
+        fixMap_[fl].originals.insert(fixMap_[fl].originals.end(), 
+            desc.originals.begin(), desc.originals.end());
+        
+        fixMap_[fl].points.insert(fixMap_[fl].points.end(),
+            desc.points.begin(), desc.points.end());
+        
+        return true;
+    }
  
     errs() << "NEW: " << desc.type << " OLD: " << fixMap_[fl].type << "\n";
 
@@ -131,6 +143,7 @@ bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
         }
     }
 
+    errs() << "\n\n";
     errs() << "\t\tMissing Flush? : " << missingFlush << "\n";
     errs() << "\t\tMissing Fence? : " << missingFence << "\n";
     errs() << "\t\tNum Ops : " << opIndices.size() << "\n";
@@ -147,29 +160,31 @@ bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
             errs() << "\t\tLocation : " << last.location.str() << "\n";
             assert(mapper_[last.location].size() && "can't have no instructions!");
             for (const FixLoc &fLoc : mapper_[last.location]) {
-                Instruction *i = fLoc.last;
-                assert(i && "can't be null!");
-                errs() << "\t\tInstruction : " << *i << "\n";
-                if (!isa<StoreInst>(i)) {
-                    errs() << "\t\tNot a store instruction!\n";
-                    continue;
-                }
-                            
-                bool multiline = !last.addresses.front().isSingleCacheLine();
-                assert(!multiline && 
-                        "Don't know how to handle multi-cache line operations!");
-                
-                bool res = false;
-                if (missingFlush && missingFence) {
-                    res = addFixToMapping(i, FixDesc(ADD_FLUSH_AND_FENCE, last.callstack));
-                } else if (missingFlush) {
-                    res = addFixToMapping(i, FixDesc(ADD_FLUSH_ONLY, last.callstack));
-                } else if (missingFence) {
-                    res = addFixToMapping(i, FixDesc(ADD_FENCE_ONLY, last.callstack));
-                }
+                for (Instruction *i : fLoc.insts()) {
+                    errs() << "\t\tInstruction : " << *i << "\n";
+                    if (!isa<StoreInst>(i) && !isa<AtomicCmpXchgInst>(i)) {
+                        errs() << "\t\tNot a store instruction!\n";
+                        continue;
+                    }
+                                
+                    bool multiline = !last.addresses.front().isSingleCacheLine();
+                    assert(!multiline && 
+                            "Don't know how to handle multi-cache line operations!");
+                    
+                    bool res = false;
+                    if (missingFlush && missingFence) {
+                        res = addFixToMapping(i, FixDesc(ADD_FLUSH_AND_FENCE, last.callstack));
+                    } else if (missingFlush) {
+                        res = addFixToMapping(i, FixDesc(ADD_FLUSH_ONLY, last.callstack));
+                    } else if (missingFence) {
+                        res = addFixToMapping(i, FixDesc(ADD_FENCE_ONLY, last.callstack));
+                    }
 
-                // Have to do it this way, otherwise it short-circuits.
-                added = res || added;
+                    // Have to do it this way, otherwise it short-circuits.
+                    added = res || added;
+                    break;
+                }
+                
             }
         } else {
             errs() << "Forced indirect fix!\n";
@@ -352,6 +367,9 @@ bool BugFixer::computeAndAddFix(const TraceEvent &te, int bug_index) {
             return handleAssertPersisted(te, bug_index);
         }
         case TraceEvent::REQUIRED_FLUSH: {
+            errs() << "Not doing perf fixes anymore!\n";
+            return false;
+            #if 0
             errs() << "\tPersistence Bug (Universal Performance)!\n";
             assert(te.addresses.size() > 0 &&
                 "A redundant flush assertion needs an address!");
@@ -371,6 +389,7 @@ bool BugFixer::computeAndAddFix(const TraceEvent &te, int bug_index) {
             //     "Don't know how to handle non-standard ranges which cross lines!");
 
             return handleRequiredFlush(te, bug_index);
+            #endif
         }
         default: {
             errs() << "Not yet supported: " << te.typeString << "\n";
@@ -412,11 +431,18 @@ bool BugFixer::fixBug(FixGenerator *fixer, const FixLoc &fl, const FixDesc &desc
             break;
         }
         case REMOVE_FLUSH_ONLY: {
+            errs() << "Not doing perf fixes anymore!\n";
+            return false;
+            #if 0
             bool success = fixer->removeFlush(fl);
             assert(success && "could not remove flush of REMOVE_FLUSH_ONLY");
             break;
+            #endif
         }
         case REMOVE_FLUSH_CONDITIONAL: {
+            errs() << "Not doing perf fixes anymore!\n";
+            return false;
+            #if 0
             /**
              * We need to get all of the dependent fixes, add them, then
              * add the conditional wrapper. Fun.
@@ -424,10 +450,11 @@ bool BugFixer::fixBug(FixGenerator *fixer, const FixLoc &fl, const FixDesc &desc
              * We also need to reset the conditionals on the "original" store.
              */
             bool success = fixer->removeFlushConditionally(
-                FixLoc(desc.original), fl, desc.points);
+                desc.originals, fl, desc.points);
             assert(success && 
                 "could not conditionally remove flush of REMOVE_FLUSH_CONDITIONAL");
             break;
+            #endif
         }
         default: {
             errs() << "UNSUPPORTED: " << desc.type << "\n";
@@ -463,13 +490,6 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
     const FixLoc *curr = nullptr;
 
 #if 0
-    // We can fairly easily fill this will values from the trace
-    PmDesc pmDesc(module_);
-    for (auto &te : trace_.events()) {
-        for (auto *val : te.pmValues()) {
-            pmDesc.addKnownPmValue(val);
-        }    
-    }
     // Now, we need to find the point of minimal aliasing
     int minIdx = -1;
     size_t minAlias = UINT64_MAX;
@@ -645,7 +665,7 @@ const std::string BugFixer::immutableFnNames_[] = { "memset_mov_sse2_empty" };
 const std::string BugFixer::immutableLibNames_[] = {"libc.so"};
 
 BugFixer::BugFixer(llvm::Module &m, TraceInfo &ti) 
-    : module_(m), trace_(ti), mapper_(m) {
+    : module_(m), trace_(ti), mapper_(m), pmDesc_(module_) {
     for (const std::string &fnName : immutableFnNames_) {
         addImmutableFunction(fnName);
     }
@@ -653,6 +673,13 @@ BugFixer::BugFixer(llvm::Module &m, TraceInfo &ti)
     for (const std::string &libName : immutableLibNames_) {
         addImmutableModule(libName);
     }
+#if 0
+    for (auto &te : trace_.events()) {
+        for (auto *val : te.pmValues(mapper_)) {
+            pmDesc_.addKnownPmValue(val);
+        }    
+    }
+#endif
 }
 
 void BugFixer::addImmutableFunction(const std::string &fnName) {

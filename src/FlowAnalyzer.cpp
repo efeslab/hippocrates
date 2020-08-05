@@ -599,11 +599,12 @@ void ContextGraph<T>::construct(ContextBlock::Shared end) {
             if (!childNode->constructed) {
                 nnodes++;
                 frontier.push_back(childNode);
-                errs() << "\tnew child!\n";
-                errs() << childNode->block->str() << "\n";
-            } else {
-                errs() << "\tconstructed child!\n";
-            }
+                // errs() << "\tnew child!\n";
+                // errs() << childNode->block->str() << "\n";
+            } 
+            // else {
+            //     errs() << "\tconstructed child!\n";
+            // }
         }
 
         if (n->isTerminator()) {
@@ -630,8 +631,8 @@ ContextGraph<T>::ContextGraph(const BugLocationMapper &mapper,
         return;
     }
     ContextBlock::Shared eblk = ContextBlock::create(mapper, end);
-    errs() << sblk->str() << "\n";
-    errs() << eblk->str() << "\n";
+    // errs() << sblk->str() << "\n";
+    // errs() << eblk->str() << "\n";
 
     errs() << "\nEND CONSTRUCT\n";
 
@@ -702,6 +703,7 @@ bool FlowAnalyzer::interpret(ContextGraph<Info>::GraphNodePtr node,
 }
 
 bool FlowAnalyzer::alwaysRedundant() {
+    
     bool redundant = true;
     for (auto nptr : graph_.roots) {
         
@@ -740,6 +742,9 @@ bool FlowAnalyzer::alwaysRedundant() {
             }
         }
     }
+
+    // Testing: maybe we get fewer mistakes in RECIPE?
+    redundant = false;
 
     return redundant;
 }
@@ -786,6 +791,9 @@ std::list<Instruction*> FlowAnalyzer::redundantPaths() {
      * have no spoiling parents and no spoiling children.
      */
 
+    std::deque<ContextGraph<Info>::GraphNodePtr> frontier;
+    std::unordered_set<ContextGraph<Info>::GraphNodePtr> traversed;
+
     /**
      * 1. First, we iterate through top-down for the parents field.
      */
@@ -794,74 +802,70 @@ std::list<Instruction*> FlowAnalyzer::redundantPaths() {
         // -- Special case. For one node, it's always redundant.
         assert(!nptr->children.empty() && "not sure why we're here");
 
-        std::deque<ContextGraph<Info>::GraphNodePtr> frontier;
-        std::unordered_set<ContextGraph<Info>::GraphNodePtr> traversed;
-
         frontier.insert(frontier.end(), 
                         nptr->children.begin(), nptr->children.end());
         traversed.insert(nptr);
+    }
 
-        while (frontier.size()) {
-            auto node = frontier.front();
-            frontier.pop_front();
+    while (frontier.size()) {
+        auto node = frontier.front();
+        frontier.pop_front();
 
-            // Loop check
-            if (traversed.count(node)) continue;
-            traversed.insert(node);
+        // Loop check
+        if (traversed.count(node)) continue;
+        traversed.insert(node);
 
-            // For leaves, we interpret just to trace end
-            for (auto parent : node->parents) {
-                bool &isRedt = node->metadata.isRedtInParents;
-                Info &pInfo = parent->metadata;
-                // It is redundant if the parent OR grandparents redundant.
-                isRedt = isRedt && (!pInfo.isNotRedundant && pInfo.isRedtInParents);
-            }
-            errs() << "DOWN PROP " << node.get() << " VERDICT " 
-                << node->metadata.isRedtInParents << "\n";
-
-            frontier.insert(frontier.end(), 
-                            node->children.begin(), node->children.end());
+        // For leaves, we interpret just to trace end
+        for (auto parent : node->parents) {
+            bool &isRedt = node->metadata.isRedtInParents;
+            Info &pInfo = parent->metadata;
+            // It is redundant if the parent OR grandparents redundant.
+            isRedt = isRedt && (!pInfo.isNotRedundant && pInfo.isRedtInParents);
         }
+        errs() << "DOWN PROP " << node.get() << " VERDICT " 
+            << node->metadata.isRedtInParents << "\n";
+
+        frontier.insert(frontier.end(), 
+                        node->children.begin(), node->children.end());
     }
 
     /**
      * 2. We need to do the back-prop part now.
      */
+    traversed.clear();
+
     for (auto nptr : graph_.leaves) {
         assert(nptr->metadata.updated && "huh?");
         // -- Special case. For one node, it's always redundant.
         assert(!nptr->parents.empty() && "not sure why we're here");
 
-        std::deque<ContextGraph<Info>::GraphNodePtr> frontier;
-        std::unordered_set<ContextGraph<Info>::GraphNodePtr> traversed;
-
         assert(!nptr->metadata.isNotRedundant && "???");
 
         frontier.insert(frontier.end(), nptr->parents.begin(), nptr->parents.end());
-        traversed.insert(nptr);
+        traversed.insert(nptr);  
+    }
 
-        while (frontier.size()) {
-            auto node = frontier.front();
-            frontier.pop_front();
+    while (frontier.size()) {
+        auto node = frontier.front();
+        frontier.pop_front();
 
-            // Loop check
-            if (traversed.count(node)) continue;
-            traversed.insert(node);
+        // Loop check
+        if (traversed.count(node)) continue;
+        traversed.insert(node);
 
-            // For leaves, we interpret just to trace end
-            for (auto child : node->children) {
-                bool &isRedt = node->metadata.isRedtInChildren;
-                Info &cInfo = child->metadata;
-                // It is redundant if the children AND grandchildren redundant.
-                isRedt = isRedt && (!cInfo.isNotRedundant && cInfo.isRedtInChildren);
-            }
-
-            errs() << "UP PROP " << node.get() << " VERDICT " 
-                << node->metadata.isRedtInChildren << "\n";
-    
-            frontier.insert(frontier.end(), 
-                            node->parents.begin(), node->parents.end());
+        // For leaves, we interpret just to trace end
+        for (auto child : node->children) {
+            bool &isRedt = node->metadata.isRedtInChildren;
+            Info &cInfo = child->metadata;
+            // It is redundant if the children AND grandchildren redundant.
+            isRedt = isRedt && (!cInfo.isNotRedundant && cInfo.isRedtInChildren);
         }
+
+        errs() << "UP PROP " << node.get() << " VERDICT " 
+            << node->metadata.isRedtInChildren << "\n";
+
+        frontier.insert(frontier.end(), 
+                        node->parents.begin(), node->parents.end());
     }
 
     /**
@@ -871,33 +875,31 @@ std::list<Instruction*> FlowAnalyzer::redundantPaths() {
      * redundant in parents and redundant in children, we add it to the points 
      * list and stop traversing that path.
      */
+    traversed.clear();
 
     for (auto nptr : graph_.roots) {
         // If it was always provably redundant in the children, then why wouldn't
         // we go with the catch-all fix?
-        assert(!nptr->metadata.isRedtInChildren && "then the original fix!");
-
-        std::deque<ContextGraph<Info>::GraphNodePtr> frontier;
-        std::unordered_set<ContextGraph<Info>::GraphNodePtr> traversed;
+        // assert(!nptr->metadata.isRedtInChildren && "then the original fix!");
 
         frontier.insert(frontier.end(), nptr->children.begin(), nptr->children.end());
         traversed.insert(nptr);
+    }
 
-        while (frontier.size()) {
-            auto node = frontier.front();
-            frontier.pop_front();
+    while (frontier.size()) {
+        auto node = frontier.front();
+        frontier.pop_front();
 
-            // Loop check
-            if (traversed.count(node)) continue;
-            traversed.insert(node);
+        // Loop check
+        if (traversed.count(node)) continue;
+        traversed.insert(node);
 
-            if (node->metadata.isRedtInChildren && 
-                node->metadata.isRedtInParents) {
-                points.push_back(node->block->first);
-            } else {
-                frontier.insert(frontier.end(), 
-                                node->children.begin(), node->children.end());
-            }
+        if (node->metadata.isRedtInChildren && 
+            node->metadata.isRedtInParents) {
+            points.push_back(node->block->first);
+        } else {
+            frontier.insert(frontier.end(), 
+                            node->children.begin(), node->children.end());
         }
     }
 

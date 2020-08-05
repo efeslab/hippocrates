@@ -11,6 +11,7 @@
 
 #include "FixGenerator.hpp"
 #include "BugReports.hpp"
+#include "FlowAnalyzer.hpp"
 
 namespace pmfix {
 
@@ -26,6 +27,7 @@ private:
     llvm::Module &module_;
     TraceInfo &trace_;
     BugLocationMapper mapper_;
+    PmDesc pmDesc_;
 
     /**
      * We're not allowed to insert fixes into some functions. These are some 
@@ -83,24 +85,26 @@ private:
         /**
          * Slightly jank, but these two fields are just for conditional flushing.
          */
-        FixLoc original;
+        std::list<FixLoc> originals;
         std::list<llvm::Instruction*> points;
 
         /* Methods and constructors */
 
         FixDesc() 
             : type(NO_FIX), dynStack(nullptr), stackIdx(0), 
-            original(), points() {}
+            originals(), points() {}
         
         FixDesc(FixType t, const std::vector<LocationInfo> &l, int si=0) 
-            : type(t), dynStack(&l), stackIdx(si), original(), points() {}
+            : type(t), dynStack(&l), stackIdx(si), originals(), points() {}
         
         FixDesc(FixType t, const std::vector<LocationInfo> &l, 
                 const FixLoc &o, std::list<llvm::Instruction*> p) 
-            : type(t), dynStack(&l), stackIdx(0), original(o), points(p) {}
+            : type(t), dynStack(&l), stackIdx(0), originals(), points(p) {
+                originals.push_back(o);
+            }
 
         bool operator==(const FixDesc &f) const {
-            return type == f.type && original == f.original && points == f.points;
+            return type == f.type && originals == f.originals && points == f.points;
         }
 
         bool operator!=(const FixDesc &f) const {

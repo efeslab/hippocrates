@@ -23,7 +23,7 @@ def get_linker_strings():
     pmtest = str(pmtest_library.absolute())
     return f'-L{pmtest} -Wl,-rpath={pmtest} -lpmtest -lpthread {pmdk_str}'
 
-def run_pass_and_compile(bitcode_file, bug_report, output_file, keep_files):
+def run_pass_and_compile(args):
     # iangneal: inserted by CMAKE
     pass_library = Path(r'${LLVM_PASS_PATH}')
 
@@ -43,7 +43,7 @@ def run_pass_and_compile(bitcode_file, bug_report, output_file, keep_files):
     assert link_exe.exists()
     pm_intrinsics = Path(r'${PMINTRINSICS_BITCODE}')
     assert pm_intrinsics.exists(), f'${pm_intrinsics.name} does not exist! Bad build!'
-    link_arg_str_fn = lambda out: (f'{str(link_exe)} {str(bitcode_file)} '
+    link_arg_str_fn = lambda out: (f'{str(link_exe)} {str(args.bitcode_file)} '
                                    f'{str(pm_intrinsics)} -o {str(out)}')
 
     # 1. opt to run the fixer
@@ -51,7 +51,7 @@ def run_pass_and_compile(bitcode_file, bug_report, output_file, keep_files):
     assert(opt_exe.exists())
 
     opt_arg_str_fn = lambda bc: (f'{str(opt_exe)} -load {str(pass_library)} '
-                                 f'-pm-bug-fixer -trace-file {str(bug_report)} '
+                                 f'-pm-bug-fixer -trace-file {str(args.bug_report)} '
                                  f'{str(bc)}')
     
     # 2. llc to compile the optimized bitcode
@@ -63,12 +63,16 @@ def run_pass_and_compile(bitcode_file, bug_report, output_file, keep_files):
 
     # 3. clang to compile the assembly file and link libraries.
     clang_exe = llvm_path / 'clang'
+    if args.cxx:
+        clang_exe = llvm_path / 'clang++'
+
     assert(clang_exe.exists())
     cc_arg_str = '-g -O0'
 
-    clang_arg_str_fn = lambda asm: f'{str(clang_exe)} {cc_arg_str} {str(asm)} {get_linker_strings()} -o {str(output_file)}'
+    clang_arg_str_fn = lambda asm: (f'{str(clang_exe)} {cc_arg_str} {str(asm)}'
+                f' {get_linker_strings()} -o {str(args.output_file)}')
     
-    def do_all(tempdir):
+    def do_all(tempdir, output_file):
         temppath = Path(tempdir)
         assert(temppath.exists())
         # 0. Link
@@ -98,12 +102,12 @@ def run_pass_and_compile(bitcode_file, bug_report, output_file, keep_files):
         ret.check_returncode()
         assert(output_file.exists())
 
-    if not keep_files:
+    if not args.keep_files:
         with TemporaryDirectory() as tempdir:
-            do_all(tempdir)
+            do_all(tempdir, args.output_file)
     else:
-        print(f'Not writing to temp dir, instead to {str(output_file.parent)}')
-        do_all(output_file.parent)
+        print(f'Not writing to temp dir, instead to {str(args.output_file.parent)}')
+        do_all(args.output_file.parent, args.output_file)
         
 
 
@@ -116,10 +120,12 @@ def main():
                         help='Optional output of where to put the compiled binary.')
     parser.add_argument('--keep-files', '-k', action='store_true', default=False,
                         help='Doesn\'t delete temporary files. Helpful for debugging.')
+    parser.add_argument('--cxx', action='store_true', default=False,
+                        help='Use clang++ rather than clang')
 
     args = parser.parse_args()
 
-    run_pass_and_compile(args.bitcode_file, args.bug_report, args.output_file, args.keep_files)
+    run_pass_and_compile(args)
 
 
 if __name__ == '__main__':

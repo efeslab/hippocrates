@@ -4,6 +4,7 @@
 #include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Transforms/Utils/Cloning.h"
+#include "llvm/IR/CFG.h"
 
 #include "llvm/IR/DIBuilder.h"
 
@@ -58,8 +59,9 @@ llvm::Function *FixGenerator::getPersistentMemmove() const {
     return getPersistentIntrinsic("PMFIXER_memmove");
 }
 
-GlobalVariable *FixGenerator::createConditionVariable(Instruction *resetBefore, 
-                                                      Instruction *setAt) {
+GlobalVariable *FixGenerator::createConditionVariable(
+    const std::list<llvm::Instruction*> &resetBefore, 
+    Instruction *setAt) {
     
     auto *boolType = Type::getInt1Ty(module_.getContext());
 
@@ -67,27 +69,29 @@ GlobalVariable *FixGenerator::createConditionVariable(Instruction *resetBefore,
         /* Module */ module_, /* Type */ boolType, /* isConstant */ false,
         /* Linkage */ GlobalValue::ExternalLinkage, 
         /* Constant constructor */ Constant::getNullValue(boolType),
-        /* Name */ "test", /* Insert before */ nullptr,
+        /* Name */ "removeCondition", /* Insert before */ nullptr,
         /* Thread local? */ GlobalValue::LocalExecTLSModel,
         /* AddressSpace */ 0,
         /* Externally init? */ false);
 
-
-    IRBuilder<> builder(resetBefore);
-    // The reset
-    auto *resetInst = builder.CreateStore(Constant::getNullValue(boolType), gv);
-    errs() << "reset:" << *resetInst << "\n";
+    for (auto *resetB : resetBefore) {
+        IRBuilder<> builder(resetB);
+        // The reset
+        auto *resetInst = builder.CreateStore(Constant::getNullValue(boolType), gv, "ResetAtStart");
+        errs() << "reset:" << *resetInst << "\n";
+    }
 
     // The set
-    builder.SetInsertPoint(setAt);
-    auto *setInst = builder.CreateStore(Constant::getAllOnesValue(boolType), gv);
+    IRBuilder<> builder(setAt);
+    auto *setInst = builder.CreateStore(Constant::getAllOnesValue(boolType), gv, "SetInPath");
     errs() << "set:" << *setInst << "\n";
 
     return gv;
 }
 
 llvm::Instruction *FixGenerator::createConditionalBlock(
-    llvm::Instruction *first, llvm::Instruction *end,
+    llvm::Instruction *first, 
+    llvm::Instruction *end,
     const std::list<llvm::GlobalVariable*> &conditions) {
     errs() << "first:" << *first << "\n";
    
@@ -97,14 +101,27 @@ llvm::Instruction *FixGenerator::createConditionalBlock(
     */
 
     BasicBlock *newRegion = first->getParent()->splitBasicBlock(first);
-    BasicBlock *endRegion = newRegion->splitBasicBlock(end->getNextNonDebugInstruction());
+    newRegion->setName("TheFlushBlock");
+    BasicBlock *endRegion = nullptr;
+    if (Instruction *i = end->getNextNonDebugInstruction()) {
+        endRegion = newRegion->splitBasicBlock(i);
+    } else if (!succ_empty(end->getParent())) {
+        assert(end->isTerminator());
+        endRegion = end->getParent()->getSingleSuccessor();
+        assert(endRegion);
+    } else {
+        errs() << "ERR:" << *end << "\n";
+        assert(false && "don't know how to handle! is end a ret?");
+    }
 
+    endRegion->setName("TheEndBlock");
     /**
      * We want to get the last branch in the original basic block, because we
      * need to eventually replace it with a conditional branch.
      */
     BasicBlock *originalBB = newRegion->getUniquePredecessor();
     assert(originalBB);
+    originalBB->setName("TheCommonPredecessor");
 
     /**
      * Okay, now we need to construct the actual conditional, then insert 
@@ -116,20 +133,31 @@ llvm::Instruction *FixGenerator::createConditionalBlock(
     assert(isa<BranchInst>(oldTerm));
     IRBuilder<> builder(oldTerm);
 
-    // Insert all the cascaded ANDs
+    // We should go to the new region (with the flush) if all are 0.
+    // -- That means it got reset and never set.
+    // -- To check all zero, OR. If true, go to end.
+    // Insert all the cascaded ORs
     auto *boolType = Type::getInt1Ty(module_.getContext());
-    Value *prev = Constant::getAllOnesValue(boolType);
+    Value *prev = Constant::getNullValue(boolType);
     for (auto *gv : conditions) {
         // Load from gv, then and
         auto *loadRes = builder.CreateLoad(boolType, gv, /*isvolatile*/ true);
-        prev = builder.CreateAnd(prev, loadRes);
+        prev = builder.CreateOr(prev, loadRes);
     }
 
-    // Now, make a conditional branch. If true, newRegion, else endRegion
-    builder.CreateCondBr(prev, newRegion, endRegion);
+    // Now, make a conditional branch.
+    builder.CreateCondBr(prev, endRegion, newRegion);
 
     // Finally, erase old unconditional branch
     oldTerm->eraseFromParent();
+
+    // Make sure to reset the variables after we skip once.
+    builder.SetInsertPoint(endRegion->getFirstNonPHIOrDbgOrLifetime());
+    for (auto *gv : conditions) {
+        auto *resetInst = builder.CreateStore(Constant::getNullValue(boolType), gv, "PostSkipReset");
+        errs() << "PostSkipReset:" << *resetInst << "\n";
+        assert(resetInst);
+    }
 
     return &newRegion->front();
 }
@@ -219,9 +247,14 @@ bool FixGenerator::makeAllStoresPersistent(llvm::Function *f, bool useNT) {
 Instruction *GenericFixGenerator::insertFlush(const FixLoc &fl) {
     Instruction *i = fl.last;
 
+    Value *addrExpr = nullptr;
     if (StoreInst *si = dyn_cast<StoreInst>(i)) {
-        Value *addrExpr = si->getPointerOperand();
+        addrExpr = si->getPointerOperand();
+    } else if (auto *cx = dyn_cast<AtomicCmpXchgInst>(i)) {
+        addrExpr = cx->getPointerOperand();
+    }
 
+    if (addrExpr) {
         errs() << "Inserting flush in " << i->getFunction()->getName() << "\n";
         errs() << "Address of assign: " << *addrExpr << "\n";
 
@@ -473,10 +506,46 @@ bool GenericFixGenerator::removeFlush(const FixLoc &fl) {
 }
 
 bool GenericFixGenerator::removeFlushConditionally(
-        const FixLoc &orig, const FixLoc &redt,
+        const std::list<FixLoc> &origs, 
+        const FixLoc &redt,
         std::list<llvm::Instruction*> pathPoints) {
-    assert(false && "Implement me!");
-    return false;
+
+    errs() << "\n\n" << __FUNCTION__ << "\n\n";
+
+    std::list<Instruction*> resetPoints;
+    for (auto &fl : origs) {
+        assert(fl.isValid());
+        resetPoints.push_back(fl.first);
+    }
+
+    /**
+     * Step 1. Create the conditionals.
+     */
+    std::list<GlobalVariable*> conditions;
+    for (Instruction *setPoint : pathPoints) {
+        GlobalVariable *gv = createConditionVariable(resetPoints, setPoint);
+        assert(gv && "could not create global variable!");
+        errs() << "GV: " << *gv << "\n";
+        conditions.push_back(gv);
+    }
+
+    /**
+     * Step 2. Get the bounds of the block we need to make conditional.
+     */
+
+    Instruction *start = redt.first, *end = redt.last;
+
+    assert(start && end);
+
+    /**
+     * Step 3. Now, we actually create the conditional block to wrap around the
+     * redundant store.
+     */
+
+    auto *i = createConditionalBlock(start, end, conditions);
+    assert(i && "wat");
+
+    return true;
 }
 
 /**
@@ -615,12 +684,15 @@ bool PMTestFixGenerator::removeFlush(const FixLoc &fl) {
     return true;
 }
 
-bool PMTestFixGenerator::removeFlushConditionally(const FixLoc &orig,
-                                                  const FixLoc &redt,
-                                                  std::list<Instruction*> pathPoints)
+bool PMTestFixGenerator::removeFlushConditionally(
+        const std::list<FixLoc> &origs, 
+        const FixLoc &redt,
+        std::list<Instruction*> pathPoints)
 {
-
-    Instruction *original = orig.last;
+    assert(false && "update me!");
+    return false;
+#if 0
+    Instruction *original = origs.front().last;
     Instruction *redundant = redt.last;
     std::list<GlobalVariable*> conditions;
     for (Instruction *point : pathPoints) {
@@ -661,6 +733,7 @@ bool PMTestFixGenerator::removeFlushConditionally(const FixLoc &orig,
     assert(i && "wat");
 
     return true;
+#endif
 }
 
 #pragma endregion
