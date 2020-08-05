@@ -426,21 +426,49 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
  * This should just remove the flush.
  */
 bool GenericFixGenerator::removeFlush(const FixLoc &fl) {
+    errs() << "We be in remove flush\n";
+
+    for (auto *i : fl.insts()) {
+        errs() << "\t" << *i << "\n";
+    }
     Instruction *i = fl.last;
 
-    if (CallInst *ci = dyn_cast<CallInst>(i)) {
-        Function *f = ci->getCalledFunction();
-        
-        // Validate that this is a flush.
-        // (iangneal): getting the intrinsic ID is more type-safe
-        if (f->getIntrinsicID() != Intrinsic::x86_clwb) {
-            assert(false && "must be a clwb!");
+    for (Instruction *i : fl.insts()) {
+        if (CallInst *ci = dyn_cast<CallInst>(i)) {
+            bool remove = false;
+
+            if (Function *f = utils::getFlush(ci)) {
+                // Validate that this is a flush.
+                // (iangneal): getting the intrinsic ID is more type-safe
+                remove = true;
+            } else if (ci->isInlineAsm()) {
+                bool isFlushAsm = false;
+                // Get the inline ASM string
+                auto *ia = dyn_cast<InlineAsm>(ci->getCalledValue());
+                assert(ia);
+                auto str = ia->getAsmString();
+                errs() << str << "\n";
+                if (str == ".byte 0x66; xsaveopt $0") {
+                    isFlushAsm = true;
+                } else {
+                    errs() << "'" << str << "' != " << ".byte 0x66; xsaveopt $0" << "\n";
+                }
+                // Check if it is
+                if (isFlushAsm) {
+                    remove = true;
+                }
+            }
+
+            if (remove) {
+                i->eraseFromParent();
+                return true;
+            }
+            
+        } else if (auto *si = dyn_cast<StoreInst>(i)) {
+            assert(false && "TODO!");
         }
-
-        i->eraseFromParent();
-        return true;
     }
-
+    
     return false;
 }
 

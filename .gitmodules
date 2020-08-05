@@ -9,7 +9,7 @@
 	url = git@github.com:efeslab/pmtest.git
 [submodule "deps/pmdk"]
 	path = deps/pmdk
-	url = https://github.com/pmem/pmdk.git
+	url = git@github.com:efeslab/pmdk.git
 [submodule "deps/valgrind-pmem"]
 	path = deps/valgrind-pmem
 	url = git@github.com:efeslab/valgrind.git

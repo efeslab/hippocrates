@@ -231,6 +231,7 @@ private:
 public:
 
     const TraceEvent &operator[](int i) const { return events_[i]; }
+    TraceEvent &operator[](int i) { return events_[i]; }
 
     const std::list<int> &bugs() const { return bugs_; }
 

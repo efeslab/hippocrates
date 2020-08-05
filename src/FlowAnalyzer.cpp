@@ -239,17 +239,20 @@ ContextBlock::Shared ContextBlock::create(FnContext::Shared ctx,
 }
 
 ContextBlock::Shared ContextBlock::create(const BugLocationMapper &mapper, 
-                                          const TraceEvent &te) {
+                                          TraceEvent &te) {
 
     // Start from the top down.
     FnContext::Shared parent = FnContext::create(mapper.module());
 
     errs() << te.str() << "\n\n";
 
+    // Copy. So we can modify.
+    std::vector<LocationInfo> &stack = te.callstack;
+
     // [0] is the current location, which we use to set up the node itself.
-    for (int i = te.callstack.size() - 1; i >= 1; --i) {
-        const LocationInfo &caller = te.callstack[i];
-        const LocationInfo &callee = te.callstack[i-1];
+    for (int i = stack.size() - 1; i >= 1; --i) {
+        LocationInfo &caller = stack[i];
+        LocationInfo &callee = stack[i-1];
 
         errs() << "\nCALLER: " << caller.str() << "\n";
         errs() << "CALLEE: " << callee.str() << "\n";
@@ -266,8 +269,6 @@ ContextBlock::Shared ContextBlock::create(const BugLocationMapper &mapper,
                 errs() << "DEMANGLES: " << utils::demangle("obj_alloc_construct.1488") << "\n";
             }
             else errs() << *f << "\n";
-
-
 
             continue;
         }
@@ -308,10 +309,20 @@ ContextBlock::Shared ContextBlock::create(const BugLocationMapper &mapper,
 
         assert(possibleCallSites.size() > 0 && "don't know how to handle!");
         if (possibleCallSites.size() > 1) {
-            errs() << "Too many options! Abort.\n";
-            return nullptr;
+            // If the functions are both the same, it shouldn't matter, 
+            // since we're only reseting on the front of the path.
+            Function *f = possibleCallSites.front()->getCalledFunction();
+            for (auto *cb : possibleCallSites) {
+                Function *called = cb->getCalledFunction();
+                assert(called && called == f);
+                errs() << "Multiple call sites:" << *cb << "\n";
+            }
+            // We should be able to do something about this with debug info
+            // errs() << "Too many options! Abort.\n";
+            // assert(false && "TODO!");
+            // return nullptr;
         }
-        assert(possibleCallSites.size() == 1 && "don't know how to handle!");
+        // assert(possibleCallSites.size() == 1 && "don't know how to handle!");
 
         Instruction *possible = possibleCallSites.front();
         CallBase *callInst = dyn_cast<CallBase>(possible);
@@ -338,6 +349,10 @@ ContextBlock::Shared ContextBlock::create(const BugLocationMapper &mapper,
             }
         }
         assert(f && "don't know what's going on!!");
+
+        if (f->getName() != callee.function) {
+            callee.function = f->getName();
+        }
         
         FnContext::Shared curr = parent->doCall(f, callInst);
         
@@ -348,13 +363,28 @@ ContextBlock::Shared ContextBlock::create(const BugLocationMapper &mapper,
      * Now, we set up arguments so we can call the other create() function.
      */ 
 
-    const LocationInfo &curr = te.callstack[0];
+    if (stack[0] != te.location) {
+        errs() << "DING\n";
+        te.location = stack[0];
+    }
+
+    const LocationInfo &curr = stack[0];
     if (!mapper.contains(curr)) {
         errs() << "stack[0] " << curr.str() << "\n";
         errs() << "location " << te.location.str() << "\n";
+
+        LocationInfo dup = curr;
+        dup.function = "memset_mov2x64b.896";
+        errs() << "dup " << dup.str() << "\n";
+        errs() << "Contains? " << mapper.contains(dup) << "\n";
+
+        dup.function = "memset_movnt4x64b.643";
+        errs() << "dup " << dup.str() << "\n";
+        errs() << "Contains? " << mapper.contains(dup) << "\n";
         /**
          * TODO: Any way around this? Doesn't seem like it.
          */
+        assert(false);
         return nullptr;
     }
     // We use this to figure out the first and last instruction in the window.
@@ -590,8 +620,8 @@ void ContextGraph<T>::construct(ContextBlock::Shared end) {
 
 template <typename T>
 ContextGraph<T>::ContextGraph(const BugLocationMapper &mapper, 
-                              const TraceEvent &start, 
-                              const TraceEvent &end) {
+                              TraceEvent &start, 
+                              TraceEvent &end) {
     errs() << "CONSTRUCT ME\n\n";
 
     ContextBlock::Shared sblk = ContextBlock::create(mapper, start);

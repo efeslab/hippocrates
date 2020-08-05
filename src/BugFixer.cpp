@@ -290,8 +290,8 @@ bool BugFixer::handleRequiredFlush(const TraceEvent &te, int bug_index) {
      * Otherwise, abort.
      */
 
-    const TraceEvent &orig = trace_[originalIdx];
-    const TraceEvent &redt = trace_[redundantIdx];
+    TraceEvent &orig = trace_[originalIdx];
+    TraceEvent &redt = trace_[redundantIdx];
 
     errs() << "Original: " << orig.str() << "\n";
     errs() << "Redundant: " << redt.str() << "\n";

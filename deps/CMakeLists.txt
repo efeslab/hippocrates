@@ -20,15 +20,17 @@ set(PMDK_INCLUDE ${PMDK_INCLUDE_DIR} CACHE INTERNAL "")
 set(PMDK_LIB_DIR ${PMDK_INSTALL_DIR}/lib CACHE INTERNAL "")
 set(PMDK_LIBS ${PMDK_LIB_DIR} CACHE INTERNAL "")
 
+# For some reason, you HAVE to do this via a variable or it thinks you're setting
+# VALGRIND_ENABLED to "1 -Wno...."
+set(PMDK_FLAGS "-DVALGRIND_ENABLED=1 -Wno-error=unused-function")
 add_custom_command(OUTPUT ${PMDK_ROOT_DIR}/src/debug
-                   COMMAND git -C ${PMDK_ROOT_DIR} checkout 1.6
-                   COMMAND make CC=wllvm CXX=wllvm++ 
-                            EXTRA_CFLAGS="-DVALGRIND_ENABLED=1 -DVG_PMEMCHECK_ENABLED=1"
+                   COMMAND make CC=wllvm CXX=wllvm++ DEBUG=1
+                            EXTRA_CFLAGS=${PMDK_FLAGS}
                              -C ${PMDK_ROOT_DIR} -j${NPROC}
                    COMMENT "Build PMDK dependency")
 add_custom_command(OUTPUT ${PMDK_INSTALL_DIR}
-                   COMMAND make CC=wllvm CXX=wllvm++
-                            EXTRA_CFLAGS="-DVALGRIND_ENABLED=1 -DVG_PMEMCHECK_ENABLED=1"
+                   COMMAND make CC=wllvm CXX=wllvm++ DEBUG=1
+                            EXTRA_CFLAGS=${PMDK_FLAGS}
                             -C ${PMDK_ROOT_DIR} -j${NPROC} 
                            install prefix=${PMDK_INSTALL_DIR}
                    DEPENDS ${PMDK_ROOT_DIR}/src/debug

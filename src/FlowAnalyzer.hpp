@@ -180,7 +180,7 @@ namespace pmfix {
         llvm::Instruction *traceInst = nullptr;
  
         static ContextBlockPtr create(const BugLocationMapper &mapper, 
-                                      const TraceEvent &te);
+                                      TraceEvent &te);
 
         /** 
          * Just finds the last instruction.
@@ -253,8 +253,8 @@ namespace pmfix {
         bool empty() const { return roots.empty() && leaves.empty(); }
 
         ContextGraph(const BugLocationMapper &mapper, 
-                     const TraceEvent &start, 
-                     const TraceEvent &end);
+                     TraceEvent &start, 
+                     TraceEvent &end);
     };
 
     /**
@@ -280,8 +280,9 @@ namespace pmfix {
 
         llvm::Module &m_;
         const BugLocationMapper &mapper_;
-        const TraceEvent &start_;
-        const TraceEvent &end_;
+        // These are non-const references because we may modify them
+        TraceEvent &start_;
+        TraceEvent &end_;
         ContextGraph<Info> graph_;
 
         /**
@@ -296,8 +297,8 @@ namespace pmfix {
     public:
         FlowAnalyzer(llvm::Module &m, 
                      const BugLocationMapper &mapper, 
-                     const TraceEvent &start, 
-                     const TraceEvent &end) 
+                     TraceEvent &start, 
+                     TraceEvent &end) 
             : m_(m), mapper_(mapper), start_(start), end_(end),
               graph_(mapper, start, end) {}
 

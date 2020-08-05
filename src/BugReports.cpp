@@ -314,9 +314,10 @@ bool TraceEvent::callStacksEqual(const TraceEvent &a, const TraceEvent &b) {
     return true;
 }
 
-static Value *getGenericPmValues(const BugLocationMapper &mapper, const FixLoc &fLoc) {
-    Instruction *i = nullptr;
-    for (i = fLoc.first; i != fLoc.last; i = i->getNextNonDebugInstruction()) {
+static 
+Value *getGenericPmValues(const BugLocationMapper &mapper, const FixLoc &fLoc) {
+    for (Instruction *i : fLoc.insts()) {
+        errs() << "GET PMV:" << *i << "\n";
         if (auto *cb = dyn_cast<CallBase>(i)) {
             Function *f = utils::getFlush(cb);
             if (f) {
@@ -389,8 +390,15 @@ std::list<Value*> TraceEvent::pmValues(const BugLocationMapper &mapper) const {
     //     errs() << str() << "\n";
     // }
     // assert(location == callstack[0] && "wat");
+
     assert(mapper.contains(location) && "wat");
     assert(type != INVALID && type != FENCE && "doesn't make sense!");
+
+    errs() << "\n\nPMVALUES\n\n";
+    for (auto &fLoc : mapper[location]) {
+        errs() << "New FLOC\n";
+        for (Instruction *i : fLoc.insts()) errs() << "\t" << *i << "\n";
+    }
 
     for (auto &fLoc : mapper[location]) {
         switch (source) {
@@ -425,9 +433,10 @@ std::list<Value*> TraceEvent::pmValues(const BugLocationMapper &mapper) const {
                         break;
                     }  
                     case FLUSH: {
+                        errs() << "Try get flush value!\n";
+                        errs() << str() << "\n";
                         Value *pmv = getGenericPmValues(mapper, fLoc);
-                        assert(pmv && "bad trace!");
-                        pmAddrs.push_back(pmv);
+                        if (pmv) pmAddrs.push_back(pmv);
                         break;
                     }        
                     default:
@@ -447,6 +456,8 @@ std::list<Value*> TraceEvent::pmValues(const BugLocationMapper &mapper) const {
             }
         }
     }
+
+    assert(!pmAddrs.empty() && "bad usage!");
 
     return pmAddrs;
 }
@@ -536,6 +547,11 @@ void TraceInfoBuilder::processEvent(TraceInfo &ti, YAML::Node event) {
         default:
             break;
     }
+
+    /**
+     * Sanity checking.
+     */
+    assert(e.callstack[0] == e.location);
 
     ti.addEvent(std::move(e));
 }
