@@ -52,7 +52,7 @@ def run_pass_and_compile(args):
 
     opt_arg_str_fn = lambda bc: (f'{str(opt_exe)} -load {str(pass_library)} '
                                  f'-pm-bug-fixer -trace-file {str(args.bug_report)} '
-                                 f'{str(bc)}')
+                                 f'{args.extra_opt_args} {str(bc)}')
     
     # 2. llc to compile the optimized bitcode
     llc_exe = llvm_path / 'llc'
@@ -76,14 +76,14 @@ def run_pass_and_compile(args):
         temppath = Path(tempdir)
         assert(temppath.exists())
         # 0. Link
-        bitcode_linked = temppath / 'linked.bc'
+        bitcode_linked = temppath / f'{output_file.name}_linked.bc'
         args = shlex.split(link_arg_str_fn(bitcode_linked))
         ret = subprocess.run(args)
         ret.check_returncode()
         assert bitcode_linked.exists(), 'nonsense!'
 
         # 1. Fix
-        bitcode_opt = temppath / 'fixed.bc' 
+        bitcode_opt = temppath / f'{output_file.name}_fixed.bc' 
         args = shlex.split(opt_arg_str_fn(bitcode_linked))
         ret = subprocess.run(args, stdout=bitcode_opt.open('w'))
         ret.check_returncode()
@@ -93,7 +93,7 @@ def run_pass_and_compile(args):
         args = shlex.split(llc_arg_str_fn(bitcode_opt))
         ret = subprocess.run(args)
         ret.check_returncode()
-        asm_path = temppath / 'fixed.s'
+        asm_path = temppath / f'{output_file.name}_fixed.s'
         assert(asm_path.exists())
 
         # 3. Compile to executable.
@@ -122,6 +122,8 @@ def main():
                         help='Doesn\'t delete temporary files. Helpful for debugging.')
     parser.add_argument('--cxx', action='store_true', default=False,
                         help='Use clang++ rather than clang')
+    parser.add_argument('--extra-opt-args', type=str, default='',
+                        help='Extra args to pass to the fixer')
 
     args = parser.parse_args()
 
