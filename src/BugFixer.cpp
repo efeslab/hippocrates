@@ -649,7 +649,8 @@ bool BugFixer::runFixMapOptimization(void) {
 }
 
 bool BugFixer::patchMemoryPrimitives(FixGenerator *fixer) {
-    size_t changed = 0;
+    std::unordered_map<CallBase*, Function*> replace_map;
+
     for (Function &f : module_) {
         for (BasicBlock &b : f) {
             for (Instruction &i : b) {
@@ -661,18 +662,15 @@ bool BugFixer::patchMemoryPrimitives(FixGenerator *fixer) {
 
                 switch (f->getIntrinsicID()) {
                     case Intrinsic::memcpy: {
-                        bool res = fixer->modifyCall(cb, fixer->getPersistentMemcpy());
-                        changed += (size_t)res;
+                        replace_map[cb] = fixer->getPersistentMemcpy();
                         continue;
                     }
                     case Intrinsic::memset: {
-                        bool res = fixer->modifyCall(cb, fixer->getPersistentMemset());
-                        changed += (size_t)res;
+                        replace_map[cb] = fixer->getPersistentMemset();
                         continue;
                     }
                     case Intrinsic::memmove: {
-                        bool res = fixer->modifyCall(cb, fixer->getPersistentMemmove());
-                        changed += (size_t)res;
+                        replace_map[cb] = fixer->getPersistentMemmove();
                         continue;
                     }
                     default: {
@@ -682,29 +680,30 @@ bool BugFixer::patchMemoryPrimitives(FixGenerator *fixer) {
 
                 std::string fname(f->getName().data());
                 if (std::string::npos != fname.find("memcpy")) {
-                    bool res = fixer->modifyCall(cb, fixer->getPersistentMemcpy());
-                    changed += (size_t)res;
+                    replace_map[cb] = fixer->getPersistentMemcpy();
                 }
 
                 if (std::string::npos != fname.find("memset")) {
-                    bool res = fixer->modifyCall(cb, fixer->getPersistentMemset());
-                    changed += (size_t)res;
+                    replace_map[cb] = fixer->getPersistentMemset();
                 }
 
                 if (std::string::npos != fname.find("memmove")) {
-                    bool res = fixer->modifyCall(cb, fixer->getPersistentMemmove());
-                    changed += (size_t)res;
+                    replace_map[cb] = fixer->getPersistentMemmove();
                 }
 
                 if (std::string::npos != fname.find("strncpy")) {
-                    bool res = fixer->modifyCall(cb, fixer->getPersistentVersion("strncpy"));
-                    changed += (size_t)res;
+                    replace_map[cb] = fixer->getPersistentVersion("strncpy");
                 }
             }
         }
     }
-    errs() << "Changed " << changed << " calls!\n";
-    return changed > 0;
+
+    for (auto &p : replace_map) {
+        bool res = fixer->modifyCall(p.first, p.second);
+    }
+
+    errs() << "Changed " << replace_map.size() << " calls!\n";
+    return !replace_map.empty();
 }
 
 bool BugFixer::doRepair(void) {
