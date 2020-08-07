@@ -10,6 +10,7 @@
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalVariable.h"
+#include "llvm/IR/Instructions.h"
 
 #include "BugReports.hpp"
 
@@ -36,20 +37,7 @@ protected:
     /** PURE UTILITY
      */
 
-    /**
-     * Adds the name prefix.
-     */
-    llvm::Function *getPersistentVersion(const char *name) const;
-
-    llvm::Function *getClwbDefinition() const;
-
-    llvm::Function *getSfenceDefinition() const; 
-
-    llvm::Function *getPersistentMemcpy() const;
-
-    llvm::Function *getPersistentMemset() const;
-
-    llvm::Function *getPersistentMemmove() const;
+    
 
     /** PERF UTILITY
      * 
@@ -115,6 +103,23 @@ public:
         const std::list<FixLoc> &origs, 
         const FixLoc &redt,
         std::list<llvm::Instruction*> pathPoints) = 0;
+
+    llvm::CallBase *modifyCall(llvm::CallBase *cb, llvm::Function *newFn);
+
+    /**
+     * Adds the name prefix.
+     */
+    llvm::Function *getPersistentVersion(const char *name) const;
+
+    llvm::Function *getClwbDefinition() const;
+
+    llvm::Function *getSfenceDefinition() const; 
+
+    llvm::Function *getPersistentMemcpy() const;
+
+    llvm::Function *getPersistentMemset() const;
+
+    llvm::Function *getPersistentMemmove() const;
 };
 
 /**

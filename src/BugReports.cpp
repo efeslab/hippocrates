@@ -41,6 +41,20 @@ bool AddressInfo::operator==(const AddressInfo &other) const {
     return address == other.address && length == other.length;
 }
 
+bool AddressInfo::canAdd(const AddressInfo &other) const {
+    if (length == 0) {
+        assert(!address && "bad construction!");
+        return true;
+    }
+
+    // Combine ranges, ensure no gaps.
+    if (other.address < address) {
+       return other.end() + 1 >= address;
+    } else {
+       return end() + 1 >= other.address;
+    }
+}
+
 void AddressInfo::operator+=(const AddressInfo &other) {
     if (length == 0) {
         assert(!address && "bad construction!");
@@ -53,6 +67,9 @@ void AddressInfo::operator+=(const AddressInfo &other) {
     if (other.address < address) {
         assert(other.end() + 1 >= address && "bad range!");
     } else {
+        if (end() + 1 < other.address) {
+            errs() << str() << " < " << other.str() << "\n";
+        }
         assert(end() + 1 >= other.address && "bad range!");
     }
 
@@ -138,6 +155,16 @@ std::list<Instruction*> FixLoc::insts() const {
 #pragma endregion
 
 #pragma region BugLocationMapper
+
+std::unique_ptr<BugLocationMapper> BugLocationMapper::instance(nullptr);
+
+BugLocationMapper &BugLocationMapper::getInstance(Module &m) {
+    if (!instance) {
+        instance.reset(new BugLocationMapper(m));
+    }
+
+    return *instance;
+}
 
 void BugLocationMapper::insertMapping(Instruction *i) {
     // Essentially, need to get the line number and file name from the 
@@ -376,7 +403,11 @@ Value *getGenericPmValues(const BugLocationMapper &mapper, const FixLoc &fLoc) {
                 }
                 // Fall-through, looking for magic VALGRIND number
             }
+
+            return si->getPointerOperand();
             // Fall-through, we already checked for valgrind
+        } else if (auto *cx = dyn_cast<AtomicCmpXchgInst>(i)) {
+            return cx->getPointerOperand();
         }
     }
 
@@ -391,8 +422,11 @@ std::list<Value*> TraceEvent::pmValues(const BugLocationMapper &mapper) const {
     // }
     // assert(location == callstack[0] && "wat");
 
-    assert(mapper.contains(location) && "wat");
-    assert(type != INVALID && type != FENCE && "doesn't make sense!");
+    if (!mapper.contains(location)) return pmAddrs;
+    if (type == FENCE || type == ASSERT_PERSISTED ||
+        type == ASSERT_ORDERED || type == REQUIRED_FLUSH) return pmAddrs;
+
+    assert(type != INVALID && "doesn't make sense!");
 
     errs() << "\n\nPMVALUES\n\n";
     for (auto &fLoc : mapper[location]) {
@@ -424,12 +458,10 @@ std::list<Value*> TraceEvent::pmValues(const BugLocationMapper &mapper) const {
             case GENERIC: {
                 switch (type) {
                     case STORE: {
-                        assert(false && "DO ME");
-                        auto *cb = dyn_cast<CallBase>(fLoc.last);
-                        assert(cb && "bad trace!");
-                        const Function *f = utils::getFlush(cb);
-                        assert(f && "bad trace!");
-                        pmAddrs.push_back(cb->getArgOperand(0));
+                        errs() << "Try get store value!\n";
+                        errs() << str() << "\n";
+                        Value *pmv = getGenericPmValues(mapper, fLoc);
+                        if (pmv) pmAddrs.push_back(pmv);
                         break;
                     }  
                     case FLUSH: {
@@ -440,11 +472,13 @@ std::list<Value*> TraceEvent::pmValues(const BugLocationMapper &mapper) const {
                         break;
                     }        
                     default:
+                        errs() << "DEFAULT\n";
+                        errs() << str() << "\n";
                         for (auto &ai : addresses) {
                             errs() << ai.str() << "\n";
                         }
                         errs() << "FIRST:" << *fLoc.first << 
-                            "\nLAST:" << fLoc.last << "\n";
+                            "\nLAST:" << *fLoc.last << "\n";
                         assert(false && "wat");
                         break;
                 }
@@ -455,6 +489,10 @@ std::list<Value*> TraceEvent::pmValues(const BugLocationMapper &mapper) const {
                 break;
             }
         }
+    }
+
+    if (pmAddrs.empty()) {
+        errs() << "EMPTY: " << str() << "\n";
     }
 
     assert(!pmAddrs.empty() && "bad usage!");
@@ -556,6 +594,136 @@ void TraceInfoBuilder::processEvent(TraceInfo &ti, YAML::Node event) {
     ti.addEvent(std::move(e));
 }
 
+void TraceInfoBuilder::resolveLocations(TraceEvent &te) {
+
+    std::vector<LocationInfo> &stack = te.callstack;
+
+    // [0] is the current location, which we use to set up the node itself.
+    for (int i = stack.size() - 1; i >= 1; --i) {
+        LocationInfo &caller = stack[i];
+        LocationInfo &callee = stack[i-1];
+
+        // errs() << "\nCALLER: " << caller.str() << "\n";
+        // errs() << "CALLEE: " << callee.str() << "\n";
+        
+        if (!caller.valid() || !mapper_.contains(caller)) {
+            // errs() << "SKIP: " << caller.valid() << " " << 
+            //     mapper_.contains(caller) << "\n";
+            // Function *f = mapper_.module().getFunction(caller.function);
+            // if (!f) {
+            //     errs() << "\tnull!\n";
+            //     f = mapper_.module().getFunction("obj_alloc_construct.1488");
+            //     if (!f) errs() << "\t\talso null!\n";
+            //     else errs() << *f << "\n";
+            //     errs() << "DEMANGLES: " << utils::demangle("obj_alloc_construct.1488") << "\n";
+            // }
+            // else errs() << *f << "\n";
+
+            continue;
+        }
+
+        if (mapper_.contains(callee)) {
+            // No reason to repair.
+            continue;
+        }
+
+        // The location in the caller calls the function of the callee
+
+        std::list<CallBase*> possibleCallSites;
+
+        for (auto &fLoc : mapper_[caller]) {
+            assert(fLoc.isValid() && "wat");
+            // errs() << "START LOC: \n";
+            // errs() << *fLoc.insts().front()->getFunction() << "\n";
+            for (Instruction *inst : fLoc.insts()) {
+                // errs() << *inst << "\n";
+                if (auto *cb = dyn_cast<CallBase>(inst)) {
+                    Function *f = cb->getCalledFunction();
+                    if (f) {
+                        if (f->getIntrinsicID() == Intrinsic::dbg_declare) {
+                            continue;
+                        }
+
+                        std::string fname = utils::demangle(f->getName().data());
+                        if (fname.find(callee.function) == std::string::npos) {
+                            errs() << fname << " !find " << callee.function << "\n";
+                            if (fname.find("memset") == std::string::npos &&
+                                fname.find("memcpy") == std::string::npos &&
+                                fname.find("memmove") == std::string::npos &&
+                                fname.find("strncpy") == std::string::npos) {
+                                continue;
+                            }
+                        }
+                    } 
+
+                    // errs() << "POSSIBLE: " << *cb << "\n";
+                    possibleCallSites.push_back(cb);
+                }
+            }
+        }
+
+        // if (possibleCallSites.empty()) {
+        //     errs() << "No calls to " << callee.function << "!\n";
+        // }
+
+        assert(possibleCallSites.size() > 0 && "don't know how to handle!");
+        if (possibleCallSites.size() > 1) {
+            // If the functions are both the same, it shouldn't matter, 
+            // since we're only reseting on the front of the path.
+            Function *f = possibleCallSites.front()->getCalledFunction();
+            for (auto *cb : possibleCallSites) {
+                Function *called = cb->getCalledFunction();
+                assert(called && called == f);
+                // errs() << "Multiple call sites:" << *cb << "\n";
+            }
+            // We should be able to do something about this with debug info
+            // errs() << "Too many options! Abort.\n";
+            // assert(false && "TODO!");
+            // return nullptr;
+        }
+        // assert(possibleCallSites.size() == 1 && "don't know how to handle!");
+
+        Instruction *possible = possibleCallSites.front();
+        CallBase *callInst = dyn_cast<CallBase>(possible);
+        assert(callInst && "don't know how to handle a non-call!");
+
+        Function *f = callInst->getCalledFunction();
+        if (!f) {
+            errs() << "Try get function pointer function (" << callee.function << ")\n";
+            f = mapper_.module().getFunction(callee.function);
+            if (!f) {
+                std::list<Function*> fnCandidates;
+                for (Function &fn : mapper_.module()) {
+                    std::string fnName(fn.getName().data());
+                    if (fnName.find(callee.function) != std::string::npos) {
+                        // Skip false matches
+                        auto ending = fnName.substr(fnName.find(callee.function) + callee.function.size());
+                        if (ending[0] != '.') continue; // name mangling
+                        errs() << "\t\t--- " << fnName << "\n"; 
+                        fnCandidates.push_back(&fn);
+                    }
+                }
+                assert(fnCandidates.size() == 1 && "wat");
+                f = fnCandidates.front();
+            }
+        }
+        assert(f && "don't know what's going on!!");
+
+        if (f->getName() != callee.function) {
+            callee.function = f->getName();
+        }
+    }
+
+    /**
+     * Now, we set up arguments so we can call the other create() function.
+     */ 
+
+    if (stack[0] != te.location) {
+        errs() << "DING\n";
+        te.location = stack[0];
+    }
+}
+
 TraceInfo TraceInfoBuilder::build(void) {
     TraceInfo ti(doc_["metadata"]);
 
@@ -563,6 +731,10 @@ TraceInfo TraceInfoBuilder::build(void) {
     assert(trace.IsSequence() && "Don't know what to do otherwise!");
     for (size_t i = 0; i < trace.size(); ++i) {
         processEvent(ti, trace[i]);
+    }
+
+    for (size_t i = 0; i < ti.size(); ++i) {
+        resolveLocations(ti[i]);
     }
 
     return ti;

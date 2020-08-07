@@ -9,6 +9,13 @@
 using namespace pmfix;
 using namespace llvm;
 
+cl::opt<bool> EnableHeuristicRaising("heuristic-raising", 
+    cl::desc("Indicates whether or not enable heuristic raising."));
+
+cl::opt<bool> DisableFixRaising("disable-raising", 
+    cl::desc("Indicates whether or not to disable fix raising, which is what "
+             "prevents flushes in memcpy/similar calls"));
+
 #pragma region BugFixer
 
 bool BugFixer::addFixToMapping(const FixLoc &fl, FixDesc desc) {
@@ -80,7 +87,8 @@ bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
     // Need this so we know where the eventual fixes will go.
     std::list<int> opIndices;
     // For cumulative stores.
-    struct AddressInfo addrInfo;
+    AddressInfo addrInfo;
+    std::list<AddressInfo> unadded;
     errs() << "\t\tCHECK: " << te.addresses.front().str() << "\n";
 
     /**
@@ -114,7 +122,27 @@ bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
                     when summed together */
                 if (!addrInfo.length)
                     errs() << "STORE OVERLAP: " << addr.str() << "\n";
-                addrInfo += addr;
+                if (addrInfo.canAdd(addr)) addrInfo += addr;
+                else unadded.push_back(addr);
+
+                while (!unadded.empty()) {
+                    size_t sz = unadded.size();
+                    bool added = false;
+                    for (auto u = unadded.begin(); u != unadded.end(); ++u) {
+                        if (addrInfo.canAdd(*u)) {
+                            addrInfo += *u;
+                            unadded.erase(u);
+                            added = true;
+                            break;
+                        }
+                    }
+
+                    if (!added) break;
+                    else {
+                        assert(sz < unadded.size() && "INF");
+                    }
+                }
+
                 opIndices.push_back(i);
                 // This doesn't quite make sense to me, but I'll take it.
                 // In theory, it should add up to be exact.
@@ -486,37 +514,61 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
      * of overall aliases and the number which can be PM values.
      */
     const std::vector<LocationInfo> &stack = *desc.dynStack;
-    int idx = 0;
+    
     const FixLoc *curr = nullptr;
 
-#if 0
-    // Now, we need to find the point of minimal aliasing
-    int minIdx = -1;
-    size_t minAlias = UINT64_MAX;
-    for (int l = 0; l < stack.size(); ++l) {
-        auto &loc = stack[l];
-        if (!mapper_.contains(loc)) continue;
-        
-        size_t volAlias = 0;
-        size_t pmAlias = 0;
+#if 1
+    int heuristicIdx = 0;
+    /**
+     * For this, we want to find the point with the minimal number of volatile
+     * aliases and maximum PM aliases.
+     */
+    if (EnableHeuristicRaising) {
+        // Now, we need to find the point of minimal aliasing
+        int minIdx = -1;
+        size_t minVolAlias = UINT64_MAX;
+        size_t maxPmAlias = 0;
 
-        for (Instruction *i : mapper_[loc]) {
-            for (Value *v : i->value_operands()) {
-                if (!v->getType->isPointerTy()) continue;
-                // Now, we need to figure out all the aliases.
-                std::unordered_set<const llvm::Value *> ptsSet;
-                pmDesc.getPointsToSet(v, ptsSet);
-                size_t numPm = pmDesc.getNumPmAliases(ptsSet);
-                size_t numVol = ptsSet.size() - numPm;
-                volAlias += numVol;
-                pmAlias += numPm;
+        for (int l = 0; l < stack.size(); ++l) {
+            auto &loc = stack[l];
+            if (!mapper_.contains(loc)) continue;
+            
+            size_t volAlias = 0;
+            size_t pmAlias = 0;
+
+            for (auto &fl : mapper_[loc]) {
+                for (Instruction *i : fl.insts()) {
+                    for (auto iter = i->value_op_begin(); 
+                        iter != i->value_op_end();
+                        ++iter) {
+                        Value *v = *iter;
+                        if (!v->getType()->isPointerTy()) continue;
+                        // Now, we need to figure out all the aliases.
+                        std::unordered_set<const llvm::Value *> ptsSet;
+                        pmDesc_->getPointsToSet(v, ptsSet);
+                        size_t numPm = pmDesc_->getNumPmAliases(ptsSet);
+                        size_t numVol = ptsSet.size() - numPm;
+                        volAlias += numVol;
+                        pmAlias += numPm;
+                    }
+                }
+            }
+            
+            errs() << loc.str() << "\n[" << l << "] VOL: " << volAlias << " PM: " << pmAlias << "\n";
+
+            if (volAlias < minVolAlias && pmAlias > maxPmAlias) {
+                minIdx = l;
+                minVolAlias = volAlias;
+                maxPmAlias = pmAlias;
             }
         }
         
-        errs() << loc.str() << " VOL: " << volAlias << " PM: " << pmAlias << "\n";
+        heuristicIdx = minIdx;
+        if (heuristicIdx > 0) raised = true;
     }
-    assert(false);
 #endif
+
+    int idx = heuristicIdx;
 
     while (idx < stack.size()) {
         if (!startInst && !mapper_.contains(stack[idx])) {
@@ -548,18 +600,27 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
         }
     }
 
-    if (idx == 4) {
-        for (const auto &li : *desc.dynStack) {
-            errs() << li.str() << "\n";
-        }
-        assert(false && "GOTCHA");
-    }
+    // Mysterious leftover debugging stuff.
+    // if (idx == 4) {
+    //     for (const auto &li : *desc.dynStack) {
+    //         errs() << li.str() << "\n";
+    //     }
+    //     assert(false && "GOTCHA");
+    // }
 
     bool success = false;
     if (raised) {
         auto desc = FixDesc(ADD_PERSIST_CALLSTACK_OPT, stack, idx);
         success = addFixToMapping(*curr, desc);
     }
+
+    // if (idx != heuristicIdx) {
+    //     for (const auto &li : *desc.dynStack) {
+    //         errs() << li.str() << "\n";
+    //     }
+    //     errs() << "H: " << heuristicIdx << "; N: " << idx << "\n";
+    //     // assert(false && "ha!");
+    // }
 
     return success;
 }
@@ -585,6 +646,65 @@ bool BugFixer::runFixMapOptimization(void) {
     }
 
     return res;
+}
+
+bool BugFixer::patchMemoryPrimitives(FixGenerator *fixer) {
+    size_t changed = 0;
+    for (Function &f : module_) {
+        for (BasicBlock &b : f) {
+            for (Instruction &i : b) {
+                auto *cb = dyn_cast<CallBase>(&i);
+                if (!cb) continue;
+
+                Function *f = cb->getCalledFunction();
+                if (!f) continue;
+
+                switch (f->getIntrinsicID()) {
+                    case Intrinsic::memcpy: {
+                        bool res = fixer->modifyCall(cb, fixer->getPersistentMemcpy());
+                        changed += (size_t)res;
+                        continue;
+                    }
+                    case Intrinsic::memset: {
+                        bool res = fixer->modifyCall(cb, fixer->getPersistentMemset());
+                        changed += (size_t)res;
+                        continue;
+                    }
+                    case Intrinsic::memmove: {
+                        bool res = fixer->modifyCall(cb, fixer->getPersistentMemmove());
+                        changed += (size_t)res;
+                        continue;
+                    }
+                    default: {
+                        break;
+                    }
+                }
+
+                std::string fname(f->getName().data());
+                if (std::string::npos != fname.find("memcpy")) {
+                    bool res = fixer->modifyCall(cb, fixer->getPersistentMemcpy());
+                    changed += (size_t)res;
+                }
+
+                if (std::string::npos != fname.find("memset")) {
+                    bool res = fixer->modifyCall(cb, fixer->getPersistentMemset());
+                    changed += (size_t)res;
+                }
+
+                if (std::string::npos != fname.find("memmove")) {
+                    bool res = fixer->modifyCall(cb, fixer->getPersistentMemmove());
+                    changed += (size_t)res;
+                }
+
+                if (std::string::npos != fname.find("strncpy")) {
+                    bool res = fixer->modifyCall(cb, fixer->getPersistentVersion("strncpy"));
+                    changed += (size_t)res;
+                }
+            }
+        }
+    }
+    errs() << "Changed " << changed << " calls!\n";
+    return changed > 0;
 }
 
 bool BugFixer::doRepair(void) {
@@ -631,13 +751,22 @@ bool BugFixer::doRepair(void) {
     /**
      * Step 2.
      * 
-     * TODO: Raise fixes.
+     * Raise fixes or replace memory utilities if disabled.
      */
-    bool couldOpt = runFixMapOptimization();
-    if (couldOpt) {
-        errs() << "Was able to optimize!\n";
+    if (DisableFixRaising) {
+        bool patched = patchMemoryPrimitives(fixer);
+        if (patched) {
+            errs() << "Was able to patch primitives!\n";
+        } else {
+            errs() << "Was NOT able to patch primitives!\n";
+        }
     } else {
-        errs() << "Was not able to perform fix map optimizations!\n";
+        bool couldOpt = runFixMapOptimization();
+        if (couldOpt) {
+            errs() << "Was able to optimize!\n";
+        } else {
+            errs() << "Was not able to perform fix map optimizations!\n";
+        }
     }
 
     /**
@@ -665,7 +794,8 @@ const std::string BugFixer::immutableFnNames_[] = { "memset_mov_sse2_empty" };
 const std::string BugFixer::immutableLibNames_[] = {"libc.so"};
 
 BugFixer::BugFixer(llvm::Module &m, TraceInfo &ti) 
-    : module_(m), trace_(ti), mapper_(m), pmDesc_(module_) {
+    : module_(m), trace_(ti), mapper_(BugLocationMapper::getInstance(m)), 
+      pmDesc_(nullptr) {
     for (const std::string &fnName : immutableFnNames_) {
         addImmutableFunction(fnName);
     }
@@ -673,13 +803,17 @@ BugFixer::BugFixer(llvm::Module &m, TraceInfo &ti)
     for (const std::string &libName : immutableLibNames_) {
         addImmutableModule(libName);
     }
-#if 0
-    for (auto &te : trace_.events()) {
-        for (auto *val : te.pmValues(mapper_)) {
-            pmDesc_.addKnownPmValue(val);
-        }    
+
+    if (EnableHeuristicRaising) {
+        pmDesc_.reset(new PmDesc(module_));
+
+        // Set values
+        for (auto &te : trace_.events()) {
+            for (auto *val : te.pmValues(mapper_)) {
+                pmDesc_->addKnownPmValue(val);
+            }    
+        }
     }
-#endif
 }
 
 void BugFixer::addImmutableFunction(const std::string &fnName) {

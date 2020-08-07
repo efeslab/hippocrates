@@ -37,6 +37,8 @@ struct AddressInfo {
     // Returns true if this fully encompasses other.
     bool contains(const AddressInfo &other) const;
 
+    bool canAdd(const AddressInfo &other) const;
+
     // These are equal if the cache lines equal
     bool operator==(const AddressInfo &other) const;
 
@@ -137,8 +139,15 @@ private:
 
     void createMappings(llvm::Module &m);
 
-public:
+    static std::unique_ptr<BugLocationMapper> instance;
+
     BugLocationMapper(llvm::Module &m) : m_(m) { createMappings(m); }
+
+    BugLocationMapper(const BugLocationMapper &) = delete;
+
+public:
+    
+    static BugLocationMapper &getInstance(llvm::Module &m);
 
     const std::list<FixLoc> &operator[](const LocationInfo &li) const 
         { return fixLocMap_.at(li); }
@@ -256,11 +265,21 @@ public:
 class TraceInfoBuilder {
 private:
     YAML::Node doc_;
+    BugLocationMapper &mapper_;
 
+    /**
+     * Convert the YAML node into a proper trace event.
+     */
     void processEvent(TraceInfo &ti, YAML::Node event);
 
+    /**
+     * Fixes up slight naming differences in trace event stack traces.
+     */
+    void resolveLocations(TraceEvent &te);
+
 public:
-    TraceInfoBuilder(YAML::Node document) : doc_(document) {};
+    TraceInfoBuilder(llvm::Module &m, YAML::Node document) 
+        : mapper_(BugLocationMapper::getInstance(m)), doc_(document) {};
 
     TraceInfo build(void);
 };

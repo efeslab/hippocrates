@@ -26,9 +26,6 @@ using namespace std;
 namespace pmfix {
 
 cl::opt<std::string> TraceFile("trace-file", cl::desc("<trace file>"));
-cl::opt<bool> WeakClflush("weak-clflush", 
-                          cl::desc("Whether or not we should require explicit "
-                                   "fences after clflush (required for old CPUs)"));
 
 cl::list<std::string> Immutables("immutable-fns", cl::desc("Something"), 
                                  cl::ZeroOrMore, cl::CommaSeparated);
@@ -46,17 +43,13 @@ struct PmBugFixerPass : public ModulePass {
 
     bool runOnModule(Module &m) override {
         YAML::Node trace_info_doc = YAML::LoadFile(TraceFile);
-        TraceInfo ti = TraceInfoBuilder(trace_info_doc).build();
+        TraceInfo ti = TraceInfoBuilder(m, trace_info_doc).build();
         // errs() << "TraceInfo string:\n" << ti.str() << '\n';
         if (ti.empty()) {
             errs() << "Err: trace is empty!!!\n";;
             return false;
         }
-
-        if (WeakClflush) {
-            errs() << "Err: --weak-clflush set, but nothing to do!\n";
-        }
-    
+        
         // Construct bug fixer
         BugFixer fixer(m, ti);
         for (const std::string &fnName : Immutables) {

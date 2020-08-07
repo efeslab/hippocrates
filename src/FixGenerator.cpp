@@ -1,6 +1,5 @@
 #include "FixGenerator.hpp"
 
-#include "llvm/IR/Instructions.h"
 #include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Transforms/Utils/Cloning.h"
@@ -234,6 +233,37 @@ bool FixGenerator::makeAllStoresPersistent(llvm::Function *f, bool useNT) {
     return true;
 }
 
+CallBase *FixGenerator::modifyCall(CallBase *cb, Function *newFn) {
+    // May need to do some casts.
+    IRBuilder<> builder(cb);
+    std::vector<Value *> newArgs;
+    for (unsigned i = 0; i < newFn->arg_size(); ++i) {
+        // Get new type
+        Argument *arg = newFn->arg_begin() + i;
+        Type *newType = arg->getType();
+
+        // Get value
+        Value *op = nullptr;
+        if (i < cb->arg_size()) {
+            op = cb->getArgOperand(i);
+        } else {
+            op = Constant::getNullValue(newType);
+        }
+        
+        // Create the conversion
+        // errs() << "\tOP:" << *op << "\n";
+        // errs() << "\tTY:" << *newType << "\n";
+        Value *newOp = builder.CreateBitOrPointerCast(op, newType);
+        newArgs.push_back(newOp);
+    }
+
+    // Now, replace the call.
+    builder.CreateCall(newFn, newArgs);
+    cb->eraseFromParent();
+    errs() << "cb:" << *cb << "\n";
+    return cb;
+}
+
 #pragma endregion
 
 #pragma region FixGenerators
@@ -303,31 +333,6 @@ Instruction *GenericFixGenerator::insertFence(const FixLoc &fl) {
     CallInst *sfenceCall = builder.CreateCall(getSfenceDefinition(), {});
 
     return sfenceCall;
-}
-
-static CallBase *modifyCall(CallBase *cb, Function *newFn) {
-    // May need to do some casts.
-    IRBuilder<> builder(cb);
-    std::list<Value *> newArgs;
-    for (unsigned i = 0; i < newFn->arg_size(); ++i) {
-        // Get value
-        Value *op = cb->getArgOperand(i);
-        // Get new type
-        Argument *arg = newFn->arg_begin() + i;
-        // errs() << "\tARG:" << *arg << "\n";
-        Type *newType = arg->getType();
-        // Create the conversion
-        // errs() << "\tOP:" << *op << "\n";
-        // errs() << "\tTY:" << *newType << "\n";
-        Value *newOp = builder.CreateBitOrPointerCast(op, newType);
-        // Replace arg
-        cb->setArgOperand(i, newOp);
-    }
-
-    // Now, replace the call.
-    cb->setCalledFunction(newFn);
-    errs() << "cb:" << *cb << "\n";
-    return cb;
 }
 
 Instruction *GenericFixGenerator::insertPersistentSubProgram(

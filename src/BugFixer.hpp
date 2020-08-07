@@ -26,8 +26,8 @@ class BugFixer {
 private:
     llvm::Module &module_;
     TraceInfo &trace_;
-    BugLocationMapper mapper_;
-    PmDesc pmDesc_;
+    BugLocationMapper &mapper_;
+    std::unique_ptr<PmDesc> pmDesc_;
 
     /**
      * We're not allowed to insert fixes into some functions. These are some 
@@ -156,6 +156,11 @@ private:
      * flush+fence fix.
      */
     bool raiseFixLocation(const FixLoc &fl, const FixDesc &desc);
+
+    /**
+     * Replace all memory primitives with persistent versions.
+     */
+    bool patchMemoryPrimitives(FixGenerator *fixer);
 
     /**
      * Figure out how to fix the given bug and add the fix to the map. Generally
