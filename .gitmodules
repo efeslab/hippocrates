@@ -25,3 +25,6 @@
 [submodule "deps/memcached-pmem"]
 	path = deps/memcached-pmem
 	url = https://github.com/efeslab/memcached-pmem
+[submodule "deps/YCSB"]
+	path = deps/YCSB
+	url = https://github.com/brianfrankcooper/YCSB.git
