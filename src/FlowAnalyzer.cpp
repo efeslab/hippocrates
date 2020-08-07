@@ -685,7 +685,7 @@ bool FlowAnalyzer::interpret(ContextGraph<Info>::GraphNodePtr node,
                 // errs() << "spoiler:" << *v << "\n";
             }
         } else if (auto *cb = dyn_cast<CallBase>(i)) {
-            Function *flushFn = utils::getFlush(cb);
+            const Function *flushFn = utils::getFlush(cb);
             if (flushFn && !isStillRedt) {
                 errs() << *cb << "\n";
                 assert(false && "TODO");

@@ -319,7 +319,7 @@ Value *getGenericPmValues(const BugLocationMapper &mapper, const FixLoc &fLoc) {
     for (Instruction *i : fLoc.insts()) {
         errs() << "GET PMV:" << *i << "\n";
         if (auto *cb = dyn_cast<CallBase>(i)) {
-            Function *f = utils::getFlush(cb);
+            const Function *f = utils::getFlush(cb);
             if (f) {
                 return cb->getArgOperand(0);
             } 
@@ -427,7 +427,7 @@ std::list<Value*> TraceEvent::pmValues(const BugLocationMapper &mapper) const {
                         assert(false && "DO ME");
                         auto *cb = dyn_cast<CallBase>(fLoc.last);
                         assert(cb && "bad trace!");
-                        Function *f = utils::getFlush(cb);
+                        const Function *f = utils::getFlush(cb);
                         assert(f && "bad trace!");
                         pmAddrs.push_back(cb->getArgOperand(0));
                         break;

@@ -470,7 +470,7 @@ bool GenericFixGenerator::removeFlush(const FixLoc &fl) {
         if (CallInst *ci = dyn_cast<CallInst>(i)) {
             bool remove = false;
 
-            if (Function *f = utils::getFlush(ci)) {
+            if (const Function *f = utils::getFlush(ci)) {
                 // Validate that this is a flush.
                 // (iangneal): getting the intrinsic ID is more type-safe
                 remove = true;

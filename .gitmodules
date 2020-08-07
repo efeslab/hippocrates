@@ -22,3 +22,6 @@
 [submodule "deps/redis"]
 	path = deps/redis
 	url = git@github.com:efeslab/redis-pmem.git
+[submodule "deps/memcached-pmem"]
+	path = deps/memcached-pmem
+	url = https://github.com/efeslab/memcached-pmem

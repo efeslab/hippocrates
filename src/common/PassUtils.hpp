@@ -41,7 +41,7 @@ namespace utils {
     /**
      * If this references a kind of flush, return the function, else false.
      */
-    Function *getFlush(CallBase *cb);
+    const Function *getFlush(const CallBase *cb);
 
     /**
      * Get all the condition variables that affect control flow to bb.

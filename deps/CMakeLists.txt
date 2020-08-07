@@ -87,5 +87,5 @@ add_custom_target(REDIS
                   COMMAND make -C ${REDIS_ROOT_DIR} 
                         CC=wllvm CXX=wllvm++
                         OPTIMIZATION=-O0
-                        PMDK_DIR=${PMDK_ROOT_DIR} USE_PMDK=1
+                        PMDK_DIR=${PMDK_ROOT_DIR} USE_PMDK=yes
                   COMMENT "Building redis-pmem...")       

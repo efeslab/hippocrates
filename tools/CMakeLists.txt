@@ -1,6 +1,9 @@
 install(PROGRAMS apply-fixer DESTINATION bin)
 configure_file(apply-fixer "${CMAKE_BINARY_DIR}/apply-fixer")
 
+install(PROGRAMS remove-flushes DESTINATION bin)
+configure_file(remove-flushes "${CMAKE_BINARY_DIR}/remove-flushes")
+
 install(PROGRAMS parse-trace DESTINATION bin)
 configure_file(Reports.py "${CMAKE_BINARY_DIR}/Reports.py" COPYONLY)
 

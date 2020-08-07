@@ -22,11 +22,12 @@ std::string utils::demangle(const char *name) {
     return ret;
 }
 
-Function *utils::getFlush(CallBase *cb) {
-    Function *f = cb->getCalledFunction();
+const Function *utils::getFlush(const CallBase *cb) {
+    if (!cb) return nullptr;
+    const Function *f = cb->getCalledFunction();
     if (!f) return nullptr;
 
-    auto iid = f->getIntrinsicID();
+    const auto iid = f->getIntrinsicID();
     if (iid == Intrinsic::x86_clwb || iid == Intrinsic::x86_clflushopt ||
         iid == Intrinsic::x86_sse2_clflush) return f;
 
@@ -96,6 +97,7 @@ bool utils::checkInlineAsmEq(const Instruction *iptr...) {
 bool utils::checkInstrinicInst(const Instruction *iptr...) {
     va_list args;
     va_start(args, iptr);
+    assert(iptr && "wat");
 
     const Function *fn = nullptr;
     const Instruction &i = *iptr;
@@ -126,7 +128,8 @@ bool utils::isFlush(const Instruction &i) {
                               nullptr) ||
            utils::checkInlineAsmEq(&i,
                    ".byte 0x66; clflush $0",
-                   ".byte 0x66; xsaveopt $0", nullptr);
+                   ".byte 0x66; xsaveopt $0", nullptr) ||
+            (nullptr != utils::getFlush(dyn_cast<CallBase>(&i)));
 }
 
 bool utils::isFence(const Instruction &i) {
