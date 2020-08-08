@@ -3,6 +3,7 @@
 #include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Transforms/Utils/Cloning.h"
+#include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/IR/CFG.h"
 
 #include "llvm/IR/DIBuilder.h"
@@ -235,6 +236,11 @@ bool FixGenerator::makeAllStoresPersistent(llvm::Function *f, bool useNT) {
 
 CallBase *FixGenerator::modifyCall(CallBase *cb, Function *newFn) {
     // May need to do some casts.
+    assert(cb && "nonsense!");
+    // https://stackoverflow.com/questions/54524188/create-debug-location-for-function-calls-in-llvm-function-pass
+    cb->getFunction()->addAttribute(AttributeList::FunctionIndex, Attribute::NoInline);
+    newFn->addAttribute(AttributeList::FunctionIndex, Attribute::NoInline);
+
     IRBuilder<> builder(cb);
     std::vector<Value *> newArgs;
     for (unsigned i = 0; i < newFn->arg_size(); ++i) {
@@ -253,15 +259,48 @@ CallBase *FixGenerator::modifyCall(CallBase *cb, Function *newFn) {
         // Create the conversion
         // errs() << "\tOP:" << *op << "\n";
         // errs() << "\tTY:" << *newType << "\n";
-        Value *newOp = builder.CreateBitOrPointerCast(op, newType);
+        Value *newOp = nullptr;
+        if (newType->isPointerTy()) {
+            newOp = builder.CreateBitOrPointerCast(op, newType);
+        } else {
+            newOp = builder.CreateIntCast(op, newType, false /*is signed?*/);
+        }
+
         newArgs.push_back(newOp);
     }
 
     // Now, replace the call.
-    builder.CreateCall(newFn, newArgs);
-    cb->eraseFromParent();
-    errs() << "cb:" << *cb << "\n";
-    return cb;
+    
+    auto *newCb = builder.CreateCall(newFn, newArgs);
+    auto *meta = cb->getMetadata("dbg");
+    
+    if (!meta && cb->getIntrinsicID() != Intrinsic::not_intrinsic) {
+        Instruction *f = cb->getPrevNonDebugInstruction();
+        Instruction *b = cb->getNextNonDebugInstruction();
+
+        while (f || b) {
+            if (f) {
+                meta = f->getMetadata("dbg");
+                if (meta) break;
+                f = f->getPrevNonDebugInstruction();
+            }
+            if (b) {
+                meta = b->getMetadata("dbg");
+                if (meta) break;
+                b = b->getNextNonDebugInstruction();
+            }
+        }
+    }
+    
+    newCb->setMetadata("dbg", meta);
+    if (!meta) {
+        errs() << "cb:" << *cb << " in " << cb->getFunction()->getName() << "\n";
+        errs() << "newCb:" << *newCb << "\n";
+    }
+    
+    ReplaceInstWithInst(cb, newCb);
+    
+    return newCb;
 }
 
 #pragma endregion
@@ -386,6 +425,9 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
                     break;
                 }
             }
+
+            assert(cb && "wut");
+            assert(newFn && "wut");
 
             errs() << *newFn << "\n";
             errs() << *cb << "\n";

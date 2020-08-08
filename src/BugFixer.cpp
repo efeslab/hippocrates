@@ -139,7 +139,7 @@ bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
 
                     if (!added) break;
                     else {
-                        assert(sz < unadded.size() && "INF");
+                        assert(unadded.size() < sz && "INF");
                     }
                 }
 
@@ -654,6 +654,7 @@ bool BugFixer::patchMemoryPrimitives(FixGenerator *fixer) {
     for (Function &f : module_) {
         for (BasicBlock &b : f) {
             for (Instruction &i : b) {
+
                 auto *cb = dyn_cast<CallBase>(&i);
                 if (!cb) continue;
 
@@ -662,15 +663,15 @@ bool BugFixer::patchMemoryPrimitives(FixGenerator *fixer) {
 
                 switch (f->getIntrinsicID()) {
                     case Intrinsic::memcpy: {
-                        replace_map[cb] = fixer->getPersistentMemcpy();
+                        replace_map[cb] = fixer->getPersistentVersion("memcpy_dumb");
                         continue;
                     }
                     case Intrinsic::memset: {
-                        replace_map[cb] = fixer->getPersistentMemset();
+                        replace_map[cb] = fixer->getPersistentVersion("memset_dumb");
                         continue;
                     }
                     case Intrinsic::memmove: {
-                        replace_map[cb] = fixer->getPersistentMemmove();
+                        replace_map[cb] = fixer->getPersistentVersion("memmove_dumb");
                         continue;
                     }
                     default: {
@@ -679,20 +680,42 @@ bool BugFixer::patchMemoryPrimitives(FixGenerator *fixer) {
                 }
 
                 std::string fname(f->getName().data());
+
+                if (std::string::npos != fname.find("movnt") || 
+                    std::string::npos != fname.find("clflush") ||
+                    std::string::npos != fname.find("clwb") ||
+                    std::string::npos != fname.find("use_") || 
+                    std::string::npos != fname.find("pmemops_")) {
+                    continue;
+                }
+
+                if (cb->arg_size() < 3) continue;
+                if (cb->getArgOperand(1)->getType()->isVectorTy()) continue;
+                if (cb->getArgOperand(1)->getType()->isPointerTy()) continue;
+
                 if (std::string::npos != fname.find("memcpy")) {
-                    replace_map[cb] = fixer->getPersistentMemcpy();
+                    replace_map[cb] = fixer->getPersistentVersion("memcpy_dumb");
+
+                    if (DILocation *di = dyn_cast<DILocation>(cb->getMetadata("dbg"))) {
+                        DILocalScope *ls = di->getScope();
+                        // DIFile *df = ls->getFile();
+                        // std::string fileName = df->getFilename();
+
+                        errs() << "DIL: " << *di << '\n';
+                        errs() << "\tSCOPE" << *ls << '\n';
+                    }
                 }
 
                 if (std::string::npos != fname.find("memset")) {
-                    replace_map[cb] = fixer->getPersistentMemset();
+                    replace_map[cb] = fixer->getPersistentVersion("memset_dumb");
                 }
 
                 if (std::string::npos != fname.find("memmove")) {
-                    replace_map[cb] = fixer->getPersistentMemmove();
+                    replace_map[cb] = fixer->getPersistentVersion("memmove_dumb");
                 }
 
                 if (std::string::npos != fname.find("strncpy")) {
-                    replace_map[cb] = fixer->getPersistentVersion("strncpy");
+                    replace_map[cb] = fixer->getPersistentVersion("strncpy_dumb");
                 }
             }
         }
@@ -750,16 +773,9 @@ bool BugFixer::doRepair(void) {
     /**
      * Step 2.
      * 
-     * Raise fixes or replace memory utilities if disabled.
+     * Raise fixes if enabled.
      */
-    if (DisableFixRaising) {
-        bool patched = patchMemoryPrimitives(fixer);
-        if (patched) {
-            errs() << "Was able to patch primitives!\n";
-        } else {
-            errs() << "Was NOT able to patch primitives!\n";
-        }
-    } else {
+    if (!DisableFixRaising) {
         bool couldOpt = runFixMapOptimization();
         if (couldOpt) {
             errs() << "Was able to optimize!\n";
@@ -781,6 +797,25 @@ bool BugFixer::doRepair(void) {
         nbugs += 1;
         nfixes += (res ? 1 : 0);
     }
+
+    // errs() << *module_.getFunction("ulog_entry_val_create") << "\n";
+    // errs() << *module_.getFunction("memset_mov_avx512f_empty")->
+
+    /**
+     * Step 2.
+     * 
+     * Patch primitives if we raising was not enabled.
+     */
+    if (DisableFixRaising) {
+        bool patched = patchMemoryPrimitives(fixer);
+        if (patched) {
+            errs() << "Was able to patch primitives!\n";
+        } else {
+            errs() << "Was NOT able to patch primitives!\n";
+        }
+    }
+
+    errs() << *module_.getFunction("util_feature_enable") << "\n";
 
     errs() << "Fixed " << nfixes << " of " << nbugs << " identified! (" 
         << trace_.bugs().size() << " in trace)\n";

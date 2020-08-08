@@ -53,7 +53,10 @@ void PMFIXER(memmove)(uint8_t *d, uint8_t *s, size_t n, bool _unused) {
 		/*         <to........>  */
 		/* copy in reverse, to avoid overwriting from */
 		for(size_t i = n-1; i >= 0; i--) {
-            to[i] = from[i];
+            // to[i] = from[i];
+            int *ptr = (int*)(to + i);
+            int val = (int)(from[i]);
+            _mm_stream_si32(ptr, val);
         }
         return;
 	}
@@ -64,7 +67,10 @@ void PMFIXER(memmove)(uint8_t *d, uint8_t *s, size_t n, bool _unused) {
 		/*  <to........>         */
 		/* copy forwards, to avoid overwriting from */
 		for (size_t i=0; i < n; i++) {
-            to[i] = from[i];
+            // to[i] = from[i];
+            int *ptr = (int*)(to + i);
+            int val = (int)(from[i]);
+            _mm_stream_si32(ptr, val);
         }
         return;
 	}
@@ -95,6 +101,88 @@ char *PMFIXER(strncpy)(char *dest, const char *src, size_t n) {
     }  
 
     _mm_sfence();
+    
+    return dest;
+}
+
+
+// Dumb functions
+
+/**
+ * Memory functions.
+ */
+
+void PMFIXER(memset_dumb)(uint8_t *d, uint8_t c, size_t n, bool _unused) {
+    for (size_t i = 0; i < n; ++i) {
+        d[i] = c;
+        _mm_clwb(&d[i]);
+        _mm_sfence();
+    }
+}
+
+void PMFIXER(memcpy_dumb)(uint8_t *d, uint8_t *s, size_t n, bool _unused) {
+    for (size_t i = 0; i < n; ++i) {
+        d[i] = s[i];
+        _mm_clwb(&d[i]);
+        _mm_sfence();
+    }
+}
+
+void PMFIXER(memmove_dumb)(uint8_t *d, uint8_t *s, size_t n, bool _unused) {
+    // https://opensource.apple.com/source/network_cmds/network_cmds-481.20.1/unbound/compat/memmove.c.auto.html
+    uint8_t* from = (uint8_t*) s;
+	uint8_t* to = (uint8_t*) d;
+
+	if (from == to || n == 0) {
+        return;
+    }
+
+	if (to > from && to-from < n) {
+		/* to overlaps with from */
+		/*  <from......>         */
+		/*         <to........>  */
+		/* copy in reverse, to avoid overwriting from */
+		for(size_t i = n-1; i >= 0; i--) {
+            to[i] = from[i];
+            _mm_clwb(&to[i]);
+            _mm_sfence();
+        }
+        return;
+	}
+
+	if (from > to && from-to < (int)n) {
+		/* to overlaps with from */
+		/*        <from......>   */
+		/*  <to........>         */
+		/* copy forwards, to avoid overwriting from */
+		for (size_t i=0; i < n; i++) {
+            to[i] = from[i];
+            _mm_clwb(&to[i]);
+            _mm_sfence();
+        }
+        return;
+	}
+
+	PMFIXER(memcpy_dumb)(d, s, n, _unused);
+}
+
+/**
+ * String functions.
+ */
+
+char *PMFIXER(strncpy_dumb)(char *dest, const char *src, size_t n) {
+    size_t i;
+
+    for (i = 0; i < n && src[i] != '\0'; i++) {
+        dest[i] = src[i];
+        _mm_clwb(&dest[i]);
+        _mm_sfence();
+    }     
+    for ( ; i < n; i++) {
+        dest[i] = '\0';
+        _mm_clwb(&dest[i]);
+        _mm_sfence();
+    } 
     
     return dest;
 }

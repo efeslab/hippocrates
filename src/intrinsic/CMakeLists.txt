@@ -4,7 +4,7 @@ check_wllvm()
 
 add_library(PMINTRINSICS SHARED persistent_intrinsics.c)
 target_include_directories(PMINTRINSICS PUBLIC ${PMCHK_INCLUDE})
-target_compile_options(PMINTRINSICS PUBLIC "-g;-O0")
+target_compile_options(PMINTRINSICS PUBLIC "-g;-O0;-march=native")
 add_custom_command(TARGET PMINTRINSICS
                    POST_BUILD
                    COMMAND extract-bc $<TARGET_FILE:PMINTRINSICS>
