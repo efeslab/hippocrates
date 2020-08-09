@@ -12,28 +12,44 @@ void PMFIXER(store_nt)(void) {
     __builtin_nontemporal_store(0, &i);
 }
 
+void PMFIXER(valgrind_flush)(uint8_t *ptr, size_t n) {
+    VALGRIND_PMC_DO_FLUSH(ptr, n);
+}
+
 /**
  * Memory functions.
  */
 
-void PMFIXER(memset)(uint8_t *s, uint8_t c, size_t n, bool _unused) {
-    for (size_t i = 0; i < n; ++i) {
-        int *ptr = (int*)(s + i);
-        int val = (int)c;
-        _mm_stream_si32(ptr, val);
-        VALGRIND_PMC_DO_FLUSH(ptr, sizeof(*ptr));
+void __always_inline flush_loop(void *p, size_t n) {
+    for (size_t i = 0; i < n; i += 64) {
+        _mm_clwb(p + i);
     }
+}
+
+void PMFIXER(memset)(uint8_t *d, uint8_t c, size_t n, bool _unused) {
+    for (size_t i = 0; i < n; ++i) {
+        d[i] = c;
+        // int *ptr = (int*)(d + i);
+        // int val = (int)c;
+        // _mm_stream_si32(ptr, val);
+        // VALGRIND_PMC_DO_FLUSH(ptr, sizeof(*ptr));
+    }
+
+    flush_loop(d, n);
 
     _mm_sfence();
 }
 
 void PMFIXER(memcpy)(uint8_t *d, uint8_t *s, size_t n, bool _unused) {
     for (size_t i = 0; i < n; ++i) {
-        int *ptr = (int*)(d + i);
-        int val = (int)(s[i]);
-        _mm_stream_si32(ptr, val);
-        VALGRIND_PMC_DO_FLUSH(ptr, sizeof(*ptr));
+        d[i] = s[i];
+        // int *ptr = (int*)(d + i);
+        // int val = (int)(s[i]);
+        // _mm_stream_si32(ptr, val);
+        // VALGRIND_PMC_DO_FLUSH(ptr, sizeof(*ptr));
     }
+
+    flush_loop(d, n);
 
     _mm_sfence();
 }
@@ -53,11 +69,14 @@ void PMFIXER(memmove)(uint8_t *d, uint8_t *s, size_t n, bool _unused) {
 		/*         <to........>  */
 		/* copy in reverse, to avoid overwriting from */
 		for(size_t i = n-1; i >= 0; i--) {
-            // to[i] = from[i];
-            int *ptr = (int*)(to + i);
-            int val = (int)(from[i]);
-            _mm_stream_si32(ptr, val);
+            to[i] = from[i];
+            // int *ptr = (int*)(to + i);
+            // int val = (int)(from[i]);
+            // _mm_stream_si32(ptr, val);
+            // VALGRIND_PMC_DO_FLUSH(ptr, sizeof(*ptr));
         }
+
+        flush_loop(d, n);
         return;
 	}
 
@@ -71,7 +90,10 @@ void PMFIXER(memmove)(uint8_t *d, uint8_t *s, size_t n, bool _unused) {
             int *ptr = (int*)(to + i);
             int val = (int)(from[i]);
             _mm_stream_si32(ptr, val);
+            VALGRIND_PMC_DO_FLUSH(ptr, sizeof(*ptr));
         }
+
+        flush_loop(d, n);
         return;
 	}
 
@@ -86,19 +108,21 @@ char *PMFIXER(strncpy)(char *dest, const char *src, size_t n) {
     size_t i;
 
     for (i = 0; i < n && src[i] != '\0'; i++) {
-        // dest[i] = src[i];
-        int *ptr = (int*)(dest + i);
-        int val = (int)(src[i]);
-        _mm_stream_si32(ptr, val);
-        VALGRIND_PMC_DO_FLUSH(ptr, sizeof(*ptr));
+        dest[i] = src[i];
+        // int *ptr = (int*)(dest + i);
+        // int val = (int)(src[i]);
+        // _mm_stream_si32(ptr, val);
+        // VALGRIND_PMC_DO_FLUSH(ptr, sizeof(*ptr));
     }     
     for ( ; i < n; i++) {
-        // dest[i] = '\0';
-        int *ptr = (int*)(dest + i);
-        int val = (int)('\0');
-        _mm_stream_si32(ptr, val);
-        VALGRIND_PMC_DO_FLUSH(ptr, sizeof(*ptr));
+        dest[i] = '\0';
+        // int *ptr = (int*)(dest + i);
+        // int val = (int)('\0');
+        // _mm_stream_si32(ptr, val);
+        // VALGRIND_PMC_DO_FLUSH(ptr, sizeof(*ptr));
     }  
+
+    flush_loop(dest, n);
 
     _mm_sfence();
     
