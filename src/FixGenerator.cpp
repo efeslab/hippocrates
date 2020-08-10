@@ -17,6 +17,9 @@ using namespace llvm;
 
 #pragma region FixGenerator
 
+cl::opt<bool> UseNT("use-nt", 
+    cl::desc("Indicates whether or not to use NT stores for persistent subprograms."));
+
 llvm::Function *FixGenerator::getClwbDefinition() const {
     // Function *clwb = Intrinsic::getDeclaration(&module_, Intrinsic::x86_clwb, {ptrTy});
     // -- the above appends extra type specifiers that cause it not to generate.
@@ -174,10 +177,16 @@ Function *FixGenerator::duplicateFunction(Function *f, std::string postFix) {
     return fNew;
 }
 
-bool FixGenerator::makeAllStoresPersistent(llvm::Function *f, bool useNT) {
+cl::opt<bool> StopSubprog("disable-subprogram-fixes", cl::init(false),
+    cl::desc("ONLY FOR DEBUG"));
+
+bool FixGenerator::makeAllStoresPersistent(llvm::Function *f) {
     errs() << "FUNCTION PM: " << f->getName() << "\n";
     std::list<StoreInst*> flushPoints;
     std::list<ReturnInst*> fencePoints;
+    /**
+     * TODO: recursion?
+     */
     for (BasicBlock &bb : *f) {
         for (Instruction &i : bb) {
             if (auto *cb = dyn_cast<CallBase>(&i)) {
@@ -205,12 +214,44 @@ bool FixGenerator::makeAllStoresPersistent(llvm::Function *f, bool useNT) {
 
     for (auto *si : flushPoints) {
         // Either insert a flush or make the store non-temporal.
-        if (useNT) {
+        if (UseNT) {
             // Set non-temporal metadata
             DIExpression *die = DIBuilder(module_).createConstantValueExpression(1);
             errs() << "MD:" << *die << "\n";
             si->setMetadata(LLVMContext::MD_nontemporal, die);
             errs() << "NT:" << *si << "\n";
+            /**
+             * TODO: Extend this to PMTest as well.
+             */
+            Function *valFlush = getPersistentVersion("valgrind_flush");
+            assert(valFlush && "can't mark NT stores as flushed!");
+            IRBuilder<> builder(si->getNextNode());
+            // Get the right pointer
+            // -- dest
+            Type *ptrDestTy = valFlush->arg_begin()->getType();
+            Value *ptrOp = builder.CreatePointerCast(si->getPointerOperand(), ptrDestTy);
+            // Get the length argument as well.
+            // -- dest
+            Type *szDestTy = (valFlush->arg_begin() + 1)->getType();
+            // -- Value
+            size_t nbits = 0;
+            Type *storedValTy = si->getValueOperand()->getType();
+            if (storedValTy->isIntegerTy()) {
+                nbits = storedValTy->getScalarSizeInBits();
+            } else if (storedValTy->isPointerTy()) {
+                nbits = module_.getDataLayout().getMaxPointerSize();
+            }
+
+            if (!nbits) {
+                errs() << "TYPE: " << *storedValTy << "\n";
+                errs() << storedValTy->isStructTy() << "\n";
+            }
+
+            assert(nbits > 0);
+            APInt flushLen(szDestTy->getScalarSizeInBits(), nbits / 8);
+            Value *lenOp = Constant::getIntegerValue(szDestTy, flushLen);
+            
+            builder.CreateCall(valFlush, {ptrOp, lenOp});
         } else {
             // Insert flush
             errs() << "Flushing" << *si << " in " << si->getFunction()->getName() << "\n";
@@ -221,24 +262,31 @@ bool FixGenerator::makeAllStoresPersistent(llvm::Function *f, bool useNT) {
 
     if (flushPoints.empty()) return false;
 
-    for (auto *ri : fencePoints) {
-        Instruction *insertAt = ri->getPrevNonDebugInstruction();
-        if (!insertAt) {
-            IRBuilder<> builder(ri);
-            insertAt = builder.CreateCall(Intrinsic::getDeclaration(&module_, Intrinsic::donothing), {});
+    if (!StopSubprog) {
+        for (auto *ri : fencePoints) {
+            Instruction *insertAt = ri->getPrevNonDebugInstruction();
+            if (!insertAt) {
+                IRBuilder<> builder(ri);
+                insertAt = builder.CreateCall(Intrinsic::getDeclaration(&module_, Intrinsic::donothing), {});
+            }
+            auto *fi = insertFence(insertAt);
+            assert(fi && "unable to insert fence!");
         }
-        auto *fi = insertFence(insertAt);
-        assert(fi && "unable to insert fence!");
+    } else {
+        errs() << "STOP SUB PROG (FENCING)\n";
     }
-
+    
     return true;
 }
 
 CallBase *FixGenerator::modifyCall(CallBase *cb, Function *newFn) {
     // May need to do some casts.
     assert(cb && "nonsense!");
-    // https://stackoverflow.com/questions/54524188/create-debug-location-for-function-calls-in-llvm-function-pass
-    cb->getFunction()->addAttribute(AttributeList::FunctionIndex, Attribute::NoInline);
+    if (cb && cb->getFunction()) {
+        // https://stackoverflow.com/questions/54524188/create-debug-location-for-function-calls-in-llvm-function-pass
+        cb->getFunction()->addAttribute(AttributeList::FunctionIndex, Attribute::NoInline);
+    }
+
     newFn->addAttribute(AttributeList::FunctionIndex, Attribute::NoInline);
 
     IRBuilder<> builder(cb);
@@ -294,7 +342,9 @@ CallBase *FixGenerator::modifyCall(CallBase *cb, Function *newFn) {
     
     newCb->setMetadata("dbg", meta);
     if (!meta) {
-        errs() << "cb:" << *cb << " in " << cb->getFunction()->getName() << "\n";
+        errs() << "cb:" << *cb << " in ";
+        if (cb->getFunction()) errs() << cb->getFunction()->getName() << "\n";
+        else errs() << "UNKNOWN\n";
         errs() << "newCb:" << *newCb << "\n";
     }
     
@@ -314,46 +364,52 @@ CallBase *FixGenerator::modifyCall(CallBase *cb, Function *newFn) {
  * TODO: What kind of flush? Determine on machine stuff I'm sure.
  */
 Instruction *GenericFixGenerator::insertFlush(const FixLoc &fl) {
-    Instruction *i = fl.last;
+    CallInst *clwbCall = nullptr;
 
-    Value *addrExpr = nullptr;
-    if (StoreInst *si = dyn_cast<StoreInst>(i)) {
-        addrExpr = si->getPointerOperand();
-    } else if (auto *cx = dyn_cast<AtomicCmpXchgInst>(i)) {
-        addrExpr = cx->getPointerOperand();
-    }
+    errs() << "insertFlush:\n" << fl.str() << "\n";
 
-    if (addrExpr) {
-        errs() << "Inserting flush in " << i->getFunction()->getName() << "\n";
-        errs() << "Address of assign: " << *addrExpr << "\n";
+    for (Instruction *i : fl.insts()) {
 
-        // I think we've made the assumption up to this point that len <= 64
-        // and that [addr, addr + len) is within a cacheline. We'll continue
-        // on with that assumption.
-        // TODO: validate size of store (non-temporals) w/ alignment
-
-        // 1) Set up the IR Builder.
-        // -- want AFTER
-        errs() << "After: " << *i->getNextNode() << "\n";
-        IRBuilder<> builder(i->getNextNode());
-
-        // 2) Check the type of addrExpr. If it is not an Int8PtrTy, we need to
-        // insert a bitcast instruction so the function does not become broken
-        // according to LLVM type safety.
-        auto *ptrTy = Type::getInt8PtrTy(module_.getContext());
-        if (ptrTy != addrExpr->getType()) {
-            addrExpr = builder.CreateBitCast(addrExpr, ptrTy);
-            errs() << "\t====>" << *addrExpr << "\n";
+        Value *addrExpr = nullptr;
+        if (StoreInst *si = dyn_cast<StoreInst>(i)) {
+            errs() << "STORE:" << *si << "\n";
+            addrExpr = si->getPointerOperand();
+        } else if (auto *cx = dyn_cast<AtomicCmpXchgInst>(i)) {
+            errs() << "CMPXCHG:" << *si << "\n";
+            addrExpr = cx->getPointerOperand();
         }
 
-        // 3) Find and insert a clwb.
-        // This magically recreates an ArrayRef<Value*>.
-        CallInst *clwbCall = builder.CreateCall(getClwbDefinition(), {addrExpr});
+        if (addrExpr) {
+            errs() << "Inserting flush in " << i->getFunction()->getName() << "\n";
+            errs() << "Address of assign: " << *addrExpr << "\n";
 
-        return clwbCall;
+            // I think we've made the assumption up to this point that len <= 64
+            // and that [addr, addr + len) is within a cacheline. We'll continue
+            // on with that assumption.
+            // TODO: validate size of store (non-temporals) w/ alignment
+
+            // 1) Set up the IR Builder.
+            // -- want AFTER
+            errs() << "After: " << *i->getNextNode() << "\n";
+            IRBuilder<> builder(i->getNextNode());
+
+            // 2) Check the type of addrExpr. If it is not an Int8PtrTy, we need to
+            // insert a bitcast instruction so the function does not become broken
+            // according to LLVM type safety.
+            auto *ptrTy = Type::getInt8PtrTy(module_.getContext());
+            if (ptrTy != addrExpr->getType()) {
+                addrExpr = builder.CreateBitCast(addrExpr, ptrTy);
+                errs() << "\t====>" << *addrExpr << "\n";
+            }
+
+            // 3) Find and insert a clwb.
+            // This magically recreates an ArrayRef<Value*>.
+            clwbCall = builder.CreateCall(getClwbDefinition(), {addrExpr});
+            assert(clwbCall);
+        }
     }
 
-    return nullptr;
+    return clwbCall;
 }
 
 /**
@@ -444,7 +500,7 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
             CallBase *modCb = modifyCall(cb, pmVersion);
             errs() << *modCb << "\n";
 
-            return modifyCall(cb, pmVersion);
+            return modCb;
         }
     }
 
@@ -468,7 +524,7 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
         Function *pmFn = duplicateFunction(fn);
 
         // Now, we need to 
-        bool successful = makeAllStoresPersistent(pmFn, false);
+        bool successful = makeAllStoresPersistent(pmFn);
         assert(successful && "failed to make persistent!");
 
         // Now we need to replace the call.

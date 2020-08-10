@@ -152,6 +152,22 @@ std::list<Instruction*> FixLoc::insts() const {
     return ilist;
 }
 
+std::string FixLoc::str() const {
+    std::string str;
+    llvm::raw_string_ostream ss(str);
+
+    ss << "<FixLoc>\n";
+    ss << "\tFunction:\t" << first->getFunction()->getName() << "\n";
+    ss << "\tSource Location: " << dbgLoc.str() << "\n";
+    ss << "\tInstructions:\n";
+    for (Instruction *i : insts()) {
+        ss << "\t\t" << *i << "\n";
+    }
+    ss << "</FixLoc>\n";
+
+    return ss.str();
+}
+
 #pragma endregion
 
 #pragma region BugLocationMapper
@@ -251,21 +267,25 @@ void BugLocationMapper::createMappings(Module &m) {
                 if (obb.dominates(last, ii)) last = ii;
             }
 
-            locs.emplace_back(first, last);
+            locs.emplace_back(first, last, location);
         }
 
         fixLocMap_[location] = locs;
     }
 
     // errs() << "fix map\n";
+    // errs() << *m.getFunction("do_direct_simple") << "\n";
     // for (auto &p : fixLocMap_) {
-    //     if (p.first.function == "clht_gc_thread_init") {
+    //     if (p.first.function == "do_direct_simple") {
     //         errs() << p.first.str() << "\n";
+    //         for (FixLoc &fl : p.second) {
+    //             errs() << "\t" << fl.str() << "\n";
+    //         }
     //     }
     // }
     // errs() << "inst map\n";
     // for (auto &p : locMap_) {
-    //     if (p.first.function == "clht_gc_thread_init") {
+    //     if (p.first.function == "do_direct_simple") {
     //         errs() << p.first.str() << "\n";
     //     }
     // }
@@ -719,7 +739,6 @@ void TraceInfoBuilder::resolveLocations(TraceEvent &te) {
      */ 
 
     if (stack[0] != te.location) {
-        errs() << "DING\n";
         te.location = stack[0];
     }
 }

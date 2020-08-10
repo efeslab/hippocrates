@@ -16,6 +16,11 @@ cl::opt<bool> DisableFixRaising("disable-raising",
     cl::desc("Indicates whether or not to disable fix raising, which is what "
              "prevents flushes in memcpy/similar calls"));
 
+cl::opt<bool> ExtraDumb("extra-dumb", cl::desc("Use dumb PM mem functions"));
+
+cl::opt<std::string> SummaryFile("fix-summary-file", cl::init("fix_summary.txt"),
+    cl::desc("Where to output the fix summary"));
+
 #pragma region BugFixer
 
 bool BugFixer::addFixToMapping(const FixLoc &fl, FixDesc desc) {
@@ -210,7 +215,8 @@ bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
 
                     // Have to do it this way, otherwise it short-circuits.
                     added = res || added;
-                    break;
+                    // There MAY be multiple stores. So, don't break, run to end.
+                    // break;
                 }
                 
             }
@@ -429,16 +435,25 @@ bool BugFixer::computeAndAddFix(const TraceEvent &te, int bug_index) {
 bool BugFixer::fixBug(FixGenerator *fixer, const FixLoc &fl, const FixDesc &desc) {
     switch (desc.type) {
         case ADD_FLUSH_ONLY: {
+            summary_ << summaryNum_ << ") ADD_FLUSH_ONLY:\n" << fl.str() << "\n";
+            ++summaryNum_;
+
             Instruction *n = fixer->insertFlush(fl);
             assert(n && "could not ADD_FLUSH_ONLY");
             break;
         }
         case ADD_FENCE_ONLY: {
+            summary_ << summaryNum_ << ") ADD_FENCE_ONLY:\n" << fl.str() << "\n";
+            ++summaryNum_;
+
             Instruction *n = fixer->insertFence(fl);
             assert(n && "could not ADD_FENCE_ONLY");
             break;
         }
         case ADD_FLUSH_AND_FENCE: {
+            summary_ << summaryNum_ << ") ADD_FLUSH_AND_FENCE:\n" << fl.str() << "\n";
+            ++summaryNum_;
+
             Instruction *n = fixer->insertFlush(fl);
             assert(n && "could not add flush of FLUSH_AND_FENCE");
             n = fixer->insertFence(FixLoc(n, n));
@@ -446,6 +461,9 @@ bool BugFixer::fixBug(FixGenerator *fixer, const FixLoc &fl, const FixDesc &desc
             break;
         }
         case ADD_PERSIST_CALLSTACK_OPT: {
+            summary_ << summaryNum_ << ") ADD_PERSISTENT_SUBPROGRAM:\n" << fl.str() << "\n";
+            ++summaryNum_;
+
             Instruction *n = fixer->insertPersistentSubProgram(
                 mapper_, fl, *desc.dynStack, desc.stackIdx);
             if (!n) {
@@ -454,8 +472,8 @@ bool BugFixer::fixBug(FixGenerator *fixer, const FixLoc &fl, const FixDesc &desc
             }
             
             // assert(n && "could not add persistent subprogram in ADD_PERSIST_CALLSTACK_OPT!");
-            n = fixer->insertFence(FixLoc(n, n));
-            assert(n && "could not add fence of ADD_PERSIST_CALLSTACK_OPT!");
+            // n = fixer->insertFence(FixLoc(n, n));
+            // assert(n && "could not add fence of ADD_PERSIST_CALLSTACK_OPT!");
             break;
         }
         case REMOVE_FLUSH_ONLY: {
@@ -614,13 +632,19 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
         success = addFixToMapping(*curr, desc);
     }
 
-    // if (idx != heuristicIdx) {
-    //     for (const auto &li : *desc.dynStack) {
-    //         errs() << li.str() << "\n";
-    //     }
-    //     errs() << "H: " << heuristicIdx << "; N: " << idx << "\n";
-    //     // assert(false && "ha!");
-    // }
+    if (idx > heuristicIdx) {
+        errs() << "Heuristic discrepancy!\n";
+        for (const auto &li : *desc.dynStack) {
+            errs() << li.str() << "\n";
+        }
+        errs() << "H: " << heuristicIdx << "; N: " << idx << "\n";
+    } else {
+        errs() << "Heuristic consistent!\n";
+        for (const auto &li : *desc.dynStack) {
+            errs() << li.str() << "\n";
+        }
+        errs() << "H: " << heuristicIdx << "; N: " << idx << "\n";
+    }
 
     return success;
 }
@@ -663,15 +687,21 @@ bool BugFixer::patchMemoryPrimitives(FixGenerator *fixer) {
 
                 switch (f->getIntrinsicID()) {
                     case Intrinsic::memcpy: {
-                        replace_map[cb] = fixer->getPersistentVersion("memcpy_dumb");
+                        Function *f = fixer->getPersistentVersion("memcpy");
+                        if (ExtraDumb) f = fixer->getPersistentVersion("memcpy_dumb");
+                        replace_map[cb] = f;
                         continue;
                     }
                     case Intrinsic::memset: {
-                        replace_map[cb] = fixer->getPersistentVersion("memset_dumb");
+                        Function *f = fixer->getPersistentVersion("memset");
+                        if (ExtraDumb) f = fixer->getPersistentVersion("memset_dumb");
+                        replace_map[cb] = f;
                         continue;
                     }
                     case Intrinsic::memmove: {
-                        replace_map[cb] = fixer->getPersistentVersion("memmove_dumb");
+                        Function *f = fixer->getPersistentVersion("memmove");
+                        if (ExtraDumb) f = fixer->getPersistentVersion("memmove_dumb");
+                        replace_map[cb] = f;
                         continue;
                     }
                     default: {
@@ -694,28 +724,27 @@ bool BugFixer::patchMemoryPrimitives(FixGenerator *fixer) {
                 if (cb->getArgOperand(1)->getType()->isPointerTy()) continue;
 
                 if (std::string::npos != fname.find("memcpy")) {
-                    replace_map[cb] = fixer->getPersistentVersion("memcpy_dumb");
-
-                    if (DILocation *di = dyn_cast<DILocation>(cb->getMetadata("dbg"))) {
-                        DILocalScope *ls = di->getScope();
-                        // DIFile *df = ls->getFile();
-                        // std::string fileName = df->getFilename();
-
-                        errs() << "DIL: " << *di << '\n';
-                        errs() << "\tSCOPE" << *ls << '\n';
-                    }
+                    Function *f = fixer->getPersistentVersion("memcpy");
+                    if (ExtraDumb) f = fixer->getPersistentVersion("memcpy_dumb");
+                    replace_map[cb] = f;
                 }
 
                 if (std::string::npos != fname.find("memset")) {
-                    replace_map[cb] = fixer->getPersistentVersion("memset_dumb");
+                    Function *f = fixer->getPersistentVersion("memset");
+                    if (ExtraDumb) f = fixer->getPersistentVersion("memset_dumb");
+                    replace_map[cb] = f;
                 }
 
                 if (std::string::npos != fname.find("memmove")) {
-                    replace_map[cb] = fixer->getPersistentVersion("memmove_dumb");
+                    Function *f = fixer->getPersistentVersion("memmove");
+                    if (ExtraDumb) f = fixer->getPersistentVersion("memmove_dumb");
+                    replace_map[cb] = f;
                 }
 
                 if (std::string::npos != fname.find("strncpy")) {
-                    replace_map[cb] = fixer->getPersistentVersion("strncpy_dumb");
+                    Function *f = fixer->getPersistentVersion("strncpy");
+                    if (ExtraDumb) f = fixer->getPersistentVersion("strncpy_dumb");
+                    replace_map[cb] = f;
                 }
             }
         }
@@ -815,8 +844,6 @@ bool BugFixer::doRepair(void) {
         }
     }
 
-    errs() << *module_.getFunction("util_feature_enable") << "\n";
-
     errs() << "Fixed " << nfixes << " of " << nbugs << " identified! (" 
         << trace_.bugs().size() << " in trace)\n";
 
@@ -829,7 +856,7 @@ const std::string BugFixer::immutableLibNames_[] = {"libc.so"};
 
 BugFixer::BugFixer(llvm::Module &m, TraceInfo &ti) 
     : module_(m), trace_(ti), mapper_(BugLocationMapper::getInstance(m)), 
-      pmDesc_(nullptr) {
+      pmDesc_(nullptr), summary_(SummaryFile.c_str()) {
     for (const std::string &fnName : immutableFnNames_) {
         addImmutableFunction(fnName);
     }

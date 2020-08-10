@@ -60,7 +60,7 @@ struct LocationInfo {
     std::string function;
     std::string file;
     // -1 represents unknown
-    int64_t line;
+    int64_t line = -1;
 
     // Returns just the file name, trims directory information.
     std::string getFilename(void) const;
@@ -93,6 +93,8 @@ struct FixLoc {
     llvm::Instruction *first;
     llvm::Instruction *last;
 
+    LocationInfo dbgLoc;
+
     struct Hash {
         uint64_t operator()(const FixLoc &fl) const;
     };
@@ -100,6 +102,8 @@ struct FixLoc {
     FixLoc() : first(nullptr), last(nullptr) {}
     FixLoc(llvm::Instruction *i) : first(i), last(i) {}
     FixLoc(llvm::Instruction *f, llvm::Instruction *l) : first(f), last(l) {}
+    FixLoc(llvm::Instruction *f, llvm::Instruction *l, LocationInfo li) 
+        : first(f), last(l), dbgLoc(li) {}
 
     bool isValid() const;
     bool isSingleInst() const { return first == last; }
@@ -110,6 +114,8 @@ struct FixLoc {
     std::list<llvm::Instruction*> insts() const;
 
     static const FixLoc &NullLoc();
+
+    std::string str() const;
 };
 
 /**

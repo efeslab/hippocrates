@@ -4,6 +4,7 @@
  */
 
 #include <unordered_set>
+#include <fstream>
 
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Instruction.h"
@@ -28,6 +29,8 @@ private:
     TraceInfo &trace_;
     BugLocationMapper &mapper_;
     std::unique_ptr<PmDesc> pmDesc_;
+    std::ofstream summary_;
+    size_t summaryNum_ = 0;
 
     /**
      * We're not allowed to insert fixes into some functions. These are some 

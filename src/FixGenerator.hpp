@@ -66,7 +66,7 @@ protected:
      * Replaces all stores (recursively) with non-temporal hinted stores.
      * Also add a fence at the 
      */
-    bool makeAllStoresPersistent(llvm::Function *f, bool useNT=true);
+    bool makeAllStoresPersistent(llvm::Function *f);
 
 public:
     FixGenerator(llvm::Module &m) : module_(m) {}

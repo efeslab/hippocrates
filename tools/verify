@@ -154,7 +154,9 @@ class ToolRunner:
         fixer_script = Path(__file__).parent.absolute() / 'apply-fixer'
         if self.exe_fixed_path.exists():
             self.exe_fixed_path.unlink()
-        fixer_arg_str = f'{str(fixer_script)} {str(self.bc_linked_path)} {str(trace_file)} -o {str(self.exe_fixed_path)}'
+        fixer_arg_str = (f'{str(fixer_script)} {str(self.bc_linked_path)} '
+            f'{str(trace_file)} -o {str(self.exe_fixed_path)} --extra-opt-args='
+            f'"-fix-summary-file={self.exe_path.parent.name}_summary.txt"')
         print(fixer_arg_str)
         fixer_args = shlex.split(fixer_arg_str)
         res = subprocess.run(fixer_args)
