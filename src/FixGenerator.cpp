@@ -280,11 +280,12 @@ bool FixGenerator::makeAllStoresPersistent(llvm::Function *f) {
 
 CallBase *FixGenerator::modifyCall(CallBase *cb, Function *newFn) {
     // May need to do some casts.
-    errs() << "\t" << __FUNCTION__ << "BEGIN\n";
-    if (!StopSubprog) {
-        errs() << "\t\tSTOP SUBPROG\n";
-        return cb;
-    }
+    errs() << "\t" << __FUNCTION__ << " BEGIN\n";
+    // if (StopSubprog) {
+    //     errs() << "\t\tSTOP SUBPROG\n";
+    //     return cb;
+    // }
+
     assert(cb && "nonsense!");
     if (cb && cb->getFunction()) {
         // https://stackoverflow.com/questions/54524188/create-debug-location-for-function-calls-in-llvm-function-pass
@@ -352,7 +353,8 @@ CallBase *FixGenerator::modifyCall(CallBase *cb, Function *newFn) {
         errs() << "newCb:" << *newCb << "\n";
     }
     
-    ReplaceInstWithInst(cb, newCb);
+    // ReplaceInstWithInst(cb, newCb);
+    cb->eraseFromParent();
     
     return newCb;
 }

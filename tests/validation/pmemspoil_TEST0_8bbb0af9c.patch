@@ -6,4 +6,4 @@
 46a46,48
 > 
 > PMEMPOOL=./pmempool
-> PMEMSPOIL=./pmemspoil
+> PMEMSPOIL=./pmemspoil$EXESUFFIX

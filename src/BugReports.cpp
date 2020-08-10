@@ -666,7 +666,7 @@ void TraceInfoBuilder::resolveLocations(TraceEvent &te) {
 
                         std::string fname = utils::demangle(f->getName().data());
                         if (fname.find(callee.function) == std::string::npos) {
-                            errs() << fname << " !find " << callee.function << "\n";
+                            // errs() << fname << " !find " << callee.function << "\n";
                             if (fname.find("memset") == std::string::npos &&
                                 fname.find("memcpy") == std::string::npos &&
                                 fname.find("memmove") == std::string::npos &&
