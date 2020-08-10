@@ -94,7 +94,7 @@ bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
     // For cumulative stores.
     AddressInfo addrInfo;
     std::list<AddressInfo> unadded;
-    errs() << "\t\tCHECK: " << te.addresses.front().str() << "\n";
+    // errs() << "\t\tCHECK: " << te.addresses.front().str() << "\n";
 
     /**
      * This can be larger than a cacheline, as it can be a bug report at the
@@ -125,8 +125,8 @@ bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
                 // assert(addr.isSingleCacheLine() && "don't know how to handle!");
                 /* In this case, we need to validate that there are a bunch of stores that
                     when summed together */
-                if (!addrInfo.length)
-                    errs() << "STORE OVERLAP: " << addr.str() << "\n";
+                // if (!addrInfo.length)
+                //     errs() << "STORE OVERLAP: " << addr.str() << "\n";
                 if (addrInfo.canAdd(addr)) addrInfo += addr;
                 else unadded.push_back(addr);
 
@@ -152,8 +152,8 @@ bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
                 // This doesn't quite make sense to me, but I'll take it.
                 // In theory, it should add up to be exact.
                 if (addrInfo.contains(bugAddr)) {
-                    errs() << "\tACCUMULATED: " << addrInfo.str() << "\n";
-                    errs() << "\tCOMPLETE\n";
+                    // errs() << "\tACCUMULATED: " << addrInfo.str() << "\n";
+                    // errs() << "\tCOMPLETE\n";
                     missingFlush = true;
                     break;
                 } else {
@@ -162,8 +162,8 @@ bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
             } else if (event.type == TraceEvent::FLUSH &&
                         event.addresses.front().overlaps(te.addresses.front())) {
                 assert(addr.isSingleCacheLine() && "don't know how to handle!");
-                errs() << "FLUSH: " << addr.str() << "\n";
-                errs() << "\tACCUMULATED: " << addrInfo.str() << "\n";
+                // errs() << "FLUSH: " << addr.str() << "\n";
+                // errs() << "\tACCUMULATED: " << addrInfo.str() << "\n";
                 assert(missingFence == true &&
                         "Shouldn't be a bug in this case, has flush and fence");
                 opIndices.push_back(i);
@@ -176,10 +176,10 @@ bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
         }
     }
 
-    errs() << "\n\n";
-    errs() << "\t\tMissing Flush? : " << missingFlush << "\n";
-    errs() << "\t\tMissing Fence? : " << missingFence << "\n";
-    errs() << "\t\tNum Ops : " << opIndices.size() << "\n";
+    // errs() << "\n\n";
+    // errs() << "\t\tMissing Flush? : " << missingFlush << "\n";
+    // errs() << "\t\tMissing Fence? : " << missingFence << "\n";
+    // errs() << "\t\tNum Ops : " << opIndices.size() << "\n";
 
     assert(opIndices.size() && "Has to had been assigned at least!");
 
@@ -189,16 +189,18 @@ bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
         // Find where the last operation was.
         const TraceEvent &last = trace_[lastOpIndex];
         if (mapper_.contains(last.location)) {
-            errs() << "Fix direct!\n";
-            errs() << "\t\tLocation : " << last.location.str() << "\n";
+            // errs() << "Fix direct!\n";
+            // errs() << "\t\tLocation : " << last.location.str() << "\n";
             assert(mapper_[last.location].size() && "can't have no instructions!");
             for (const FixLoc &fLoc : mapper_[last.location]) {
                 for (Instruction *i : fLoc.insts()) {
-                    errs() << "\t\tInstruction : " << *i << "\n";
+                    // errs() << "\t\tInstruction : " << *i << "\n";
                     if (!isa<StoreInst>(i) && !isa<AtomicCmpXchgInst>(i)) {
-                        errs() << "\t\tNot a store instruction!\n";
+                        // errs() << "\t\tNot a store instruction!\n";
                         continue;
                     }
+
+                    FixLoc loc(i, i, fLoc.dbgLoc);
                                 
                     bool multiline = !last.addresses.front().isSingleCacheLine();
                     assert(!multiline && 
@@ -206,11 +208,11 @@ bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
                     
                     bool res = false;
                     if (missingFlush && missingFence) {
-                        res = addFixToMapping(i, FixDesc(ADD_FLUSH_AND_FENCE, last.callstack));
+                        res = addFixToMapping(loc, FixDesc(ADD_FLUSH_AND_FENCE, last.callstack));
                     } else if (missingFlush) {
-                        res = addFixToMapping(i, FixDesc(ADD_FLUSH_ONLY, last.callstack));
+                        res = addFixToMapping(loc, FixDesc(ADD_FLUSH_ONLY, last.callstack));
                     } else if (missingFence) {
-                        res = addFixToMapping(i, FixDesc(ADD_FENCE_ONLY, last.callstack));
+                        res = addFixToMapping(loc, FixDesc(ADD_FENCE_ONLY, last.callstack));
                     }
 
                     // Have to do it this way, otherwise it short-circuits.
@@ -228,15 +230,15 @@ bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
             // Here, we can take advantage of the persistent subprogram thing.
             auto desc = FixDesc(ADD_FLUSH_AND_FENCE, last.callstack);
             bool res = raiseFixLocation(FixLoc::NullLoc(), desc);
-            if (res) errs() << "\tAdded high-level fix!\n";
-            else errs() << "\tDid not add a fix!\n";
+            // if (res) errs() << "\tAdded high-level fix!\n";
+            // else errs() << "\tDid not add a fix!\n";
             added = res || added;
         }
 
     }
 
-    if (added) errs() << "-----------ADDED SOMEWHERE\n";
-    else errs() <<"------------NO FIX\n";
+    // if (added) errs() << "-----------ADDED SOMEWHERE\n";
+    // else errs() <<"------------NO FIX\n";
     
     return added;      
 }

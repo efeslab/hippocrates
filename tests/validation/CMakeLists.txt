@@ -168,6 +168,7 @@ add_pmdk_unit_test(TEST_CASE obj_constructor
 # pmemspoil/TEST0
 add_pmdk_unit_test(TEST_CASE pmemspoil
                    TEST_FILE TEST0
+                   TEST_PATCH pmemspoil_TEST0_8bbb0af9c.patch
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK

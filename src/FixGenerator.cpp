@@ -260,27 +260,31 @@ bool FixGenerator::makeAllStoresPersistent(llvm::Function *f) {
         }
     }
 
-    if (flushPoints.empty()) return false;
-
-    if (!StopSubprog) {
-        for (auto *ri : fencePoints) {
-            Instruction *insertAt = ri->getPrevNonDebugInstruction();
-            if (!insertAt) {
-                IRBuilder<> builder(ri);
-                insertAt = builder.CreateCall(Intrinsic::getDeclaration(&module_, Intrinsic::donothing), {});
-            }
-            auto *fi = insertFence(insertAt);
-            assert(fi && "unable to insert fence!");
-        }
-    } else {
-        errs() << "STOP SUB PROG (FENCING)\n";
+    if (flushPoints.empty()) {
+        return false;
     }
+
+    for (auto *ri : fencePoints) {
+        Instruction *insertAt = ri->getPrevNonDebugInstruction();
+        if (!insertAt) {
+            IRBuilder<> builder(ri);
+            insertAt = builder.CreateCall(Intrinsic::getDeclaration(&module_, Intrinsic::donothing), {});
+        }
+        auto *fi = insertFence(insertAt);
+        assert(fi && "unable to insert fence!");
+    } 
+  
     
     return true;
 }
 
 CallBase *FixGenerator::modifyCall(CallBase *cb, Function *newFn) {
     // May need to do some casts.
+    errs() << "\t" << __FUNCTION__ << "BEGIN\n";
+    if (!StopSubprog) {
+        errs() << "\t\tSTOP SUBPROG\n";
+        return cb;
+    }
     assert(cb && "nonsense!");
     if (cb && cb->getFunction()) {
         // https://stackoverflow.com/questions/54524188/create-debug-location-for-function-calls-in-llvm-function-pass
@@ -485,8 +489,8 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
             assert(cb && "wut");
             assert(newFn && "wut");
 
-            errs() << *newFn << "\n";
-            errs() << *cb << "\n";
+            errs() << "SUBPROGRAM: " << *newFn << "\n";
+            errs() << "SUBPROGRAM: " << *cb << "\n";
             
             return modifyCall(cb, newFn);
         }
@@ -533,25 +537,27 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
         assert(!nextFixLoc.empty());
 
         for (const FixLoc &nFix : nextFixLoc) {
-            Instruction *ni = nFix.last;
-            errs() << *ni << " @ " << ni->getFunction()->getName() << "\n";
-            if (auto *cb = dyn_cast<CallBase>(ni)) {
-                Function *cbFn = cb->getCalledFunction();
-                // Replace this value with a call to the new function.
-                if (cbFn == fn) {
-                    cb->setCalledFunction(pmFn);
-                    retInst = cb;
-                } else if (cbFn) {
-                    continue;
-                } else {
-                    /**
-                     * For function pointers, we need a conditional mapping, a-la
-                     * if (f == old_fn) new_fn(...)
-                     */
-                    errs() << "FUNCTION POINTER: " << *cb << "\n";
-                    assert(false && "function pointer unhandled!");
-                }
-            } 
+            for (Instruction *ni : nFix.insts()) {
+                errs() << *ni << " @ " << ni->getFunction()->getName() << "\n";
+                if (auto *cb = dyn_cast<CallBase>(ni)) {
+                    errs() << "\tCALL\n";
+                    Function *cbFn = cb->getCalledFunction();
+                    // Replace this value with a call to the new function.
+                    if (cbFn == fn) {
+                        cb->setCalledFunction(pmFn);
+                        retInst = cb;
+                    } else if (cbFn) {
+                        continue;
+                    } else {
+                        /**
+                         * For function pointers, we need a conditional mapping, a-la
+                         * if (f == old_fn) new_fn(...)
+                         */
+                        errs() << "FUNCTION POINTER: " << *cb << "\n";
+                        assert(false && "function pointer unhandled!");
+                    }
+                } 
+            }  
         }
     }
 
