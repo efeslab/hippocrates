@@ -84,8 +84,42 @@ add_subdirectory(RECIPE/P-CLHT)
 set(REDIS_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/redis)
 add_custom_target(REDIS 
                 #   DEPENDS PMDK
-                  COMMAND make -C ${REDIS_ROOT_DIR} 
+                  COMMAND make 
                         CC=wllvm CXX=wllvm++
-                        OPTIMIZATION=-O0
-                        PMDK_DIR=${PMDK_ROOT_DIR} USE_PMDK=yes
+                        OPTIMIZATION=-O0 
+                        INTERNAL_PMDK=no
+                        PMDK_DIR=${PMDK_ROOT_DIR} 
+                        USE_PMDK=yes
+                        -C ${REDIS_ROOT_DIR}/src -j40
                   COMMENT "Building redis-pmem...")       
+
+################################################################################
+# memcached-pmem
+################################################################################
+
+set(MP_CFLAGS "-O0 -g -I${PMDK_INCLUDE_DIR}")
+set(MP_LDFLAGS "-L${PMDK_LIB_DIR}")
+# set(MP_LIBS "-lpthread -levent")
+# set(MP_CFLAGS "-I${PMDK_INCLUDE_DIR}")
+# set(MP_LDFLAGS "-L${PMDK_LIB_DIR}")
+# set(MP_LIBS "")
+set(MP_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/memcached-pmem)
+set(MP_INSTALL_DIR ${CMAKE_CURRENT_BINARY_DIR}/memcached-pmem)
+set(MP_BINARY ${MP_INSTALL_DIR}/bin/memcached)
+add_custom_target(MEMCACHED_PMEM
+                   COMMAND CC=wllvm 
+                           CFLAGS=${MP_CFLAGS} LDFLAGS=${MP_LDFLAGS} #LIBS=${MP_LIBS}
+                           ./configure --enable-pslab --prefix=${MP_INSTALL_DIR}
+                   WORKING_DIRECTORY ${MP_ROOT_DIR}
+                   COMMAND make CC=wllvm 
+                           CFLAGS=${MP_CFLAGS} LDFLAGS=${MP_LDFLAGS} #LIBS=${MP_LIBS}
+                           -C ${MP_ROOT_DIR} clean
+                   COMMAND make CC=wllvm 
+                           CFLAGS=${MP_CFLAGS} LDFLAGS=${MP_LDFLAGS} #LIBS=${MP_LIBS}
+                           -C ${MP_ROOT_DIR} -j40 memcached
+                   COMMAND make CC=wllvm 
+                           CFLAGS=${MP_CFLAGS} LDFLAGS=${MP_LDFLAGS} #LIBS=${MP_LIBS}
+                           -C ${MP_ROOT_DIR} install
+                  #  COMMAND patchelf --set-rpath=${PMDK_LIB_DIR}/pmdk_debug ${MP_BINARY}
+                   COMMAND extract-bc -o ${MP_BINARY}.bc ${MP_BINARY}
+                   COMMENT "Building memcached-pmem...")     
