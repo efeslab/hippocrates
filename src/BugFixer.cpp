@@ -753,7 +753,8 @@ bool BugFixer::patchMemoryPrimitives(FixGenerator *fixer) {
     }
 
     for (auto &p : replace_map) {
-        bool res = fixer->modifyCall(p.first, p.second);
+        (void)fixer->modifyCall(p.first, p.second);
+        p.first->eraseFromParent();
     }
 
     errs() << "Changed " << replace_map.size() << " calls!\n";

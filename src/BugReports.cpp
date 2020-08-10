@@ -274,9 +274,10 @@ void BugLocationMapper::createMappings(Module &m) {
     }
 
     // errs() << "fix map\n";
-    // errs() << *m.getFunction("do_direct_simple") << "\n";
+    // const char fnHack[] = "pmemspoil_process_char";
+    // errs() << *m.getFunction(fnHack) << "\n";
     // for (auto &p : fixLocMap_) {
-    //     if (p.first.function == "do_direct_simple") {
+    //     if (p.first.function == fnHack) {
     //         errs() << p.first.str() << "\n";
     //         for (FixLoc &fl : p.second) {
     //             errs() << "\t" << fl.str() << "\n";

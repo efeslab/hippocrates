@@ -177,9 +177,6 @@ Function *FixGenerator::duplicateFunction(Function *f, std::string postFix) {
     return fNew;
 }
 
-cl::opt<bool> StopSubprog("disable-subprogram-fixes", cl::init(false),
-    cl::desc("ONLY FOR DEBUG"));
-
 bool FixGenerator::makeAllStoresPersistent(llvm::Function *f) {
     errs() << "FUNCTION PM: " << f->getName() << "\n";
     std::list<StoreInst*> flushPoints;
@@ -294,7 +291,7 @@ CallBase *FixGenerator::modifyCall(CallBase *cb, Function *newFn) {
 
     newFn->addAttribute(AttributeList::FunctionIndex, Attribute::NoInline);
 
-    IRBuilder<> builder(cb);
+    IRBuilder<> builder(cb->getNextNode());
     std::vector<Value *> newArgs;
     for (unsigned i = 0; i < newFn->arg_size(); ++i) {
         // Get new type
@@ -354,7 +351,7 @@ CallBase *FixGenerator::modifyCall(CallBase *cb, Function *newFn) {
     }
     
     // ReplaceInstWithInst(cb, newCb);
-    cb->eraseFromParent();
+    // cb->eraseFromParent();
     
     return newCb;
 }
@@ -443,7 +440,7 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
     int idx) {
     
     errs() << __PRETTY_FUNCTION__ << " BEGIN\n";
-    Instruction *startInst = fl.first;
+    // Instruction *startInst = fl.first;
 
     if (!mapper.contains(callstack[0])) {
         // assert(1 == idx && "don't know how to handle nested unknowns!");
@@ -494,7 +491,13 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
             errs() << "SUBPROGRAM: " << *newFn << "\n";
             errs() << "SUBPROGRAM: " << *cb << "\n";
             
-            return modifyCall(cb, newFn);
+            // return modifyCall(cb, newFn);
+            CallBase *modCb = modifyCall(cb, newFn);
+            cb->eraseFromParent();
+
+            errs() << "NOW: " << *modCb->getFunction() << "\n";
+
+            return modCb;
         }
 
         if (f->isDeclaration()) {  
@@ -505,13 +508,14 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
             Function *pmVersion = getPersistentVersion(declName.c_str());
             CallBase *modCb = modifyCall(cb, pmVersion);
             errs() << *modCb << "\n";
+            cb->eraseFromParent();
 
             return modCb;
         }
     }
 
     Instruction *retInst = nullptr;
-    errs() << "GFIN " << *startInst << "\n";
+    // errs() << "GFIN " << *startInst << "\n";
     for (int i = 0; i < idx; ++i) {
         errs() << "GFLI " << callstack[i].str() << "\n";
 
