@@ -28,3 +28,4 @@ target_compile_options(PMFIXER PUBLIC "-fPIC")
 
 add_subdirectory(intrinsic)
 add_subdirectory(remover)
+add_subdirectory(cleaner)

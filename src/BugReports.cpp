@@ -273,8 +273,8 @@ void BugLocationMapper::createMappings(Module &m) {
         fixLocMap_[location] = locs;
     }
 
-    // errs() << "fix map\n";
-    // const char fnHack[] = "pmemspoil_process_char";
+    // errs() << "fix map size: " << fixLocMap_.size() << "\n";
+    // const char fnHack[] = "do_slabs_free";
     // errs() << *m.getFunction(fnHack) << "\n";
     // for (auto &p : fixLocMap_) {
     //     if (p.first.function == fnHack) {
@@ -284,9 +284,9 @@ void BugLocationMapper::createMappings(Module &m) {
     //         }
     //     }
     // }
-    // errs() << "inst map\n";
+    // errs() << "inst map size " << locMap_.size() << "\n";
     // for (auto &p : locMap_) {
-    //     if (p.first.function == "do_direct_simple") {
+    //     if (p.first.function == fnHack) {
     //         errs() << p.first.str() << "\n";
     //     }
     // }
@@ -365,8 +365,21 @@ bool TraceEvent::callStacksEqual(const TraceEvent &a, const TraceEvent &b) {
 static 
 Value *getGenericPmValues(const BugLocationMapper &mapper, const FixLoc &fLoc) {
     for (Instruction *i : fLoc.insts()) {
-        errs() << "GET PMV:" << *i << "\n";
+        // errs() << "GET PMV:" << *i << "\n";
         if (auto *cb = dyn_cast<CallBase>(i)) {
+
+            Function *intr = cb->getCalledFunction();
+            if (intr) {
+                switch (intr->getIntrinsicID()) {
+                    case Intrinsic::memcpy:
+                    case Intrinsic::memset:
+                    case Intrinsic::memmove:
+                        return cb->getArgOperand(0);
+                    default: 
+                        break;
+                }
+            }
+            
             const Function *f = utils::getFlush(cb);
             if (f) {
                 return cb->getArgOperand(0);
@@ -382,9 +395,10 @@ Value *getGenericPmValues(const BugLocationMapper &mapper, const FixLoc &fLoc) {
                     errs() << str << "\n";
                     if (str == ".byte 0x66; xsaveopt $0") {
                         isFlushAsm = true;
-                    } else {
-                        errs() << "'" << str << "' != " << ".byte 0x66; xsaveopt $0" << "\n";
-                    }
+                    } 
+                    // else {
+                    //     errs() << "'" << str << "' != " << ".byte 0x66; xsaveopt $0" << "\n";
+                    // }
                     // Check if it is
                     if (isFlushAsm) {
                         return cb->getArgOperand(0);
@@ -400,7 +414,7 @@ Value *getGenericPmValues(const BugLocationMapper &mapper, const FixLoc &fLoc) {
             Value *v = si->getValueOperand();
             if (auto *ci = dyn_cast<ConstantInt>(v)) {
                 if (ci->getZExtValue() == 1346568197) {
-                    errs() << "We found valgrind value!\n";
+                    // errs() << "We found valgrind value!\n";
                     // The very next instruction should have what we want.
                     Instruction *curr = si->getNextNonDebugInstruction();
                     StoreInst *pmStore = dyn_cast<StoreInst>(curr);
@@ -410,15 +424,15 @@ Value *getGenericPmValues(const BugLocationMapper &mapper, const FixLoc &fLoc) {
                         pmStore = dyn_cast<StoreInst>(curr);
                     }
                     assert(pmStore);
-                    errs() << "PM store:" << *pmStore << "\n"; 
-                    errs() << "\tAddr:" << *pmStore->getValueOperand() << "\n";
+                    // errs() << "PM store:" << *pmStore << "\n"; 
+                    // errs() << "\tAddr:" << *pmStore->getValueOperand() << "\n";
                     Value *pmAddr = pmStore->getValueOperand();
                     if (!pmAddr->getType()->isPointerTy()) {
                         if (auto *pi = dyn_cast<PtrToIntInst>(pmAddr)) {
                             pmAddr = pi->getPointerOperand();
                         }
                     }
-                    errs() << "\tAddr (no cast):" << *pmAddr << "\n";
+                    // errs() << "\tAddr (no cast):" << *pmAddr << "\n";
                     assert(pmAddr->getType()->isPointerTy());
                     return pmAddr;
                 }
@@ -449,13 +463,14 @@ std::list<Value*> TraceEvent::pmValues(const BugLocationMapper &mapper) const {
 
     assert(type != INVALID && "doesn't make sense!");
 
-    errs() << "\n\nPMVALUES\n\n";
-    for (auto &fLoc : mapper[location]) {
-        errs() << "New FLOC\n";
-        for (Instruction *i : fLoc.insts()) errs() << "\t" << *i << "\n";
-    }
+    // errs() << "\n\nPMVALUES\n\n";
+    // for (auto &fLoc : mapper[location]) {
+    //     errs() << "New FLOC\n";
+    //     for (Instruction *i : fLoc.insts()) errs() << "\t" << *i << "\n";
+    // }
 
     for (auto &fLoc : mapper[location]) {
+        errs() << fLoc.str() << "\n";
         switch (source) {
             case PMTEST: {
                 switch (type) {
@@ -479,15 +494,15 @@ std::list<Value*> TraceEvent::pmValues(const BugLocationMapper &mapper) const {
             case GENERIC: {
                 switch (type) {
                     case STORE: {
-                        errs() << "Try get store value!\n";
-                        errs() << str() << "\n";
+                        // errs() << "Try get store value!\n";
+                        // errs() << str() << "\n";
                         Value *pmv = getGenericPmValues(mapper, fLoc);
                         if (pmv) pmAddrs.push_back(pmv);
                         break;
                     }  
                     case FLUSH: {
-                        errs() << "Try get flush value!\n";
-                        errs() << str() << "\n";
+                        // errs() << "Try get flush value!\n";
+                        // errs() << str() << "\n";
                         Value *pmv = getGenericPmValues(mapper, fLoc);
                         if (pmv) pmAddrs.push_back(pmv);
                         break;
@@ -512,9 +527,9 @@ std::list<Value*> TraceEvent::pmValues(const BugLocationMapper &mapper) const {
         }
     }
 
-    if (pmAddrs.empty()) {
-        errs() << "EMPTY: " << str() << "\n";
-    }
+    // if (pmAddrs.empty()) {
+    //     errs() << "EMPTY: " << str() << "\n";
+    // }
 
     assert(!pmAddrs.empty() && "bad usage!");
 
@@ -659,6 +674,7 @@ void TraceInfoBuilder::resolveLocations(TraceEvent &te) {
             for (Instruction *inst : fLoc.insts()) {
                 // errs() << *inst << "\n";
                 if (auto *cb = dyn_cast<CallBase>(inst)) {
+                    // errs() << *inst << "\n";
                     Function *f = cb->getCalledFunction();
                     if (f) {
                         if (f->getIntrinsicID() == Intrinsic::dbg_declare) {
@@ -683,9 +699,9 @@ void TraceInfoBuilder::resolveLocations(TraceEvent &te) {
             }
         }
 
-        // if (possibleCallSites.empty()) {
-        //     errs() << "No calls to " << callee.function << "!\n";
-        // }
+        if (possibleCallSites.empty()) {
+            errs() << "No calls to " << callee.function << "!\n";
+        }
 
         assert(possibleCallSites.size() > 0 && "don't know how to handle!");
         if (possibleCallSites.size() > 1) {

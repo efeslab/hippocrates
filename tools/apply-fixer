@@ -5,7 +5,10 @@ from IPython import embed
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import logging
+import time
 import os
+import psutil
 import shlex
 import subprocess
 import sys
@@ -18,7 +21,7 @@ def get_linker_strings():
     if not pmtest_library.exists():
         raise Exception(r'Path ${PMTEST_LIBS} does not exist!')
 
-    pmdk_required = ['daxctl', 'ndctl', 'rt', 'dl', 'unwind', 'lzma', ]
+    pmdk_required = ['daxctl', 'ndctl', 'rt', 'dl', 'unwind', 'lzma', 'event']
     pmdk_str = ' '.join(['-l'+lib for lib in pmdk_required])
     pmtest = str(pmtest_library.absolute())
     return f'-L{pmtest} -Wl,-rpath={pmtest} -lpmtest -lpthread {pmdk_str}'
@@ -85,8 +88,23 @@ def run_pass_and_compile(args):
         # 1. Fix
         bitcode_opt = temppath / f'{output_file.name}_fixed.bc' 
         args = shlex.split(opt_arg_str_fn(bitcode_linked))
-        ret = subprocess.run(args, stdout=bitcode_opt.open('w'))
-        ret.check_returncode()
+        # iangneal: We also vaguely want to know the time/space complexity of this.
+        proc = subprocess.Popen(args, stdout=bitcode_opt.open('w'))
+        ps_proc = psutil.Process(proc.pid)
+        rss = 0
+        while proc.poll() is None:
+            rss = max(rss, ps_proc.memory_info().rss)
+            time.sleep(0.1)
+        
+        # iangneal: now log
+        elapsed = time.time() - ps_proc.create_time()
+        logging.info(f'\nFixer stats for "{" ".join(args)}":')
+        logging.info('Fixer time: %s (%f seconds)', 
+            time.strftime("%H:%M:%S", time.gmtime(elapsed)), elapsed)
+        logging.info(f'Fixer mem: {rss / (1024 ** 2)} MB')
+        logging.info(f'Fixer return code: {proc.returncode}')
+
+        assert proc.returncode == 0, 'fixer failed!'
         assert bitcode_opt.exists(), 'nonsense!'
         
         # 2. Compile to machine code
@@ -124,8 +142,11 @@ def main():
                         help='Use clang++ rather than clang')
     parser.add_argument('--extra-opt-args', type=str, default='',
                         help='Extra args to pass to the fixer')
+    parser.add_argument('--log-file', type=Path, default=Path('./apply_fixer.log'),
+                        help=f'Where to log {__file__} information')
 
     args = parser.parse_args()
+    logging.basicConfig(filename=str(args.log_file), level=logging.DEBUG)
 
     run_pass_and_compile(args)
 

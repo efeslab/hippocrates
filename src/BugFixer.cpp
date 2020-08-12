@@ -533,17 +533,18 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
      * - We'll need all the PM values in the program. We want to know the number
      * of overall aliases and the number which can be PM values.
      */
-    const std::vector<LocationInfo> &stack = *desc.dynStack;
+    const std::vector<LocationInfo> &stack = desc.dynStack;
+    assert(!stack.empty() && "doesn't make sense!");
     
     const FixLoc *curr = nullptr;
 
-#if 1
     int heuristicIdx = 0;
     /**
      * For this, we want to find the point with the minimal number of volatile
      * aliases and maximum PM aliases.
      */
     if (EnableHeuristicRaising) {
+        // assert(false && "time me!");
         // Now, we need to find the point of minimal aliasing
         int minIdx = -1;
         size_t minVolAlias = UINT64_MAX;
@@ -556,22 +557,32 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
             size_t volAlias = 0;
             size_t pmAlias = 0;
 
-            for (auto &fl : mapper_[loc]) {
-                for (Instruction *i : fl.insts()) {
-                    for (auto iter = i->value_op_begin(); 
-                        iter != i->value_op_end();
-                        ++iter) {
-                        Value *v = *iter;
-                        if (!v->getType()->isPointerTy()) continue;
-                        // Now, we need to figure out all the aliases.
-                        std::unordered_set<const llvm::Value *> ptsSet;
-                        pmDesc_->getPointsToSet(v, ptsSet);
-                        size_t numPm = pmDesc_->getNumPmAliases(ptsSet);
-                        size_t numVol = ptsSet.size() - numPm;
-                        volAlias += numVol;
-                        pmAlias += numPm;
+            if (heuristicCache_.count(loc)) {
+                errs() << "H-Cache hit!\n";
+                volAlias = heuristicCache_[loc].first;
+                pmAlias = heuristicCache_[loc].second;
+
+            } else {
+                for (auto &fl : mapper_[loc]) {
+                    for (Instruction *i : fl.insts()) {
+                        for (auto iter = i->value_op_begin(); 
+                            iter != i->value_op_end();
+                            ++iter) {
+                            Value *v = *iter;
+                            if (!v->getType()->isPointerTy()) continue;
+                            // Now, we need to figure out all the aliases.
+                            std::unordered_set<const llvm::Value *> ptsSet;
+                            pmDesc_->getPointsToSet(v, ptsSet);
+                            size_t numPm = pmDesc_->getNumPmAliases(ptsSet);
+                            size_t numVol = ptsSet.size() - numPm;
+                            volAlias += numVol;
+                            pmAlias += numPm;
+                        }
                     }
                 }
+
+                heuristicCache_[loc].first = volAlias;
+                heuristicCache_[loc].second = pmAlias;                
             }
             
             errs() << loc.str() << "\n[" << l << "] VOL: " << volAlias << " PM: " << pmAlias << "\n";
@@ -582,13 +593,15 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
                 maxPmAlias = pmAlias;
             }
         }
-        
+        assert(minIdx >= 0 && "didn't do anything!");
+
         heuristicIdx = minIdx;
         if (heuristicIdx > 0) raised = true;
     }
-#endif
+
 
     int idx = heuristicIdx;
+    assert(idx >= 0 && "doesn't work otherwise!");
 
     while (idx < stack.size()) {
         if (!startInst && !mapper_.contains(stack[idx])) {
@@ -619,14 +632,6 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
             break;
         }
     }
-
-    // Mysterious leftover debugging stuff.
-    // if (idx == 4) {
-    //     for (const auto &li : *desc.dynStack) {
-    //         errs() << li.str() << "\n";
-    //     }
-    //     assert(false && "GOTCHA");
-    // }
 
     bool success = false;
     if (raised) {

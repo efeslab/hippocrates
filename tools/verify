@@ -156,7 +156,7 @@ class ToolRunner:
             self.exe_fixed_path.unlink()
         fixer_arg_str = (f'{str(fixer_script)} {str(self.bc_linked_path)} '
             f'{str(trace_file)} -o {str(self.exe_fixed_path)} --extra-opt-args='
-            f'"-fix-summary-file={self.exe_path.parent.name}_summary.txt"')
+            f'"-fix-summary-file={self.exe_path.parent.name}_summary.txt -heuristic-raising"')
         print(fixer_arg_str)
         fixer_args = shlex.split(fixer_arg_str)
         res = subprocess.run(fixer_args)

@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.4.3)
 project(PMFixer)
 
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O2 -g")
+set(CMAKE_C_FLAGS_RELWITHDEBINFO "-O2 -g")
 
 # This will find the shared LLVM build.
 find_package(LLVM 8.0 REQUIRED CONFIG)

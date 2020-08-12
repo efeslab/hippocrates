@@ -42,6 +42,10 @@ struct PmBugFixerPass : public ModulePass {
     }
 
     bool runOnModule(Module &m) override {
+        // {
+        //     auto &mapper = BugLocationMapper::getInstance(m);
+        // }
+
         YAML::Node trace_info_doc = YAML::LoadFile(TraceFile);
         TraceInfo ti = TraceInfoBuilder(m, trace_info_doc).build();
         // errs() << "TraceInfo string:\n" << ti.str() << '\n';

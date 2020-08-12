@@ -277,7 +277,7 @@ bool FixGenerator::makeAllStoresPersistent(llvm::Function *f) {
 
 CallBase *FixGenerator::modifyCall(CallBase *cb, Function *newFn) {
     // May need to do some casts.
-    errs() << "\t" << __FUNCTION__ << " BEGIN\n";
+    // errs() << "\t" << __FUNCTION__ << " BEGIN\n";
     // if (StopSubprog) {
     //     errs() << "\t\tSTOP SUBPROG\n";
     //     return cb;

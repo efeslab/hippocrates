@@ -32,6 +32,10 @@ private:
     std::ofstream summary_;
     size_t summaryNum_ = 0;
 
+    std::unordered_map<LocationInfo,
+                       std::pair<uint64_t, uint64_t>,
+                       LocationInfo::Hash> heuristicCache_;
+
     /**
      * We're not allowed to insert fixes into some functions. These are some 
      * smart defaults.

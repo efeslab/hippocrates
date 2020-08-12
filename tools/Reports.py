@@ -149,8 +149,13 @@ class BugReport:
                 bug_addresses += [addr]
 
         new_trace = []
+        prev_te = None
         for te in self.trace:
-            if te in bugs or te['event'] == 'FENCE':
+            if te in bugs:
+                new_trace += [te]
+            elif te['event'] == 'FENCE':
+                if prev_te is not None and prev_te['event'] == 'FENCE':
+                    continue
                 new_trace += [te]
             else:
                 address_range = (te['address'], te['address'] + te['length'])
@@ -158,6 +163,8 @@ class BugReport:
                     if bug_addr[0] < address_range[1] and address_range[0] < bug_addr[1]:
                         new_trace += [te]
                         break
+
+            prev_te = te
                     
         print(f'Optimized from {len(self.trace)} trace events to {len(new_trace)} trace events.')
         self.trace = new_trace

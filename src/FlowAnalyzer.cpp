@@ -21,6 +21,8 @@ SharedAndersenCache PmDesc::cache_(nullptr);
 
 bool PmDesc::getPointsToSet(const llvm::Value *v,                                  
                             std::unordered_set<const llvm::Value *> &ptsSet) {
+    assert(v);
+    if (!v) return false;
     /**                                                                            
      * Using a cache for this dramatically reduces the amount of time spent here,  
      * as the call to "getPointsToSet" has to re-traverse a bunch of internal      

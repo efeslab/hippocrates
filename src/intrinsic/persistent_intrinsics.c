@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <assert.h>
 
 #include <valgrind/pmemcheck.h>
 
@@ -58,6 +59,7 @@ void PMFIXER(memmove)(uint8_t *d, uint8_t *s, size_t n, bool _unused) {
     // https://opensource.apple.com/source/network_cmds/network_cmds-481.20.1/unbound/compat/memmove.c.auto.html
     uint8_t* from = (uint8_t*) s;
 	uint8_t* to = (uint8_t*) d;
+    assert(n < INT64_MAX);
 
 	if (from == to || n == 0) {
         return;
@@ -68,7 +70,7 @@ void PMFIXER(memmove)(uint8_t *d, uint8_t *s, size_t n, bool _unused) {
 		/*  <from......>         */
 		/*         <to........>  */
 		/* copy in reverse, to avoid overwriting from */
-		for(size_t i = n-1; i >= 0; i--) {
+		for(int64_t i = n-1; i >= 0; i--) {
             to[i] = from[i];
             // int *ptr = (int*)(to + i);
             // int val = (int)(from[i]);
@@ -85,7 +87,7 @@ void PMFIXER(memmove)(uint8_t *d, uint8_t *s, size_t n, bool _unused) {
 		/*        <from......>   */
 		/*  <to........>         */
 		/* copy forwards, to avoid overwriting from */
-		for (size_t i=0; i < n; i++) {
+		for (int64_t i=0; i < n; i++) {
             // to[i] = from[i];
             int *ptr = (int*)(to + i);
             int val = (int)(from[i]);
@@ -156,6 +158,7 @@ void PMFIXER(memmove_dumb)(uint8_t *d, uint8_t *s, size_t n, bool _unused) {
     // https://opensource.apple.com/source/network_cmds/network_cmds-481.20.1/unbound/compat/memmove.c.auto.html
     uint8_t* from = (uint8_t*) s;
 	uint8_t* to = (uint8_t*) d;
+    assert(n < INT64_MAX);
 
 	if (from == to || n == 0) {
         return;
@@ -166,7 +169,7 @@ void PMFIXER(memmove_dumb)(uint8_t *d, uint8_t *s, size_t n, bool _unused) {
 		/*  <from......>         */
 		/*         <to........>  */
 		/* copy in reverse, to avoid overwriting from */
-		for(size_t i = n-1; i >= 0; i--) {
+		for(int64_t i = n-1; i >= 0; i--) {
             to[i] = from[i];
             _mm_clwb(&to[i]);
             _mm_sfence();
@@ -179,7 +182,7 @@ void PMFIXER(memmove_dumb)(uint8_t *d, uint8_t *s, size_t n, bool _unused) {
 		/*        <from......>   */
 		/*  <to........>         */
 		/* copy forwards, to avoid overwriting from */
-		for (size_t i=0; i < n; i++) {
+		for (int64_t i=0; i < n; i++) {
             to[i] = from[i];
             _mm_clwb(&to[i]);
             _mm_sfence();
