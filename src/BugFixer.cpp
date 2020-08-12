@@ -568,8 +568,32 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
 
             } else {
                 errs() << "Start!\n";
+                
+                if (TraceAlias) {
+                    for (Instruction *i : mapper_.insts(loc)) {
+                        assert(vMap_[i] && "is this it?");
+                    }
+
+                    for (auto &fl : mapper_[loc]) {
+                        for (Instruction *i : fl.insts()) {
+                            assert(vMap_[i] && "is this it?");
+                        }
+                    }
+                }
+
                 for (auto &fl : mapper_[loc]) {
-                    for (Instruction *i : fl.insts()) {
+                    for (Instruction *inst : fl.insts()) {
+
+                        Instruction *i = inst;
+                        if (TraceAlias) {
+                            
+                            Value *v = vMap_[inst];
+                            if (!v) errs() << *i << "\n";
+                            assert(v);
+                            i = dyn_cast<Instruction>(v);
+                            assert(i);
+                        }
+
                         for (auto iter = i->value_op_begin(); 
                             iter != i->value_op_end();
                             ++iter) {
@@ -579,15 +603,9 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
                                 errs() << "NO POINTERS:" << *v << "\n";
                                 continue;
                             }
-                            // Now, we need to figure out all the aliases.
-                            if (TraceAlias) {
-                                v = vMap_[*iter];
-                                if (!v) {
-                                    errs() << "OOPS" << **iter << "\n";
-                                    continue;
-                                }
-                            }
                             
+                            // Now, we need to figure out all the aliases.
+                        
                             errs() << "Made it!\n";
                             std::unordered_set<const llvm::Value *> ptsSet;
                             bool res = pmDesc_->getPointsToSet(v, ptsSet);
@@ -844,6 +862,7 @@ bool BugFixer::doRepair(void) {
         }
     }
 
+
     /**
      * Step 1.
      * 
@@ -929,7 +948,9 @@ BugFixer::BugFixer(llvm::Module &m, TraceInfo &ti)
 
         if (TraceAlias) {
 
-            std::unique_ptr<Module> dupMod_ = llvm::CloneModule(module_, vMap_);
+            dupMod_ = llvm::CloneModule(module_, vMap_);
+
+            // std::unordered_set<Value*> oVal, dVal, over;
 
             // for (Function &f : module_) {
             //     for (BasicBlock &b : f) {
@@ -937,14 +958,31 @@ BugFixer::BugFixer(llvm::Module &m, TraceInfo &ti)
             //             for (auto iter = i.value_op_begin(); 
             //                 iter != i.value_op_end();
             //                 ++iter) {
-            //                 if (!vMap_.count(*iter)) {
-            //                     errs() << **iter << "\n";
-            //                     assert(false);
-            //                 }
+            //                 oVal.insert(*iter);
+            //                 over.insert(*iter);
             //             }
             //         }
             //     }
             // }
+
+            // for (Function &f : *dupMod_) {
+            //     for (BasicBlock &b : f) {
+            //         for (Instruction &i : b) {
+            //             for (auto iter = i.value_op_begin(); 
+            //                 iter != i.value_op_end();
+            //                 ++iter) {
+            //                 dVal.insert(*iter);
+            //                 over.insert(*iter);
+            //             }
+            //         }
+            //     }
+            // }
+
+            
+            // errs() << "ORIG: " << oVal.size() << " DUP: " << dVal.size() << 
+            //     " OVER: " << over.size() << " MAP:" << vMap_.size() <<"\n";
+
+            // assert(false && "dumb");
             // errs() << "ORIG: " << &module_ << " DUP: " << dupMod_.get() << "\n";
             // for (auto iter = vMap_.begin(); iter != vMap_.end(); ++iter) {
             //     auto *f = dyn_cast<Instruction>(iter->first);
@@ -955,6 +993,14 @@ BugFixer::BugFixer(llvm::Module &m, TraceInfo &ti)
             //         break;
             //     }
             // }
+
+            for (Function &f : module_) {
+                for (BasicBlock &b : f) {
+                    for (Instruction &i : b) {
+                        assert(vMap_[&i] && "check");
+                    }
+                }
+            }
             // assert(false && "dumb dumb");
 
             // Get all the functions used in the trace.
@@ -1030,11 +1076,11 @@ BugFixer::BugFixer(llvm::Module &m, TraceInfo &ti)
 
             errs() << nfn << ", remove " << toRemove.size() << "!\n";
 
-            // for (Function *f : toRemove) {
-            //     // Rather than actually removing the functions, we strip their
-            //     // contents.
-            //     f->deleteBody();
-            // }
+            for (Function *f : toRemove) {
+                // Rather than actually removing the functions, we strip their
+                // contents.
+                f->deleteBody();
+            }
 
             pmDesc_.reset(new PmDesc(*dupMod_));
 
@@ -1072,6 +1118,17 @@ BugFixer::BugFixer(llvm::Module &m, TraceInfo &ti)
 
     // errs() << "here?\n";
     // assert(false);
+
+    // if (TraceAlias) {
+    //     for (Function &f : module_) {
+    //         for (BasicBlock &b : f) {
+    //             for (Instruction &i : b) {
+    //                 assert(vMap_[&i] && "check 2");
+    //             }
+    //         }
+    //     }
+    // }
+
 }
 
 void BugFixer::addImmutableFunction(const std::string &fnName) {

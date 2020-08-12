@@ -378,7 +378,7 @@ Instruction *GenericFixGenerator::insertFlush(const FixLoc &fl) {
             errs() << "STORE:" << *si << "\n";
             addrExpr = si->getPointerOperand();
         } else if (auto *cx = dyn_cast<AtomicCmpXchgInst>(i)) {
-            errs() << "CMPXCHG:" << *si << "\n";
+            errs() << "CMPXCHG:" << *cx << "\n";
             addrExpr = cx->getPointerOperand();
         }
 
