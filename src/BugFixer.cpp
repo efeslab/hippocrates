@@ -5,6 +5,7 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/Transforms/Utils/Cloning.h"
 
 using namespace pmfix;
 using namespace llvm;
@@ -20,6 +21,9 @@ cl::opt<bool> ExtraDumb("extra-dumb", cl::desc("Use dumb PM mem functions"));
 
 cl::opt<std::string> SummaryFile("fix-summary-file", cl::init("fix_summary.txt"),
     cl::desc("Where to output the fix summary"));
+
+cl::opt<bool> TraceAlias("trace-aa", cl::init(false),
+    cl::desc("Use the trace based alias analysis instead of Andersen's"));
 
 #pragma region BugFixer
 
@@ -467,7 +471,7 @@ bool BugFixer::fixBug(FixGenerator *fixer, const FixLoc &fl, const FixDesc &desc
             ++summaryNum_;
 
             Instruction *n = fixer->insertPersistentSubProgram(
-                mapper_, fl, *desc.dynStack, desc.stackIdx);
+                mapper_, fl, desc.dynStack, desc.stackIdx);
             if (!n) {
                 errs() << "could not add persistent subprogram in ADD_PERSIST_CALLSTACK_OPT\n";
                 return false;
@@ -563,27 +567,75 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
                 pmAlias = heuristicCache_[loc].second;
 
             } else {
+                errs() << "Start!\n";
                 for (auto &fl : mapper_[loc]) {
                     for (Instruction *i : fl.insts()) {
                         for (auto iter = i->value_op_begin(); 
                             iter != i->value_op_end();
                             ++iter) {
                             Value *v = *iter;
-                            if (!v->getType()->isPointerTy()) continue;
+                            assert(v);
+                            if (!v->getType()->isPointerTy()) {
+                                errs() << "NO POINTERS:" << *v << "\n";
+                                continue;
+                            }
                             // Now, we need to figure out all the aliases.
+                            if (TraceAlias) {
+                                v = vMap_[*iter];
+                                if (!v) {
+                                    errs() << "OOPS" << **iter << "\n";
+                                    continue;
+                                }
+                            }
+                            
+                            errs() << "Made it!\n";
                             std::unordered_set<const llvm::Value *> ptsSet;
-                            pmDesc_->getPointsToSet(v, ptsSet);
+                            bool res = pmDesc_->getPointsToSet(v, ptsSet);
+                            // assert(res);
+                            // assert(!ptsSet.empty() && "can't make progress!");
+
                             size_t numPm = pmDesc_->getNumPmAliases(ptsSet);
                             size_t numVol = ptsSet.size() - numPm;
+
                             volAlias += numVol;
                             pmAlias += numPm;
+                            
                         }
-                    }
-                }
 
-                heuristicCache_[loc].first = volAlias;
-                heuristicCache_[loc].second = pmAlias;                
+                        
+                        // Value *v = i;
+                        // assert(v);
+                        // if (!v->getType()->isPointerTy()) {
+                        //     errs() << "NO POINTERS:" << *v << "\n";
+                        //     continue;
+                        // }
+                        // // Now, we need to figure out all the aliases.
+                        // if (TraceAlias) {
+                        //     v = vMap_[i];
+                        //     if (!v) {
+                        //         errs() << "OOPS" << *i << "\n";
+                        //         continue;
+                        //     }
+                        // }
+                        
+                        // errs() << "Made it!\n";
+                        // std::unordered_set<const llvm::Value *> ptsSet;
+                        // bool res = pmDesc_->getPointsToSet(v, ptsSet);
+                        // assert(res);
+                        // assert(!ptsSet.empty() && "can't make progress!");
+
+                        // size_t numPm = pmDesc_->getNumPmAliases(ptsSet);
+                        // size_t numVol = ptsSet.size() - numPm;
+
+                        // volAlias += numVol;
+                        // pmAlias += numPm;
+                           
+                    }
+                }            
             }
+
+            heuristicCache_[loc].first = volAlias;
+            heuristicCache_[loc].second = pmAlias; 
             
             errs() << loc.str() << "\n[" << l << "] VOL: " << volAlias << " PM: " << pmAlias << "\n";
 
@@ -641,13 +693,13 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
 
     if (idx > heuristicIdx) {
         errs() << "Heuristic discrepancy!\n";
-        for (const auto &li : *desc.dynStack) {
+        for (const auto &li : desc.dynStack) {
             errs() << li.str() << "\n";
         }
         errs() << "H: " << heuristicIdx << "; N: " << idx << "\n";
     } else {
         errs() << "Heuristic consistent!\n";
-        for (const auto &li : *desc.dynStack) {
+        for (const auto &li : desc.dynStack) {
             errs() << li.str() << "\n";
         }
         errs() << "H: " << heuristicIdx << "; N: " << idx << "\n";
@@ -864,7 +916,7 @@ const std::string BugFixer::immutableLibNames_[] = {"libc.so"};
 
 BugFixer::BugFixer(llvm::Module &m, TraceInfo &ti) 
     : module_(m), trace_(ti), mapper_(BugLocationMapper::getInstance(m)), 
-      pmDesc_(nullptr), summary_(SummaryFile.c_str()) {
+      pmDesc_(nullptr), dupMod_(nullptr), summary_(SummaryFile.c_str()) {
     for (const std::string &fnName : immutableFnNames_) {
         addImmutableFunction(fnName);
     }
@@ -874,15 +926,152 @@ BugFixer::BugFixer(llvm::Module &m, TraceInfo &ti)
     }
 
     if (EnableHeuristicRaising) {
-        pmDesc_.reset(new PmDesc(module_));
 
-        // Set values
-        for (auto &te : trace_.events()) {
-            for (auto *val : te.pmValues(mapper_)) {
-                pmDesc_->addKnownPmValue(val);
-            }    
+        if (TraceAlias) {
+
+            std::unique_ptr<Module> dupMod_ = llvm::CloneModule(module_, vMap_);
+
+            // for (Function &f : module_) {
+            //     for (BasicBlock &b : f) {
+            //         for (Instruction &i : b) {
+            //             for (auto iter = i.value_op_begin(); 
+            //                 iter != i.value_op_end();
+            //                 ++iter) {
+            //                 if (!vMap_.count(*iter)) {
+            //                     errs() << **iter << "\n";
+            //                     assert(false);
+            //                 }
+            //             }
+            //         }
+            //     }
+            // }
+            // errs() << "ORIG: " << &module_ << " DUP: " << dupMod_.get() << "\n";
+            // for (auto iter = vMap_.begin(); iter != vMap_.end(); ++iter) {
+            //     auto *f = dyn_cast<Instruction>(iter->first);
+            //     auto *s = dyn_cast<Instruction>(iter->second);
+            //     if (f && s) {
+            //         errs() << "FIRST:" << f->getModule() << "\n";
+            //         errs() << "SECOND:" << s->getModule() << "\n";
+            //         break;
+            //     }
+            // }
+            // assert(false && "dumb dumb");
+
+            // Get all the functions used in the trace.
+            unordered_set<Value*> used;
+            for (const TraceEvent &te : trace_.events()) {
+                for (const LocationInfo &li : te.callstack) {
+                    if (!mapper_.contains(li)) continue;
+
+                    for (const FixLoc &fl : mapper_[li]) {
+                        if (fl.insts().empty()) continue;
+
+                        Function *usedFn = fl.insts().front()->getFunction();
+                        Value *remap = vMap_[usedFn];
+                        assert(remap);
+                        used.insert(remap);
+
+                    }                    
+                }
+            }
+
+            while (true) {
+                errs() << "Currently " << used.size() << "\n";
+                unordered_set<Value*> next;
+                // Also add the users of the function as needed
+                for (auto *v : used) {
+                    for (auto *u : v->users()) {
+                        auto *i = dyn_cast<Instruction>(u);
+                        if (!i) continue;
+                        Function *f = i->getFunction();
+                        if (!f) continue;
+                        if (used.count(f)) continue;
+                        next.insert(f);
+                    }
+
+                    Instruction *i = dyn_cast<Instruction>(v);
+                    if (!i) continue;
+
+                    for (auto iter = i->value_op_begin(); iter != i->value_op_end(); ++iter) {
+                        Value *v = *iter;
+                        if (!v) continue;
+                        Function *f = dyn_cast<Function>(v);
+                        if (!f) continue;
+                        if (used.count(f)) continue;
+                        next.insert(f);
+                        assert(false && "needed");
+                    }
+                }
+                if (next.empty()) break;
+                errs() << "\tAdding " << next.size() << '\n';
+
+                used.insert(next.begin(), next.end());
+            }
+
+            list<Function*> toRemove;
+            
+            size_t nfn = 0;
+            for (Function &f : *dupMod_) {
+                nfn++;
+                if (!used.count(&f)) toRemove.push_back(&f);
+            }
+
+            // for (Function &f : module_) {
+            //     for (BasicBlock &b : f) {
+            //         for (Instruction &i : b) {
+            //             for (auto iter = i.value_op_begin(); 
+            //                 iter != i.value_op_end();
+            //                 ++iter) {
+            //                 assert(vMap_.count(*iter) && "wut wut");
+            //             }
+            //         }
+            //     }
+            // }
+
+            errs() << nfn << ", remove " << toRemove.size() << "!\n";
+
+            // for (Function *f : toRemove) {
+            //     // Rather than actually removing the functions, we strip their
+            //     // contents.
+            //     f->deleteBody();
+            // }
+
+            pmDesc_.reset(new PmDesc(*dupMod_));
+
+            errs() << "analysis done!\n";
+
+            // Set values
+            for (auto &te : trace_.events()) {
+                for (auto *val : te.pmValues(mapper_)) {
+                    Value *v = vMap_[val];
+                    errs() << "PMV: " << *v << "\n";
+                    assert(v && "can't be nullptr!");
+                    pmDesc_->addKnownPmValue(v);
+
+                    assert(pmDesc_->pointsToPm(v));
+                }    
+            }
+
+            errs() << "added pmv values!\n";
+            errs() << pmDesc_->str() << "\n";
+
+            // assert(false && "cool");
+
+        } else {
+            pmDesc_.reset(new PmDesc(module_));
+
+            // Set values
+            for (auto &te : trace_.events()) {
+                for (auto *val : te.pmValues(mapper_)) {
+                    pmDesc_->addKnownPmValue(val);
+                }    
+            }
         }
+        // errs() << "scoping\n";
     }
+
+    // errs() << "here?\n";
+    // assert(false);
 }
 
 void BugFixer::addImmutableFunction(const std::string &fnName) {

@@ -4,6 +4,7 @@
  */
 
 #include <unordered_set>
+#include <unordered_map>
 #include <fstream>
 
 #include "llvm/IR/Module.h"
@@ -13,6 +14,8 @@
 #include "FixGenerator.hpp"
 #include "BugReports.hpp"
 #include "FlowAnalyzer.hpp"
+
+#include "llvm/Transforms/Utils/Cloning.h"
 
 namespace pmfix {
 
@@ -29,6 +32,9 @@ private:
     TraceInfo &trace_;
     BugLocationMapper &mapper_;
     std::unique_ptr<PmDesc> pmDesc_;
+    // For trimming
+    llvm::ValueToValueMapTy vMap_;
+    std::unique_ptr<llvm::Module> dupMod_;
     std::ofstream summary_;
     size_t summaryNum_ = 0;
 
@@ -84,7 +90,7 @@ private:
      */
     struct FixDesc {
         FixType type;
-        const std::vector<LocationInfo> *dynStack;
+        std::vector<LocationInfo> dynStack;
         /**
          * Used for the callstack optimized version.
          */
@@ -98,15 +104,15 @@ private:
         /* Methods and constructors */
 
         FixDesc() 
-            : type(NO_FIX), dynStack(nullptr), stackIdx(0), 
+            : type(NO_FIX), dynStack(), stackIdx(0), 
             originals(), points() {}
         
         FixDesc(FixType t, const std::vector<LocationInfo> &l, int si=0) 
-            : type(t), dynStack(&l), stackIdx(si), originals(), points() {}
+            : type(t), dynStack(l), stackIdx(si), originals(), points() {}
         
         FixDesc(FixType t, const std::vector<LocationInfo> &l, 
                 const FixLoc &o, std::list<llvm::Instruction*> p) 
-            : type(t), dynStack(&l), stackIdx(0), originals(), points(p) {
+            : type(t), dynStack(l), stackIdx(0), originals(), points(p) {
                 originals.push_back(o);
             }
 

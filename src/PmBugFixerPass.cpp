@@ -56,6 +56,7 @@ struct PmBugFixerPass : public ModulePass {
         
         // Construct bug fixer
         BugFixer fixer(m, ti);
+        errs() << "fixer built!\n";
         for (const std::string &fnName : Immutables) {
             fixer.addImmutableFunction(fnName);
         } 

@@ -1,6 +1,9 @@
 install(PROGRAMS apply-fixer DESTINATION bin)
 configure_file(apply-fixer "${CMAKE_BINARY_DIR}/apply-fixer")
 
+install(PROGRAMS clean-functions DESTINATION bin)
+configure_file(clean-functions "${CMAKE_BINARY_DIR}/clean-functions")
+
 install(PROGRAMS remove-flushes DESTINATION bin)
 configure_file(remove-flushes "${CMAKE_BINARY_DIR}/remove-flushes")
 

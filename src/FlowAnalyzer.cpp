@@ -47,6 +47,12 @@ PmDesc::PmDesc(Module &m) {
     if (!anders_) {
         anders_ = std::make_shared<AndersenAAWrapperPass>();
         assert(!anders_->runOnModule(m) && "failed!");
+
+        std::vector<const llvm::Value *> allocSites;
+        anders_->getResult().getAllAllocationSites(allocSites);
+        assert(!allocSites.empty());
+        errs() << allocSites.size() << "\n";
+        // assert(false);
     }
     if (!cache_) {
         cache_ = std::make_shared<AndersenCache>();
@@ -56,12 +62,15 @@ PmDesc::PmDesc(Module &m) {
 void PmDesc::addKnownPmValue(Value *pmv) {
     std::unordered_set<const llvm::Value *> ptsSet;
     assert(getPointsToSet(pmv, ptsSet) && "could not get!");
+
     if (ptsSet.empty()) {
         // This happens for allocation sites I believe. 
         // -- inttoptr too
         ptsSet.insert(pmv);
     }
     assert(ptsSet.size() && "no points to!");
+
+    // for (const Value *v : ptsSet) errs() << "KPMVK:" << *v << "\n";
 
     if (isa<GlobalValue>(pmv)) pm_globals_.insert(ptsSet.begin(), ptsSet.end());
     else pm_locals_.insert(ptsSet.begin(), ptsSet.end());
@@ -100,6 +109,11 @@ bool PmDesc::pointsToPm(llvm::Value *pmv) {
     if (!res) {
         errs() << "COULD NOT GET: " << *pmv << "\n";
     }
+
+    if (ptsSet.empty()) {
+        ptsSet.insert(pmv);
+    }
+
     assert(res && "could not get!");
 
     size_t numPm = getNumPmAliases(ptsSet);
