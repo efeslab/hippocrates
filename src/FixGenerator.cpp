@@ -187,10 +187,14 @@ bool FixGenerator::makeAllStoresPersistent(llvm::Function *f) {
     for (BasicBlock &bb : *f) {
         for (Instruction &i : bb) {
             if (auto *cb = dyn_cast<CallBase>(&i)) {
-                Function *f = cb->getCalledFunction();
-                if (f->getIntrinsicID() == Intrinsic::dbg_declare) continue;
+                // Function *f = cb->getCalledFunction();
+                // if (!f) continue;
+                // if (f->getIntrinsicID() == Intrinsic::dbg_declare) continue;
+                // if (f->getName().find("_NT") != StringRef::npos) continue;
+
+                // recursePoints.push_back(cb);
                 
-                // errs() << "ERR:" << *cb << "\n";
+                // errs() << "REC:" << *cb << "\n";
                 // errs() << "FN:" << *f << "\n";
                 // assert(false && "not supported yet!");
                 // This should be okay. Just have to go down to the level that
@@ -258,6 +262,7 @@ bool FixGenerator::makeAllStoresPersistent(llvm::Function *f) {
     }
 
     if (flushPoints.empty()) {
+        errs() << "No flush points!\n";
         return false;
     }
 

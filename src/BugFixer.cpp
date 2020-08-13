@@ -198,13 +198,16 @@ bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
             assert(mapper_[last.location].size() && "can't have no instructions!");
             for (const FixLoc &fLoc : mapper_[last.location]) {
                 for (Instruction *i : fLoc.insts()) {
-                    // errs() << "\t\tInstruction : " << *i << "\n";
+                    errs() << "\t\tInstruction : " << *i << "\n";
                     if (!isa<StoreInst>(i) && !isa<AtomicCmpXchgInst>(i)) {
                         // errs() << "\t\tNot a store instruction!\n";
                         continue;
                     }
 
                     FixLoc loc(i, i, fLoc.dbgLoc);
+                    assert(loc.isValid());
+                    errs() << "OG: " << fLoc.str() << "\n";
+                    errs() << "CP: " << loc.str() << "\n";
                                 
                     bool multiline = !last.addresses.front().isSingleCacheLine();
                     assert(!multiline && 
@@ -556,7 +559,10 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
 
         for (int l = 0; l < stack.size(); ++l) {
             auto &loc = stack[l];
-            if (!mapper_.contains(loc)) continue;
+            if (!mapper_.contains(loc)) {
+                if (minIdx < 0) minIdx = l + 1;
+                continue;
+            }
             
             size_t volAlias = 0;
             size_t pmAlias = 0;
@@ -567,31 +573,46 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
                 pmAlias = heuristicCache_[loc].second;
 
             } else {
-                errs() << "Start!\n";
+                // errs() << "Start!\n";
                 
-                if (TraceAlias) {
-                    for (Instruction *i : mapper_.insts(loc)) {
-                        assert(vMap_[i] && "is this it?");
-                    }
+                // if (TraceAlias) {
+                //     for (Instruction *i : mapper_.insts(loc)) {
+                //         assert(vMap_[i] && "is this it?");
+                //     }
 
-                    for (auto &fl : mapper_[loc]) {
-                        for (Instruction *i : fl.insts()) {
-                            assert(vMap_[i] && "is this it?");
-                        }
-                    }
-                }
+                //     for (auto &fl : mapper_[loc]) {
+                //         for (Instruction *i : fl.insts()) {
+                //             assert(vMap_[i] && "is this it?");
+                //         }
+                //     }
+                // }
 
                 for (auto &fl : mapper_[loc]) {
                     for (Instruction *inst : fl.insts()) {
 
                         Instruction *i = inst;
                         if (TraceAlias) {
-                            
                             Value *v = vMap_[inst];
-                            if (!v) errs() << *i << "\n";
+                            // if (!v) errs() << *i << "\n";
                             assert(v);
                             i = dyn_cast<Instruction>(v);
                             assert(i);
+                        }
+
+                        /** Skip conditions **/
+                        if (auto *cb = dyn_cast<CallBase>(i)) {
+                            Function *f = cb->getCalledFunction();
+
+                            if (f && !f->isDeclaration() && 
+                                f->getIntrinsicID() == Intrinsic::not_intrinsic) {
+                                errs() << "CB SKIP" << *cb << "\n";
+                                continue;
+                            }
+                        } else if (!isa<StoreInst>(i) && 
+                            !isa<AtomicCmpXchgInst>(i)) {
+                            errs() << "SKIP" << *i << "\n";
+                            // assert(false);
+                            continue;
                         }
 
                         for (auto iter = i->value_op_begin(); 
@@ -600,13 +621,13 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
                             Value *v = *iter;
                             assert(v);
                             if (!v->getType()->isPointerTy()) {
-                                errs() << "NO POINTERS:" << *v << "\n";
+                                // errs() << "NO POINTERS:" << *v << "\n";
                                 continue;
                             }
                             
                             // Now, we need to figure out all the aliases.
                         
-                            errs() << "Made it!\n";
+                            // errs() << "Made it!\n";
                             std::unordered_set<const llvm::Value *> ptsSet;
                             bool res = pmDesc_->getPointsToSet(v, ptsSet);
                             // assert(res);
@@ -656,13 +677,16 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
             heuristicCache_[loc].second = pmAlias; 
             
             errs() << loc.str() << "\n[" << l << "] VOL: " << volAlias << " PM: " << pmAlias << "\n";
+            errs() << loc.str() << "\t[" << minIdx << "] VOL: " << minVolAlias << " PM: " << maxPmAlias << "\n";
 
-            if (volAlias < minVolAlias && pmAlias > maxPmAlias) {
+            if (volAlias < minVolAlias && pmAlias >= maxPmAlias) {
+                errs() << "\tUpdated!\n";
                 minIdx = l;
                 minVolAlias = volAlias;
                 maxPmAlias = pmAlias;
             }
         }
+        
         assert(minIdx >= 0 && "didn't do anything!");
 
         heuristicIdx = minIdx;
@@ -672,6 +696,8 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
 
     int idx = heuristicIdx;
     assert(idx >= 0 && "doesn't work otherwise!");
+
+    // errs() << "idx=" << idx << " stacksz=" << stack.size() << "\n";
 
     while (idx < stack.size()) {
         if (!startInst && !mapper_.contains(stack[idx])) {
@@ -706,6 +732,7 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
     bool success = false;
     if (raised) {
         auto desc = FixDesc(ADD_PERSIST_CALLSTACK_OPT, stack, idx);
+        assert(curr && "cannot be null!");
         success = addFixToMapping(*curr, desc);
     }
 
@@ -1090,11 +1117,11 @@ BugFixer::BugFixer(llvm::Module &m, TraceInfo &ti)
             for (auto &te : trace_.events()) {
                 for (auto *val : te.pmValues(mapper_)) {
                     Value *v = vMap_[val];
-                    errs() << "PMV: " << *v << "\n";
+                    // errs() << "PMV: " << *v << "\n";
                     assert(v && "can't be nullptr!");
                     pmDesc_->addKnownPmValue(v);
 
-                    assert(pmDesc_->pointsToPm(v));
+                    // assert(pmDesc_->pointsToPm(v));
                 }    
             }
 

@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
 
 from argparse import ArgumentParser
+from copy import deepcopy
 from IPython import embed
 from pathlib import Path
 from progress.bar import ChargingBar as Bar
@@ -31,6 +32,10 @@ class RedisServer:
 
         self.dir = dir
         self.config_file = config_file
+
+        self.env = deepcopy(os.environ)
+        # Some PMDK defs.
+        self.env['PMEM_NO_MOVNT'] = '1'
 
         # We should find the pmfile in the config_file
         with config_file.open() as f:
@@ -91,6 +96,7 @@ class RedisServer:
         yield 'redis-server-repair'
         yield 'redis-server'
         yield 'redis-server-noflush'
+        yield 'redis-server-heuristic'
 
 
 class YCSBRunner:
@@ -151,9 +157,9 @@ def run_experiment(redis, ycsb, server, workload, trial, df):
     load_tp = ycsb.load(workload)
     run_tp = ycsb.run(workload)
 
-    load_data = {'Workload': workload, 'Command': 'load', 
+    load_data = {'Server': server, 'Workload': workload, 'Command': 'load', 
                  'Trial': trial, 'Throughput': load_tp}
-    run_data = {'Workload': workload, 'Command': 'run', 
+    run_data = {'Server': server, 'Workload': workload, 'Command': 'run', 
                 'Trial': trial, 'Throughput': run_tp}
 
     x = df.append(load_data, ignore_index=True)
@@ -165,7 +171,7 @@ def run_experiment(redis, ycsb, server, workload, trial, df):
 
 def run(args):
 
-    df = pd.DataFrame(columns=['Command', 'Workload', 'Trial', 'Throughput'])
+    df = pd.DataFrame(columns=['Server', 'Command', 'Workload', 'Trial', 'Throughput'])
 
     redis = RedisServer(args.redis_directory, args.config_file)
     ycsb = YCSBRunner(args.ycsb_directory)
@@ -197,6 +203,7 @@ def main():
                         default=Path(r'${CMAKE_SOURCE_DIR}/deps/redis-eval.conf'))
     parser.add_argument('--trials', '-t', type=int, help='number of trials',
                         default=10)
+    parser.add_argument('--servers', '-s', type=str, nargs='+')
 
     args = parser.parse_args()
     assert args.config_file.exists(), f'{str(args.config_file)} does not exist!'

@@ -392,7 +392,7 @@ Value *getGenericPmValues(const BugLocationMapper &mapper, const FixLoc &fLoc) {
                     auto *ia = dyn_cast<InlineAsm>(ci->getCalledValue());
                     assert(ia);
                     auto str = ia->getAsmString();
-                    errs() << str << "\n";
+                    // errs() << str << "\n";
                     if (str == ".byte 0x66; xsaveopt $0") {
                         isFlushAsm = true;
                     } 
@@ -410,7 +410,7 @@ Value *getGenericPmValues(const BugLocationMapper &mapper, const FixLoc &fLoc) {
              * This could be a VALGRIND_DO_FLUSH, so we should
              * see if there's the magic number for the request.
              */
-            errs() << *si << "\n";
+            // errs() << *si << "\n";
             Value *v = si->getValueOperand();
             if (auto *ci = dyn_cast<ConstantInt>(v)) {
                 if (ci->getZExtValue() == 1346568197) {
@@ -470,7 +470,7 @@ std::list<Value*> TraceEvent::pmValues(const BugLocationMapper &mapper) const {
     // }
 
     for (auto &fLoc : mapper[location]) {
-        errs() << fLoc.str() << "\n";
+        // errs() << fLoc.str() << "\n";
         switch (source) {
             case PMTEST: {
                 switch (type) {
