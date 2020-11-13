@@ -539,6 +539,9 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
      * too high.
      * - We'll need all the PM values in the program. We want to know the number
      * of overall aliases and the number which can be PM values.
+     * 
+     * Update:
+     * - We need to correlate the fix location with the input arguments
      */
     const std::vector<LocationInfo> &stack = desc.dynStack;
     assert(!stack.empty() && "doesn't make sense!");
@@ -551,41 +554,28 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
      * aliases and maximum PM aliases.
      */
     if (EnableHeuristicRaising) {
-        // assert(false && "time me!");
+        errs() << "\n\nHeuristic time!!!\n\n";
         // Now, we need to find the point of minimal aliasing
-        int minIdx = -1;
-        size_t minVolAlias = UINT64_MAX;
-        size_t maxPmAlias = 0;
+        // Score = pmAlias - volAlias
+        std::vector<int64_t> scores;
+        scores.resize(stack.size());
 
         for (int l = 0; l < stack.size(); ++l) {
             auto &loc = stack[l];
             if (!mapper_.contains(loc)) {
-                if (minIdx < 0) minIdx = l + 1;
+                scores[l] = INT64_MIN;
                 continue;
             }
             
-            size_t volAlias = 0;
-            size_t pmAlias = 0;
+            int64_t volAlias = 0;
+            int64_t pmAlias = 0;
 
             if (heuristicCache_.count(loc)) {
-                errs() << "H-Cache hit!\n";
+                // errs() << "H-Cache hit!\n";
                 volAlias = heuristicCache_[loc].first;
                 pmAlias = heuristicCache_[loc].second;
 
             } else {
-                // errs() << "Start!\n";
-                
-                // if (TraceAlias) {
-                //     for (Instruction *i : mapper_.insts(loc)) {
-                //         assert(vMap_[i] && "is this it?");
-                //     }
-
-                //     for (auto &fl : mapper_[loc]) {
-                //         for (Instruction *i : fl.insts()) {
-                //             assert(vMap_[i] && "is this it?");
-                //         }
-                //     }
-                // }
 
                 for (auto &fl : mapper_[loc]) {
                     for (Instruction *inst : fl.insts()) {
@@ -603,14 +593,21 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
                         if (auto *cb = dyn_cast<CallBase>(i)) {
                             Function *f = cb->getCalledFunction();
 
-                            if (f && !f->isDeclaration() && 
-                                f->getIntrinsicID() == Intrinsic::not_intrinsic) {
-                                errs() << "CB SKIP" << *cb << "\n";
+                            // Only skip if its a non-memcpy intrinsic
+                            // if (f && !f->isDeclaration() && 
+                            //     f->getIntrinsicID() == Intrinsic::not_intrinsic &&
+                            //     ) {
+                            //     errs() << "CB SKIP" << *cb << "\n";
+                            //     continue;
+                            // }
+                            if (f && f->getIntrinsicID() != Intrinsic::memset 
+                                && f->getIntrinsicID() != Intrinsic::memcpy
+                                && f->getIntrinsicID() != Intrinsic::memmove) {
                                 continue;
                             }
                         } else if (!isa<StoreInst>(i) && 
                             !isa<AtomicCmpXchgInst>(i)) {
-                            errs() << "SKIP" << *i << "\n";
+                            // errs() << "SKIP" << *i << "\n";
                             // assert(false);
                             continue;
                         }
@@ -636,38 +633,13 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
                             size_t numPm = pmDesc_->getNumPmAliases(ptsSet);
                             size_t numVol = ptsSet.size() - numPm;
 
+                            // If it's all volatile, then it's irrelevant
+                            if (!numPm) continue;
+
                             volAlias += numVol;
                             pmAlias += numPm;
                             
                         }
-
-                        
-                        // Value *v = i;
-                        // assert(v);
-                        // if (!v->getType()->isPointerTy()) {
-                        //     errs() << "NO POINTERS:" << *v << "\n";
-                        //     continue;
-                        // }
-                        // // Now, we need to figure out all the aliases.
-                        // if (TraceAlias) {
-                        //     v = vMap_[i];
-                        //     if (!v) {
-                        //         errs() << "OOPS" << *i << "\n";
-                        //         continue;
-                        //     }
-                        // }
-                        
-                        // errs() << "Made it!\n";
-                        // std::unordered_set<const llvm::Value *> ptsSet;
-                        // bool res = pmDesc_->getPointsToSet(v, ptsSet);
-                        // assert(res);
-                        // assert(!ptsSet.empty() && "can't make progress!");
-
-                        // size_t numPm = pmDesc_->getNumPmAliases(ptsSet);
-                        // size_t numVol = ptsSet.size() - numPm;
-
-                        // volAlias += numVol;
-                        // pmAlias += numPm;
                            
                     }
                 }            
@@ -677,19 +649,33 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
             heuristicCache_[loc].second = pmAlias; 
             
             errs() << loc.str() << "\n[" << l << "] VOL: " << volAlias << " PM: " << pmAlias << "\n";
-            errs() << loc.str() << "\t[" << minIdx << "] VOL: " << minVolAlias << " PM: " << maxPmAlias << "\n";
+            // errs() << loc.str() << "\t[" << minIdx << "] VOL: " << minVolAlias << " PM: " << maxPmAlias << "\n";
 
-            if (volAlias < minVolAlias && pmAlias >= maxPmAlias) {
-                errs() << "\tUpdated!\n";
-                minIdx = l;
-                minVolAlias = volAlias;
-                maxPmAlias = pmAlias;
-            }
+            // Rebuttal: do we need this?
+            //if (volAlias < minVolAlias && pmAlias >= maxPmAlias) {
+            // if (volAlias < minVolAlias) {
+            //     errs() << "\tUpdated!\n";
+            //     minIdx = l;
+            //     minVolAlias = volAlias;
+            //     maxPmAlias = pmAlias;
+            // }
+            int64_t score = pmAlias - volAlias;
+            scores[l] = score;
         }
-        
-        assert(minIdx >= 0 && "didn't do anything!");
 
-        heuristicIdx = minIdx;
+        // Now, find the minIdx
+        int64_t maxIdx = -1;
+        int64_t maxScore = INT64_MIN;
+        for (int l = 0; l < scores.size(); ++l) {
+            if (scores[l] > maxScore) {
+                maxScore = scores[l];
+                maxIdx = l;
+            }
+        } 
+        
+        assert(maxIdx >= 0 && "didn't do anything!");
+
+        heuristicIdx = maxIdx;
         if (heuristicIdx > 0) raised = true;
     }
 

@@ -639,8 +639,8 @@ void TraceInfoBuilder::resolveLocations(TraceEvent &te) {
         LocationInfo &caller = stack[i];
         LocationInfo &callee = stack[i-1];
 
-        // errs() << "\nCALLER: " << caller.str() << "\n";
-        // errs() << "CALLEE: " << callee.str() << "\n";
+        // errs() << "\nCALLER [" << i << "]: " << caller.str() << "\n";
+        // errs() << "CALLEE [" << (i-1) <<"]: " << callee.str() << "\n";
         
         if (!caller.valid() || !mapper_.contains(caller)) {
             // errs() << "SKIP: " << caller.valid() << " " << 

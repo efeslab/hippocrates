@@ -263,9 +263,12 @@ bool FixGenerator::makeAllStoresPersistent(llvm::Function *f) {
 
     if (flushPoints.empty()) {
         errs() << "No flush points!\n";
-        return false;
+        // This is not necessarily an error, it just means this function doesn't
+        // have any direct stores.
+        // return false;
     }
 
+    #if 0
     for (auto *ri : fencePoints) {
         Instruction *insertAt = ri->getPrevNonDebugInstruction();
         if (!insertAt) {
@@ -274,7 +277,8 @@ bool FixGenerator::makeAllStoresPersistent(llvm::Function *f) {
         }
         auto *fi = insertFence(insertAt);
         assert(fi && "unable to insert fence!");
-    } 
+    }
+    #endif
   
     
     return true;
@@ -571,6 +575,11 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
             }  
         }
     }
+    
+    // Now, we add the fence after the call instruction to make sure everything
+    // was persisted.
+    auto *fi = insertFence(retInst);
+    assert(fi && "unable to insert fence!");
 
     return retInst;
 }
