@@ -1,4 +1,5 @@
 from argparse import ArgumentParser
+from copy import deepcopy
 from enum import Enum, auto
 from pathlib import Path
 from IPython import embed
@@ -135,8 +136,37 @@ class BugReport:
         self._add_internal(**te)
 
     def _optimize(self):
-        ''' Remove everything that isn't related to a bug. '''
+        ''' 
+            Do a few things:
+            1. Remove redundant bugs first.
+            2. Remove everything that isn't related to a bug. 
+        '''
         is_bug = lambda x: x['event'] in ['ASSERT_PERSISTED', 'ASSERT_ORDERED', 'REQUIRED_FLUSH']
+
+        # Step 1: Remove redundancies.
+        unique_bugs = []
+        new_trace = []
+        for te in self.trace:
+            if not is_bug(te):
+                new_trace += [te]
+                continue
+
+            is_unique = True
+            for bug in unique_bugs:
+                if te['stack'] == bug['stack']:
+                    is_unique = False
+                    break
+
+            if is_unique:
+                unique_bugs += [te]
+                new_trace += [te]
+
+    
+        print(f'(Step 1) Optimized from {len(self.trace)} trace events to {len(new_trace)} trace events.')
+        self.trace = new_trace
+
+
+        # Step 2: Remove junk
         bugs = [x for x in self.trace if is_bug(x)]
         bug_addresses = []
         for bug in bugs:
@@ -165,9 +195,11 @@ class BugReport:
                         break
 
             prev_te = te
-                    
-        print(f'Optimized from {len(self.trace)} trace events to {len(new_trace)} trace events.')
+
+        print(f'(Step 2) Optimized from {len(self.trace)} trace events to {len(new_trace)} trace events.')
         self.trace = new_trace
+
+        
     
     def dump(self):
         self._validate_metadata()
