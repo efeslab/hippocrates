@@ -39,7 +39,8 @@ private:
     size_t summaryNum_ = 0;
 
     std::unordered_map<LocationInfo,
-                       std::pair<int64_t, int64_t>,
+                       std::pair<std::unordered_set<const llvm::Value *>, 
+                                 std::unordered_set<const llvm::Value *>>,
                        LocationInfo::Hash> heuristicCache_;
 
     /**

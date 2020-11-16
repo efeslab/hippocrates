@@ -670,9 +670,9 @@ void TraceInfoBuilder::resolveLocations(TraceEvent &te) {
         for (auto &fLoc : mapper_[caller]) {
             assert(fLoc.isValid() && "wat");
             // errs() << "START LOC: \n";
-            // errs() << *fLoc.insts().front()->getFunction() << "\n";
+            // errs() << "\tFUNC NAME: "<< fLoc.insts().front()->getFunction()->getName() << "\n";
             for (Instruction *inst : fLoc.insts()) {
-                // errs() << *inst << "\n";
+                errs() << *inst << "\n";
                 if (auto *cb = dyn_cast<CallBase>(inst)) {
                     // errs() << *inst << "\n";
                     Function *f = cb->getCalledFunction();

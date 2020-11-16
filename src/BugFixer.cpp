@@ -567,8 +567,11 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
                 continue;
             }
             
-            int64_t volAlias = 0;
-            int64_t pmAlias = 0;
+            // int64_t volAlias = 0;
+            // int64_t pmAlias = 0;
+
+            // iangneal: We want unique aliases
+            std::unordered_set<const llvm::Value *> volAlias, pmAlias;
 
             if (heuristicCache_.count(loc)) {
                 // errs() << "H-Cache hit!\n";
@@ -597,10 +600,11 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
                             // if (f && !f->isDeclaration() && 
                             //     f->getIntrinsicID() == Intrinsic::not_intrinsic &&
                             //     ) {
-                            //     errs() << "CB SKIP" << *cb << "\n";
+                                // errs() << "CB SKIP" << *cb << "\n";
                             //     continue;
                             // }
-                            if (f && f->getIntrinsicID() != Intrinsic::memset 
+                            if (f && f->getIntrinsicID() != Intrinsic::not_intrinsic
+                                && f->getIntrinsicID() != Intrinsic::memset 
                                 && f->getIntrinsicID() != Intrinsic::memcpy
                                 && f->getIntrinsicID() != Intrinsic::memmove) {
                                 continue;
@@ -634,10 +638,20 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
                             size_t numVol = ptsSet.size() - numPm;
 
                             // If it's all volatile, then it's irrelevant
-                            if (!numPm) continue;
+                            if (!numPm) {
+                                // errs() << "ALL VOLATILE: " << *v << numVol << "\n";
+                                continue;
+                            }  
 
-                            volAlias += numVol;
-                            pmAlias += numPm;
+                            errs() << "\t" << *v << numVol << " " << numPm << "\n";
+
+                            // volAlias += numVol;
+                            // pmAlias += numPm;
+
+                            for (const auto val : ptsSet) {
+                                if (pmDesc_->pointsToPm(const_cast<Value*>(val))) pmAlias.insert(val);
+                                else volAlias.insert(val);
+                            }
                             
                         }
                            
@@ -648,7 +662,7 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
             heuristicCache_[loc].first = volAlias;
             heuristicCache_[loc].second = pmAlias; 
             
-            errs() << loc.str() << "\n[" << l << "] VOL: " << volAlias << " PM: " << pmAlias << "\n";
+            errs() << loc.str() << "\n[" << l << "] VOL: " << volAlias.size() << " PM: " << pmAlias.size() << "\n";
             // errs() << loc.str() << "\t[" << minIdx << "] VOL: " << minVolAlias << " PM: " << maxPmAlias << "\n";
 
             // Rebuttal: do we need this?
@@ -659,7 +673,7 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
             //     minVolAlias = volAlias;
             //     maxPmAlias = pmAlias;
             // }
-            int64_t score = pmAlias - volAlias;
+            int64_t score = pmAlias.size() - volAlias.size();
             scores[l] = score;
         }
 
@@ -667,6 +681,7 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
         int64_t maxIdx = -1;
         int64_t maxScore = INT64_MIN;
         for (int l = 0; l < scores.size(); ++l) {
+            errs() << "[" << l << "] Score: " << scores[l] << "\n";
             if (scores[l] > maxScore) {
                 maxScore = scores[l];
                 maxIdx = l;
