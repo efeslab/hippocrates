@@ -60,7 +60,7 @@ PmDesc::PmDesc(Module &m) {
 }
 
 void PmDesc::addKnownPmValue(Value *pmv) {
-    std::unordered_set<const llvm::Value *> ptsSet;
+    std::unordered_set<const llvm::Value *> ptsSet, filtered;
     assert(getPointsToSet(pmv, ptsSet) && "could not get!");
 
     if (ptsSet.empty()) {
@@ -70,10 +70,18 @@ void PmDesc::addKnownPmValue(Value *pmv) {
     }
     assert(ptsSet.size() && "no points to!");
 
-    // for (const Value *v : ptsSet) errs() << "KPMVK:" << *v << "\n";
+    for (const Value *v : ptsSet) {
+        if (isa<AllocaInst>(v)) continue;
+        if (isa<Function>(v)) continue;
+        if (isa<Constant>(v)) continue;
+        // errs() << "KPMVK:" << *v << "\n";
+        filtered.insert(v);
+    }
 
-    if (isa<GlobalValue>(pmv)) pm_globals_.insert(ptsSet.begin(), ptsSet.end());
-    else pm_locals_.insert(ptsSet.begin(), ptsSet.end());
+    // We also need to filter the ptsSet to not include allocas, those are always volatile
+
+    if (isa<GlobalValue>(pmv)) pm_globals_.insert(filtered.begin(), filtered.end());
+    else pm_locals_.insert(filtered.begin(), filtered.end());
 }
 
 size_t PmDesc::getNumPmAliases(

@@ -170,10 +170,10 @@ Function *FixGenerator::duplicateFunction(Function *f, std::string postFix) {
     Function *fNew = llvm::CloneFunction(f, vmap);
     fNew->setName(f->getName() + postFix);
     assert(fNew && "what");
-    for (auto &bb : *f) errs() << "Old " << &bb << "\n";
-    for (auto &bb : *fNew) errs() << "New " << &bb << "\n";
-    errs() << *f << "\n";
-    errs() << *fNew << "\n";
+    // for (auto &bb : *f) errs() << "Old " << &bb << "\n";
+    // for (auto &bb : *fNew) errs() << "New " << &bb << "\n";
+    // errs() << *f << "\n";
+    // errs() << *fNew << "\n";
     return fNew;
 }
 
@@ -542,7 +542,7 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
         Function *fn = currInst->getFunction();
         Function *pmFn = duplicateFunction(fn);
 
-        // Now, we need to 
+        // Now, we need to make all of the stores flushed
         bool successful = makeAllStoresPersistent(pmFn);
         assert(successful && "failed to make persistent!");
 

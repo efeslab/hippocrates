@@ -57,6 +57,10 @@ function(check_wllvm)
     if (NOT DEFINED ENV{LLVM_COMPILER} OR NOT DEFINED ENV{LLVM_COMPILER_PATH})
         message(FATAL_ERROR "Must set LLVM_COMPILER and LLVM_COMPILER_PATH environment variables")
     endif()
+
+    # Cache for pytools
+    set(C_WLLVM ${C_WLLVM} CACHE INTERNAL "")
+    set(CXX_WLLVM ${CXX_WLLVM} CACHE INTERNAL "")
 endfunction()
 
 set(FUNCTION_FILES "${CMAKE_SOURCE_DIR}/cmake/add_test_executable.cmake" 

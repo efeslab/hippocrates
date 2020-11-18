@@ -70,7 +70,7 @@ bool BugFixer::addFixToMapping(const FixLoc &fl, FixDesc desc) {
         return true;
     }
  
-    errs() << "NEW: " << desc.type << " OLD: " << fixMap_[fl].type << "\n";
+    // errs() << "NEW: " << desc.type << " OLD: " << fixMap_[fl].type << "\n";
 
     assert(false && "what");
 
@@ -560,6 +560,8 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
         std::vector<int64_t> scores;
         scores.resize(stack.size());
 
+        const int64_t NO_ALIASES = INT64_MIN + 1;
+
         for (int l = 0; l < stack.size(); ++l) {
             auto &loc = stack[l];
             if (!mapper_.contains(loc)) {
@@ -609,6 +611,17 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
                                 && f->getIntrinsicID() != Intrinsic::memmove) {
                                 continue;
                             }
+
+                            // Function pointers are a bit evil to me at the 
+                            // moment.
+                            if (!f) {
+                                errs() << "\t" << *i << "\n";
+                                errs() << "Function pointer! ABORT ALL!\n";
+                                volAlias.clear();
+                                pmAlias.clear();
+                                goto end;
+                            }
+
                         } else if (!isa<StoreInst>(i) && 
                             !isa<AtomicCmpXchgInst>(i)) {
                             // errs() << "SKIP" << *i << "\n";
@@ -616,15 +629,18 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
                             continue;
                         }
 
+                        errs() << "EXAMINE: " << *i << "\n";
+
                         for (auto iter = i->value_op_begin(); 
                             iter != i->value_op_end();
                             ++iter) {
                             Value *v = *iter;
-                            assert(v);
-                            if (!v->getType()->isPointerTy()) {
+                            assert(v);  
+                            if (!v->getType()->isPointerTy() || isa<Function>(v)) {
                                 // errs() << "NO POINTERS:" << *v << "\n";
                                 continue;
                             }
+                            errs() << "\tCheck " << *v << "\n";
                             
                             // Now, we need to figure out all the aliases.
                         
@@ -632,18 +648,29 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
                             std::unordered_set<const llvm::Value *> ptsSet;
                             bool res = pmDesc_->getPointsToSet(v, ptsSet);
                             // assert(res);
+                            if (ptsSet.empty() && !isa<Function>(v)) {
+                                errs() << "\t\tNO PTS TO\n";
+                                // errs() << "\t\tPoints? " << pmDesc_->pointsToPm(v) << "\n";
+                                if (pmDesc_->pointsToPm(v)) pmAlias.insert(v);
+                                else volAlias.insert(v);
+
+                                errs() << loc.str() << "\t\t\t[" << l << "] VOL: " << volAlias.size() << " PM: " << pmAlias.size() << "\n";
+                                continue;
+                            } else if (ptsSet.empty()) {
+                                errs() << loc.str() << " wut " << isa<Function>(v) << "\n";
+                            }
                             // assert(!ptsSet.empty() && "can't make progress!");
 
                             size_t numPm = pmDesc_->getNumPmAliases(ptsSet);
                             size_t numVol = ptsSet.size() - numPm;
 
-                            // If it's all volatile, then it's irrelevant
-                            if (!numPm) {
-                                // errs() << "ALL VOLATILE: " << *v << numVol << "\n";
-                                continue;
-                            }  
+                            // // If it's all volatile, then it's irrelevant
+                            // if (!numPm) {
+                            //     // errs() << "ALL VOLATILE: " << *v << numVol << "\n";
+                            //     continue;
+                            // }  
 
-                            errs() << "\t" << *v << numVol << " " << numPm << "\n";
+                            errs() << "\tResult: " << *v << "; <" << numVol << ", " << numPm << ">\n";
 
                             // volAlias += numVol;
                             // pmAlias += numPm;
@@ -658,6 +685,8 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
                     }
                 }            
             }
+
+            end:
 
             heuristicCache_[loc].first = volAlias;
             heuristicCache_[loc].second = pmAlias; 
@@ -674,13 +703,19 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
             //     maxPmAlias = pmAlias;
             // }
             int64_t score = pmAlias.size() - volAlias.size();
-            scores[l] = score;
+            if (!pmAlias.size() && !volAlias.size()) scores[l] = NO_ALIASES;
+            else scores[l] = score;
         }
 
         // Now, find the minIdx
         int64_t maxIdx = -1;
         int64_t maxScore = INT64_MIN;
         for (int l = 0; l < scores.size(); ++l) {
+            if (scores[l] == NO_ALIASES) {
+                errs() << "[" << l << "] Score: NO ALIAS, abort!\n";
+                break;
+            }
+
             errs() << "[" << l << "] Score: " << scores[l] << "\n";
             if (scores[l] > maxScore) {
                 maxScore = scores[l];

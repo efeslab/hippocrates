@@ -7,6 +7,7 @@ from tempfile import TemporaryDirectory
 
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 import yaml
@@ -37,6 +38,10 @@ def run_pass_and_compile(args):
     if not llvm_path.exists():
         raise Exception(f'LLVM_COMPILER_PATH="{str(llvm_path)}"" does not exist!')
 
+    bitcode_out = None
+    if args.save_bitcode:
+        bitcode_out = args.output_binary.with_suffix('.bc')
+
     # Do some setup before we create the temporary directory
 
     # 1. opt to run the remover
@@ -55,17 +60,22 @@ def run_pass_and_compile(args):
     llc_arg_str_fn = lambda bc: f'{str(llc_exe)} {llc_arg_str} {str(bc)}'
 
     # 3. clang to compile the assembly file and link libraries.
-    clang_exe = llvm_path / 'clang'
-    if args.cxx:
-        clang_exe = llvm_path / 'clang++'
+    if args.clang:
+        clang_exe = llvm_path / 'clang'
+        if args.cxx:
+            clang_exe = llvm_path / 'clang++'
+    else:
+        clang_exe = Path(shutil.which('wllvm'))
+        if args.cxx:
+            clang_exe = Path(shutil.which('wllvm++'))
 
     assert(clang_exe.exists())
     cc_arg_str = '-g -O0'
 
     clang_arg_str_fn = lambda asm: (f'{str(clang_exe)} {cc_arg_str} {str(asm)}'
-                f' {get_linker_strings()} -o {str(args.output_file)}')
+                f' {get_linker_strings()} -o {str(args.output_binary)}')
     
-    def do_all(tempdir, output_file):
+    def do_all(tempdir, output_file, bitcode_out):
         temppath = Path(tempdir)
         assert(temppath.exists())
 
@@ -75,6 +85,8 @@ def run_pass_and_compile(args):
         ret = subprocess.run(args)
         ret.check_returncode()
         assert bitcode_opt.exists(), 'nonsense!'
+        if bitcode_out is not None:
+            shutil.copyfile(bitcode_opt, bitcode_out)
         
         # 2. Compile to machine code
         args = shlex.split(llc_arg_str_fn(bitcode_opt))
@@ -91,10 +103,10 @@ def run_pass_and_compile(args):
 
     if not args.keep_files:
         with TemporaryDirectory() as tempdir:
-            do_all(tempdir, args.output_file)
+            do_all(tempdir, args.output_binary, bitcode_out)
     else:
-        print(f'Not writing to temp dir, instead to {str(args.output_file.parent)}')
-        do_all(args.output_file.parent, args.output_file)
+        print(f'Not writing to temp dir, instead to {str(args.output_binary.parent)}')
+        do_all(args.output_binary.parent, args.output_binary, bitcode_out)
         
 
 
@@ -102,12 +114,16 @@ def main():
     parser = ArgumentParser(description='Apply the flush-remover LLVM pass to a given binary.')
 
     parser.add_argument('bitcode_file', type=Path, help='The bitcode of the program that needs to be fixed')
-    parser.add_argument('--output-file', '-o', type=Path, default=Path('a.out'), 
+    parser.add_argument('--output-binary', '-o', type=Path, default=Path('a.out'), 
                         help='Optional output of where to put the compiled binary.')
+    parser.add_argument('--save-bitcode', '-s', action='store_true', default=False,
+                        help='Save the bitcode file as well.')
     parser.add_argument('--keep-files', '-k', action='store_true', default=False,
                         help='Doesn\'t delete temporary files. Helpful for debugging.')
     parser.add_argument('--cxx', action='store_true', default=False,
-                        help='Use clang++ rather than clang')
+                        help='Use c++ compiler rather than c')
+    parser.add_argument('--clang', action='store_true', default=False,
+                        help='Force clang over wllvm')
 
     args = parser.parse_args()
 
