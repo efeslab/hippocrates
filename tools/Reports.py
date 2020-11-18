@@ -142,8 +142,10 @@ class BugReport:
             2. Remove everything that isn't related to a bug. 
         '''
         is_bug = lambda x: x['event'] in ['ASSERT_PERSISTED', 'ASSERT_ORDERED', 'REQUIRED_FLUSH']
+        bugs = [x for x in self.trace if is_bug(x)]
 
         # Step 1: Remove redundancies.
+        # --- This includes things like redundant locations
         # unique_bugs = []
         # new_trace = []
         # for te in self.trace:
@@ -165,49 +167,83 @@ class BugReport:
         # print(f'(Step 1) Optimized from {len(self.trace)} trace events to {len(new_trace)} trace events.')
         # self.trace = new_trace
 
+        if False:
+            # Step 2: Remove junk
+            # -- First, get all modified address ranges. This should work, as 
+            # the trace essentially tracks the stored ranges individually
+            bug_addresses = []
+            for bug in bugs:
+                if bug['event'] == 'ASSERT_ORDERED':
+                    a1 = (bug['address_a'], bug['address_a'] + bug['length_a'])
+                    a2 = (bug['address_b'], bug['address_b'] + bug['length_b'])
+                    bug_addresses += [a1, a2]
+                else:
+                    addr = (bug['address'], bug['address'] + bug['length'])
+                    bug_addresses += [addr]
 
-        # Step 2: Remove junk
-        # -- First, get all modified address ranges. This should work, as 
-        # the trace essentially tracks the stored ranges individually
-        bugs = [x for x in self.trace if is_bug(x)]
-        bug_addresses = []
-        for bug in bugs:
-            if bug['event'] == 'ASSERT_ORDERED':
-                a1 = (bug['address_a'], bug['address_a'] + bug['length_a'])
-                a2 = (bug['address_b'], bug['address_b'] + bug['length_b'])
-                bug_addresses += [a1, a2]
-            else:
-                addr = (bug['address'], bug['address'] + bug['length'])
-                bug_addresses += [addr]
+            '''
+            We should move backward in the trace, add the first event we find that
+            matches the range, then report an error on it.
+            '''
 
-        '''
-        We should move backward in the trace, add the first event we find that
-        matches the range, then report an error on it.
-        '''
+        
+            # --- Maps (start, stop) from a bug -> idx
+            stores = {}
+            flushes = {}
+            def check(d, r, i):
+                # If r is in d, update r with i and return the old i
+                old = -1
+                if r in d:
+                    old = d[r]
+                
+                d[r] = i
+                return old
 
-        new_trace = []
-        # --- Maps (start, stop) from a bug -> idx
-        visited = {}
-        for te in self.trace:
-            if te in bugs:
-                new_trace += [te]
-            elif te['event'] == 'FENCE':
-                if prev_te is not None and prev_te['event'] == 'FENCE':
+            to_rm = []
+            for idx, te in enumerate(self.trace):
+                if te['event'] not in ['FLUSH', 'STORE']:
                     continue
-                new_trace += [te]
-            else:
-                address_range = (te['address'], te['address'] + te['length'])
-                # added = False
-                # pidx = 0
-                for idx, bug_addr in enumerate(bug_addresses):
-                    
-                    if bug_addr[0] < address_range[1] and address_range[0] < bug_addr[1]:
-                        # print(f'In range: {bug_addr}')
-                        # embed()
-                        new_trace += [te]
 
-        print(f'(Step) Optimized from {len(self.trace)} trace events to {len(new_trace)} trace events.')
-        self.trace = new_trace
+                address_range = (te['address'], te['address'] + te['length'])
+
+                contains = False
+                for bug_addr in bug_addresses:      
+                    if bug_addr[0] < address_range[1] and address_range[0] < bug_addr[1]:
+                        contains = True
+                        break
+                
+                if not contains:
+                    # Remove operations on non-buggy addresses
+                    to_rm += [idx]
+                    continue
+                        
+                if te['event'] == 'FLUSH':
+                    i = check(flushes, address_range, idx)
+                    assert i < idx
+                    if i != -1:
+                        to_rm += [i]
+                elif te['event'] == 'STORE':
+                    i = check(stores, address_range, idx)
+                    assert i < idx
+                    if i != -1:
+                        to_rm += [i]
+                else:
+                    raise Exception(te['event'])
+
+
+            # embed()
+            # --- we should quickly expand to_rm into a bitmap like list
+            flist = [True] * len(self.trace)
+            for idx in to_rm:
+                flist[idx] = False
+
+            new_trace = []
+            for idx, te in enumerate(self.trace):
+                if flist[idx]:
+                    new_trace += [te]
+
+            print(f'(Step 1) Optimized from {len(self.trace)} trace events to {len(new_trace)} trace events.')
+            self.trace = new_trace
 
         # Step: Remove redundant fences
         new_trace = []
@@ -221,11 +257,11 @@ class BugReport:
             if te['event'] == 'FENCE':
                 if prev_te is not None and prev_te['event'] == 'FENCE':
                     continue
-                new_trace += [te]
-
+        
+            new_trace += [te]
             prev_te = te
 
-        print(f'(Step) Optimized from {len(self.trace)} trace events to {len(new_trace)} trace events.')
+        print(f'(Step 2) Optimized from {len(self.trace)} trace events to {len(new_trace)} trace events.')
         self.trace = new_trace
         
     
