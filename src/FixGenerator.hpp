@@ -11,6 +11,7 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/Transforms/Utils/Cloning.h"
 
 #include "BugReports.hpp"
 #include "FlowAnalyzer.hpp"
@@ -35,6 +36,7 @@ private:
 protected:
     llvm::Module &module_;
     const PmDesc *pmDesc_;
+    llvm::ValueToValueMapTy *traceAAMap_;
 
     /** PURE UTILITY
      */
@@ -62,16 +64,18 @@ protected:
      * Duplicates the function. Not recursive.
      */
     llvm::Function *duplicateFunction(
-        llvm::Function *f, std::string postFix="_NT");
+        llvm::Function *f, llvm::ValueToValueMapTy &vmap, std::string postFix="_NT");
 
     /**
      * Replaces all stores (recursively) with non-temporal hinted stores.
-     * Also add a fence at the 
+     * Edit: only replace stores which alias persistent memory.
      */
-    bool makeAllStoresPersistent(llvm::Function *f);
+    bool makeAllStoresPersistent(
+        llvm::Function *oldF, llvm::Function *newF, const llvm::ValueToValueMapTy &vmap);
 
 public:
-    FixGenerator(llvm::Module &m, const PmDesc *pm) : module_(m), pmDesc_(pm) {}
+    FixGenerator(llvm::Module &m, const PmDesc *pm, llvm::ValueToValueMapTy *vmap) 
+        : module_(m), pmDesc_(pm), traceAAMap_(vmap) {}
 
     /** CORRECTNESS
      * All these functions return the new instruction they created (or a pointer
@@ -132,7 +136,8 @@ class GenericFixGenerator : public FixGenerator {
 private:
 
 public:
-    GenericFixGenerator(llvm::Module &m, const PmDesc *pm) : FixGenerator(m, pm) {}
+    GenericFixGenerator(llvm::Module &m, const PmDesc *pm, llvm::ValueToValueMapTy *vmap) 
+        : FixGenerator(m, pm, vmap) {}
 
     virtual llvm::Instruction *insertFlush(const FixLoc &fl) override;
 
@@ -164,7 +169,8 @@ private:
                                llvm::Instruction **assert);
 
 public:
-    PMTestFixGenerator(llvm::Module &m, const PmDesc *pm) : FixGenerator(m, pm) {}
+    PMTestFixGenerator(llvm::Module &m, const PmDesc *pm, llvm::ValueToValueMapTy *vmap) 
+        : FixGenerator(m, pm, vmap) {}
 
     virtual llvm::Instruction *insertFlush(const FixLoc &fl) override;
 

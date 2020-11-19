@@ -136,6 +136,7 @@ class BugReport:
         self._add_internal(**te)
 
     def _optimize(self):
+        from intervaltree import IntervalTree, Interval
         ''' 
             Do a few things:
             1. Remove redundant bugs first.
@@ -144,28 +145,59 @@ class BugReport:
         is_bug = lambda x: x['event'] in ['ASSERT_PERSISTED', 'ASSERT_ORDERED', 'REQUIRED_FLUSH']
         bugs = [x for x in self.trace if is_bug(x)]
 
+        def get_bug_addresses(bug):
+            assert is_bug(bug)
+            
+            if bug['event'] == 'ASSERT_ORDERED':
+                a1 = (bug['address_a'], bug['address_a'] + bug['length_a'])
+                a2 = (bug['address_b'], bug['address_b'] + bug['length_b'])
+                return a1, a2
+            else:
+                addr = (bug['address'], bug['address'] + bug['length'])
+                return addr, None
+
         # Step 1: Remove redundancies.
-        # --- This includes things like redundant locations
-        # unique_bugs = []
-        # new_trace = []
-        # for te in self.trace:
-        #     if not is_bug(te):
-        #         new_trace += [te]
-        #         continue
+        '''
+        - This includes things like redundant store locations
+            - For each bug, get the address. Then, for the stores that match that
+            address, remove them
+        '''
+        unique_bug_addrs = IntervalTree()
+        new_trace = []
+        for te in self.trace:
+            if not is_bug(te):
+                continue
 
-        #     is_unique = True
-        #     for bug in unique_bugs:
-        #         if te['stack'] == bug['stack']:
-        #             is_unique = False
-        #             break
+            a1, a2 = get_bug_addresses(te)
 
-        #     if is_unique:
-        #         unique_bugs += [te]
-        #         new_trace += [te]
+            if a1 is not None and a1 not in unique_bug_addrs:
+                unique_bug_addrs.addi(a1[0], a1[1], True)
+            
+            if a2 is not None and a2 not in unique_bug_addrs:
+                unique_bug_addrs.addi(a2[0], a2[1], True)
+        
 
-    
-        # print(f'(Step 1) Optimized from {len(self.trace)} trace events to {len(new_trace)} trace events.')
-        # self.trace = new_trace
+        # Now we have the bug addresses. We now remove stores unrelated to those.
+        # We will remove the ranges as we reverse through the list.
+        new_trace = []
+        for te in reversed(self.trace):
+            if te['event'] != 'STORE':
+                new_trace += [te]
+                continue
+
+            addr = (te['address'], te['address'] + te['length'])
+            
+            if unique_bug_addrs.overlap(*addr):
+                new_trace += [te]
+                # unique_bug_addrs.remove_overlap(*addr)
+
+        new_trace.reverse()
+
+        print(f'(Step 1) Optimized from {len(self.trace)} trace events to {len(new_trace)} trace events.')
+        self.trace = new_trace
+
+        # embed()
+        # exit()
 
         if False:
             # Step 2: Remove junk

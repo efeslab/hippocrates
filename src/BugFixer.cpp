@@ -13,6 +13,9 @@ using namespace llvm;
 cl::opt<bool> EnableHeuristicRaising("heuristic-raising", 
     cl::desc("Indicates whether or not enable heuristic raising."));
 
+cl::opt<bool> ForceRaising("force[-raising", cl::init(false),
+    cl::desc("Indicates whether or not to force heuristic raising (one level)."));
+
 cl::opt<bool> DisableFixRaising("disable-raising", 
     cl::desc("Indicates whether or not to disable fix raising, which is what "
              "prevents flushes in memcpy/similar calls"));
@@ -725,6 +728,14 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
         
         assert(maxIdx >= 0 && "didn't do anything!");
 
+        if (ForceRaising) {
+            if (maxIdx == 0) {
+                errs() << "ForceRaising: forced!\n";
+            } else {
+                errs() << "ForceRaising: not necessary!\n";
+            }
+        }
+
         heuristicIdx = maxIdx;
         if (heuristicIdx > 0) raised = true;
     }
@@ -910,12 +921,12 @@ bool BugFixer::doRepair(void) {
     FixGenerator *fixer = nullptr;
     switch (trace_.getSource()) {
         case TraceEvent::PMTEST: {
-            PMTestFixGenerator pmtestFixer(module_, pmDesc_.get());
+            PMTestFixGenerator pmtestFixer(module_, pmDesc_.get(), &vMap_);
             fixer = &pmtestFixer;
             break;
         }
         case TraceEvent::GENERIC: {
-            GenericFixGenerator genericFixer(module_, pmDesc_.get());
+            GenericFixGenerator genericFixer(module_, pmDesc_.get(), &vMap_);
             fixer = &genericFixer;
             break;
         }

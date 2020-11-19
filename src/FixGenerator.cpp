@@ -20,6 +20,8 @@ using namespace llvm;
 cl::opt<bool> UseNT("use-nt", 
     cl::desc("Indicates whether or not to use NT stores for persistent subprograms."));
 
+extern cl::opt<bool> TraceAlias;
+
 llvm::Function *FixGenerator::getClwbDefinition() const {
     // Function *clwb = Intrinsic::getDeclaration(&module_, Intrinsic::x86_clwb, {ptrTy});
     // -- the above appends extra type specifiers that cause it not to generate.
@@ -165,8 +167,9 @@ llvm::Instruction *FixGenerator::createConditionalBlock(
     return &newRegion->front();
 }
 
-Function *FixGenerator::duplicateFunction(Function *f, std::string postFix) {
-    ValueToValueMapTy vmap;
+Function *FixGenerator::duplicateFunction(
+    Function *f, ValueToValueMapTy &vmap, std::string postFix) {
+
     Function *fNew = llvm::CloneFunction(f, vmap);
     fNew->setName(f->getName() + postFix);
     assert(fNew && "what");
@@ -177,15 +180,21 @@ Function *FixGenerator::duplicateFunction(Function *f, std::string postFix) {
     return fNew;
 }
 
-bool FixGenerator::makeAllStoresPersistent(llvm::Function *f) {
-    errs() << "FUNCTION PM: " << f->getName() << "\n";
-    std::list<StoreInst*> flushPoints;
-    std::list<ReturnInst*> fencePoints;
+bool FixGenerator::makeAllStoresPersistent(
+    llvm::Function *oldF, llvm::Function *newF, const ValueToValueMapTy &vmap) {
+
+    // errs() << "NEW FUNCTION PM: " << newF->getName() << "\n";
+    // errs() << "OLD FUNCTION PM: " << oldF->getName() << "\n";
+    std::list<Instruction*> flushPoints;
+    // std::list<ReturnInst*> fencePoints;
+
     /**
-     * Recursion handled elsewhere
+     * Iterate through the old function, find PM aliases, then map to the new
+     * function to add to the flush points.
      */
-    for (BasicBlock &bb : *f) {
+    for (BasicBlock &bb : *oldF) {
         for (Instruction &i : bb) {
+            #if 0
             if (auto *cb = dyn_cast<CallBase>(&i)) {
                 // Function *f = cb->getCalledFunction();
                 // if (!f) continue;
@@ -202,49 +211,82 @@ bool FixGenerator::makeAllStoresPersistent(llvm::Function *f) {
             } else if (auto *ri = dyn_cast<ReturnInst>(&i)) {
                 // Insert a sfence in front of the return.
                 fencePoints.push_back(ri);
-            } else if (auto *si = dyn_cast<StoreInst>(&i)) {
+            } else 
+            #endif
+
+            Value *ptrOp = nullptr;
+            if (auto *si = dyn_cast<StoreInst>(&i)) {
+                ptrOp = si->getPointerOperand();
+            } else if (auto *cx = dyn_cast<AtomicCmpXchgInst>(&i)) {
+                ptrOp = cx->getPointerOperand();
+            }
+
+            if (TraceAlias) {
+                ptrOp = (*traceAAMap_)[ptrOp];
+            }
+            
+            if (ptrOp) {
                 /**
                  * Figure out if the store is to a stack variable. If so, we
                  * really don't want to add it.
                  */
-                auto *ptrOp = si->getPointerOperand();
                 if (isa<AllocaInst>(ptrOp)) continue;
+                #if 1
                 // Also figure out if the pointer operand points to PM or not.
-                if (pmDesc_->pointsToPm(ptrOp)) {
-                    flushPoints.push_back(si);
-                    errs() << "POINTS: " << *ptrOp << "\n";
+                if (!pmDesc_->contains(ptrOp)) {
+                    // errs() << "DOES NOT CONTAIN: " << *ptrOp << "\n";
+                    // std::unordered_set<const llvm::Value *> ptsSet;
+                    // bool res = pmDesc_->getPointsToSet(ptrOp, ptsSet);
+                    // errs() << "??? " << res << " " << pmDesc_->getNumPmAliases(ptsSet) << "\n";
+                } else if (pmDesc_->pointsToPm(ptrOp)) {
+                    auto *ninst = dyn_cast<Instruction>(vmap.lookup(&i));
+                    assert(ninst && "wat");
+                    flushPoints.push_back(ninst);
+                    // errs() << "POINTS: " << *ptrOp << "\n";
                 } else {
-                    errs() << "DOES NOT POINT: " << *ptrOp << "\n";
+                    // errs() << "DOES NOT POINT: " << *ptrOp << "\n";
                 }
-                
+                #else 
+                flushPoints.push_back(si);
+                #endif
             }
         }
     }
 
-    for (auto *si : flushPoints) {
+    for (auto *i : flushPoints) {
         // Either insert a flush or make the store non-temporal.
         if (UseNT) {
             // Set non-temporal metadata
             DIExpression *die = DIBuilder(module_).createConstantValueExpression(1);
             errs() << "MD:" << *die << "\n";
-            si->setMetadata(LLVMContext::MD_nontemporal, die);
-            errs() << "NT:" << *si << "\n";
+            i->setMetadata(LLVMContext::MD_nontemporal, die);
+            errs() << "NT:" << *i << "\n";
             /**
              * TODO: Extend this to PMTest as well.
              */
             Function *valFlush = getPersistentVersion("valgrind_flush");
             assert(valFlush && "can't mark NT stores as flushed!");
-            IRBuilder<> builder(si->getNextNode());
+            IRBuilder<> builder(i->getNextNode());
             // Get the right pointer
             // -- dest
+            Value *ptr = nullptr;
+            Value *valOp = nullptr;
+            if (auto *si = dyn_cast<StoreInst>(i)) {
+                ptr = si->getPointerOperand();
+                valOp = si->getValueOperand();
+            } else if (auto *cx = dyn_cast<AtomicCmpXchgInst>(i)) {
+                ptr = cx->getPointerOperand();
+                valOp = cx->getNewValOperand();
+            }
+
             Type *ptrDestTy = valFlush->arg_begin()->getType();
-            Value *ptrOp = builder.CreatePointerCast(si->getPointerOperand(), ptrDestTy);
+            Value *ptrOp = builder.CreatePointerCast(ptr, ptrDestTy);
             // Get the length argument as well.
             // -- dest
             Type *szDestTy = (valFlush->arg_begin() + 1)->getType();
             // -- Value
             size_t nbits = 0;
-            Type *storedValTy = si->getValueOperand()->getType();
+            Type *storedValTy = valOp->getType();
             if (storedValTy->isIntegerTy()) {
                 nbits = storedValTy->getScalarSizeInBits();
             } else if (storedValTy->isPointerTy()) {
@@ -263,8 +305,8 @@ bool FixGenerator::makeAllStoresPersistent(llvm::Function *f) {
             builder.CreateCall(valFlush, {ptrOp, lenOp});
         } else {
             // Insert flush
-            errs() << "Flushing" << *si << " in " << si->getFunction()->getName() << "\n";
-            auto *ni = insertFlush(si);
+            errs() << "Flushing" << *i << " in " << i->getFunction()->getName() << "\n";
+            auto *ni = insertFlush(i);
             assert(ni && "unable to insert flush!");
         }
     }
@@ -391,7 +433,7 @@ Instruction *GenericFixGenerator::insertFlush(const FixLoc &fl) {
     for (Instruction *i : fl.insts()) {
 
         Value *addrExpr = nullptr;
-        if (StoreInst *si = dyn_cast<StoreInst>(i)) {
+        if (auto *si = dyn_cast<StoreInst>(i)) {
             errs() << "STORE:" << *si << "\n";
             addrExpr = si->getPointerOperand();
         } else if (auto *cx = dyn_cast<AtomicCmpXchgInst>(i)) {
@@ -548,10 +590,11 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
         errs() << "CI:" << *currInst << "\n";
 
         Function *fn = currInst->getFunction();
-        Function *pmFn = duplicateFunction(fn);
+        ValueToValueMapTy vmap;
+        Function *pmFn = duplicateFunction(fn, vmap);
 
         // Now, we need to make all of the stores flushed
-        bool successful = makeAllStoresPersistent(pmFn);
+        bool successful = makeAllStoresPersistent(fn, pmFn, vmap);
         assert(successful && "failed to make persistent!");
 
         // Now we need to replace the call.

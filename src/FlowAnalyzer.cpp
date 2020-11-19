@@ -111,6 +111,11 @@ size_t PmDesc::getNumPmAliases(
     return intersect.size();
 }
 
+bool PmDesc::contains(const llvm::Value *pmv) const {
+    std::unordered_set<const llvm::Value *> ptsSet;
+    return getPointsToSet(pmv, ptsSet);
+}
+
 bool PmDesc::pointsToPm(llvm::Value *pmv) const {
     std::unordered_set<const llvm::Value *> ptsSet;
     bool res = getPointsToSet(pmv, ptsSet);

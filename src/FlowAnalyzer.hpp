@@ -48,6 +48,12 @@ namespace pmfix {
         PmDesc(llvm::Module &m);
 
         /**
+         * Sometimes for trace alias stuff, we may not have alias info for some
+         * things, so we should check first.
+         */
+        bool contains(const llvm::Value *v) const;
+
+        /**
          * Goes through the cache.
          */
         bool getPointsToSet(const llvm::Value *v,                                  
