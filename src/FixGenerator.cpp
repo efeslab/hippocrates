@@ -182,7 +182,7 @@ bool FixGenerator::makeAllStoresPersistent(llvm::Function *f) {
     std::list<StoreInst*> flushPoints;
     std::list<ReturnInst*> fencePoints;
     /**
-     * TODO: recursion?
+     * Recursion handled elsewhere
      */
     for (BasicBlock &bb : *f) {
         for (Instruction &i : bb) {
@@ -207,8 +207,16 @@ bool FixGenerator::makeAllStoresPersistent(llvm::Function *f) {
                  * Figure out if the store is to a stack variable. If so, we
                  * really don't want to add it.
                  */
-                if (isa<AllocaInst>(si->getPointerOperand())) continue;
-                flushPoints.push_back(si);
+                auto *ptrOp = si->getPointerOperand();
+                if (isa<AllocaInst>(ptrOp)) continue;
+                // Also figure out if the pointer operand points to PM or not.
+                if (pmDesc_->pointsToPm(ptrOp)) {
+                    flushPoints.push_back(si);
+                    errs() << "POINTS: " << *ptrOp << "\n";
+                } else {
+                    errs() << "DOES NOT POINT: " << *ptrOp << "\n";
+                }
+                
             }
         }
     }

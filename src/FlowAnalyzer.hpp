@@ -51,7 +51,7 @@ namespace pmfix {
          * Goes through the cache.
          */
         bool getPointsToSet(const llvm::Value *v,                                  
-                            std::unordered_set<const llvm::Value *> &ptsSet);
+                            std::unordered_set<const llvm::Value *> &ptsSet) const;
 
         /**
          * Get the number of the aliases that point to PM.
@@ -66,7 +66,7 @@ namespace pmfix {
          */
         void addKnownPmValue(llvm::Value *pmv);
 
-        bool pointsToPm(llvm::Value *val);
+        bool pointsToPm(llvm::Value *val) const;
 
         void doReturn(const PmDesc &d) { pm_globals_ = d.pm_globals_; }
 

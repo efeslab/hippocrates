@@ -13,6 +13,7 @@
 #include "llvm/IR/Instructions.h"
 
 #include "BugReports.hpp"
+#include "FlowAnalyzer.hpp"
 
 namespace pmfix {
 
@@ -33,6 +34,7 @@ private:
 
 protected:
     llvm::Module &module_;
+    const PmDesc *pmDesc_;
 
     /** PURE UTILITY
      */
@@ -69,7 +71,7 @@ protected:
     bool makeAllStoresPersistent(llvm::Function *f);
 
 public:
-    FixGenerator(llvm::Module &m) : module_(m) {}
+    FixGenerator(llvm::Module &m, const PmDesc *pm) : module_(m), pmDesc_(pm) {}
 
     /** CORRECTNESS
      * All these functions return the new instruction they created (or a pointer
@@ -130,7 +132,7 @@ class GenericFixGenerator : public FixGenerator {
 private:
 
 public:
-    GenericFixGenerator(llvm::Module &m) : FixGenerator(m) {}
+    GenericFixGenerator(llvm::Module &m, const PmDesc *pm) : FixGenerator(m, pm) {}
 
     virtual llvm::Instruction *insertFlush(const FixLoc &fl) override;
 
@@ -162,7 +164,7 @@ private:
                                llvm::Instruction **assert);
 
 public:
-    PMTestFixGenerator(llvm::Module &m) : FixGenerator(m) {}
+    PMTestFixGenerator(llvm::Module &m, const PmDesc *pm) : FixGenerator(m, pm) {}
 
     virtual llvm::Instruction *insertFlush(const FixLoc &fl) override;
 

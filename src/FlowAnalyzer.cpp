@@ -20,7 +20,7 @@ SharedAndersen PmDesc::anders_(nullptr);
 SharedAndersenCache PmDesc::cache_(nullptr);
 
 bool PmDesc::getPointsToSet(const llvm::Value *v,                                  
-                            std::unordered_set<const llvm::Value *> &ptsSet) {
+                            std::unordered_set<const llvm::Value *> &ptsSet) const {
     assert(v);
     if (!v) return false;
     /**                                                                            
@@ -111,7 +111,7 @@ size_t PmDesc::getNumPmAliases(
     return intersect.size();
 }
 
-bool PmDesc::pointsToPm(llvm::Value *pmv) {
+bool PmDesc::pointsToPm(llvm::Value *pmv) const {
     std::unordered_set<const llvm::Value *> ptsSet;
     bool res = getPointsToSet(pmv, ptsSet);
     if (!res) {

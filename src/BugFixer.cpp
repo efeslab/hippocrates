@@ -910,12 +910,12 @@ bool BugFixer::doRepair(void) {
     FixGenerator *fixer = nullptr;
     switch (trace_.getSource()) {
         case TraceEvent::PMTEST: {
-            PMTestFixGenerator pmtestFixer(module_);
+            PMTestFixGenerator pmtestFixer(module_, pmDesc_.get());
             fixer = &pmtestFixer;
             break;
         }
         case TraceEvent::GENERIC: {
-            GenericFixGenerator genericFixer(module_);
+            GenericFixGenerator genericFixer(module_, pmDesc_.get());
             fixer = &genericFixer;
             break;
         }
