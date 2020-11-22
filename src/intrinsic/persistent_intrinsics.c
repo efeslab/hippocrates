@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <string.h>
 
 #include <valgrind/pmemcheck.h>
 
@@ -21,6 +22,8 @@ void PMFIXER(valgrind_flush)(uint8_t *ptr, size_t n) {
  * Memory functions.
  */
 
+#define MANUAL 0
+
 void __always_inline flush_loop(void *p, size_t n) {
     for (size_t i = 0; i < n; i += 64) {
         _mm_clwb(p + i);
@@ -28,6 +31,7 @@ void __always_inline flush_loop(void *p, size_t n) {
 }
 
 void PMFIXER(memset)(uint8_t *d, uint8_t c, size_t n, bool _unused) {
+    #if MANUAL
     for (size_t i = 0; i < n; ++i) {
         d[i] = c;
         // int *ptr = (int*)(d + i);
@@ -35,13 +39,18 @@ void PMFIXER(memset)(uint8_t *d, uint8_t c, size_t n, bool _unused) {
         // _mm_stream_si32(ptr, val);
         // VALGRIND_PMC_DO_FLUSH(ptr, sizeof(*ptr));
     }
+    #else
+    memset((void*)d, (int)c, n);
+    #endif
 
     flush_loop(d, n);
 
-    _mm_sfence();
+    // Don't need this fence, we do it after the call.
+    // _mm_sfence();
 }
 
 void PMFIXER(memcpy)(uint8_t *d, uint8_t *s, size_t n, bool _unused) {
+    #if MANUAL
     for (size_t i = 0; i < n; ++i) {
         d[i] = s[i];
         // int *ptr = (int*)(d + i);
@@ -49,13 +58,17 @@ void PMFIXER(memcpy)(uint8_t *d, uint8_t *s, size_t n, bool _unused) {
         // _mm_stream_si32(ptr, val);
         // VALGRIND_PMC_DO_FLUSH(ptr, sizeof(*ptr));
     }
+    #else
+    memcpy((void*)d, (void*)s, n);
+    #endif
 
     flush_loop(d, n);
 
-    _mm_sfence();
+    // _mm_sfence();
 }
 
 void PMFIXER(memmove)(uint8_t *d, uint8_t *s, size_t n, bool _unused) {
+    #if MANUAL
     // https://opensource.apple.com/source/network_cmds/network_cmds-481.20.1/unbound/compat/memmove.c.auto.html
     uint8_t* from = (uint8_t*) s;
 	uint8_t* to = (uint8_t*) d;
@@ -100,6 +113,13 @@ void PMFIXER(memmove)(uint8_t *d, uint8_t *s, size_t n, bool _unused) {
 	}
 
 	PMFIXER(memcpy)(d, s, n, _unused);
+    #else
+    memmove((void*)d, (void*)s, n);
+    #endif
+
+    flush_loop(d, n);
+
+    // _mm_sfence();
 }
 
 /**
@@ -107,6 +127,7 @@ void PMFIXER(memmove)(uint8_t *d, uint8_t *s, size_t n, bool _unused) {
  */
 
 char *PMFIXER(strncpy)(char *dest, const char *src, size_t n) {
+    #if MANUAL
     size_t i;
 
     for (i = 0; i < n && src[i] != '\0'; i++) {
@@ -123,10 +144,13 @@ char *PMFIXER(strncpy)(char *dest, const char *src, size_t n) {
         // _mm_stream_si32(ptr, val);
         // VALGRIND_PMC_DO_FLUSH(ptr, sizeof(*ptr));
     }  
+    #else
+    strncpy(dest, src, n);
+    #endif
 
     flush_loop(dest, n);
 
-    _mm_sfence();
+    // _mm_sfence();
     
     return dest;
 }

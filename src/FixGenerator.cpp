@@ -496,7 +496,8 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
     BugLocationMapper &mapper,
     const FixLoc &fl,
     const std::vector<LocationInfo> &callstack, 
-    int idx) {
+    int idx,
+    bool addFence) {
     
     errs() << __PRETTY_FUNCTION__ << " BEGIN\n";
     // Instruction *startInst = fl.first;
@@ -629,9 +630,15 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
     
     // Now, we add the fence after the call instruction to make sure everything
     // was persisted.
-    auto *fi = insertFence(retInst);
-    assert(fi && "unable to insert fence!");
-
+    // We only need to do this for bugs which require it.
+    if (addFence) {
+        errs() << "\t\tAdding fence!\n";
+        auto *fi = insertFence(retInst);
+        assert(fi && "unable to insert fence!");
+    } else {
+        errs() << "\t\tNOT adding fence!\n";
+    }
+    
     return retInst;
 }
 
@@ -819,7 +826,8 @@ Instruction *PMTestFixGenerator::insertPersistentSubProgram(
     BugLocationMapper &mapper,
     const FixLoc &fl,
     const std::vector<LocationInfo> &callstack,
-    int idx) {
+    int idx,
+    bool addFence) {
 
     assert(false && "IMPLEMENT ME");
     return nullptr;

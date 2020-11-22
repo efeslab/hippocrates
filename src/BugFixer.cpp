@@ -472,12 +472,14 @@ bool BugFixer::fixBug(FixGenerator *fixer, const FixLoc &fl, const FixDesc &desc
             assert(n && "could not add fence of FLUSH_AND_FENCE");
             break;
         }
+        case ADD_PERSIST_CALLSTACK_OPT_NOFENCE: 
         case ADD_PERSIST_CALLSTACK_OPT: {
+            bool addFence = desc.type == ADD_PERSIST_CALLSTACK_OPT;
             summary_ << summaryNum_ << ") ADD_PERSISTENT_SUBPROGRAM:\n" << fl.str() << "\n";
             ++summaryNum_;
 
             Instruction *n = fixer->insertPersistentSubProgram(
-                mapper_, fl, desc.dynStack, desc.stackIdx);
+                mapper_, fl, desc.dynStack, desc.stackIdx, addFence);
             if (!n) {
                 errs() << "could not add persistent subprogram in ADD_PERSIST_CALLSTACK_OPT\n";
                 return false;
@@ -778,7 +780,9 @@ bool BugFixer::raiseFixLocation(const FixLoc &fl, const FixDesc &desc) {
 
     bool success = false;
     if (raised) {
-        auto desc = FixDesc(ADD_PERSIST_CALLSTACK_OPT, stack, idx);
+        FixType ft = desc.type == ADD_FLUSH_ONLY ?
+            ADD_PERSIST_CALLSTACK_OPT_NOFENCE : ADD_PERSIST_CALLSTACK_OPT;
+        auto desc = FixDesc(ft, stack, idx);
         assert(curr && "cannot be null!");
         success = addFixToMapping(*curr, desc);
     }

@@ -73,6 +73,7 @@ private:
         ADD_FENCE_ONLY,
         ADD_FLUSH_AND_FENCE,
         // Correctness, high-level
+        ADD_PERSIST_CALLSTACK_OPT_NOFENCE,
         ADD_PERSIST_CALLSTACK_OPT,
         // Performance, known always redundant.
         REMOVE_FLUSH_ONLY,

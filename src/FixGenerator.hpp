@@ -94,7 +94,8 @@ public:
         BugLocationMapper &mapper,
         const FixLoc &fl,
         const std::vector<LocationInfo> &callstack,
-        int idx) = 0;
+        int idx,
+        bool insertFence) = 0;
 
     /** PERFORMANCE
      * Removes an unnecessary flush
@@ -147,7 +148,8 @@ public:
         BugLocationMapper &mapper,
         const FixLoc &fl,
         const std::vector<LocationInfo> &callstack, 
-        int idx) override;
+        int idx,
+        bool insertFence) override;
 
     virtual bool removeFlush(const FixLoc &fl) override;
 
@@ -180,7 +182,8 @@ public:
         BugLocationMapper &mapper,
         const FixLoc &fl,
         const std::vector<LocationInfo> &callstack, 
-        int idx) override;
+        int idx,
+        bool insertFence) override;
 
     virtual bool removeFlush(const FixLoc &fl) override;
 

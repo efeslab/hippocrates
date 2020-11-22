@@ -51,7 +51,7 @@ PmDesc::PmDesc(Module &m) {
         std::vector<const llvm::Value *> allocSites;
         anders_->getResult().getAllAllocationSites(allocSites);
         assert(!allocSites.empty());
-        errs() << "ALLOC: " << allocSites.size() << "\n";
+        // errs() << "ALLOC: " << allocSites.size() << "\n";
         // assert(false);
     }
     if (!cache_) {
