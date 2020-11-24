@@ -107,9 +107,12 @@ class YCSBRunner:
             yield f'workload{x}'
 
     # NOPS = 1000000
-    NOPS = 1000
+    NREC = 10000
+    NOPS = 100
+    NTHREADS = 1
     PARAMS = ('-p "redis.host=127.0.0.1" -p "redis.port=6379" '
-              f'-p "recordcount={NOPS}" -p "operationcount={NOPS}"')
+              f'-p "recordcount={NREC}" -p "operationcount={NOPS * NTHREADS}" '
+              f'-threads {NTHREADS}')
 
     TP_RE = re.compile(r'\[OVERALL\], Throughput\(ops/sec\), (\S+)')
 
@@ -127,7 +130,7 @@ class YCSBRunner:
     def _do_command(self, workload, command):
         bin_str = str(self.ycsb_bin)
         workload_str = str(self.workload_dir / workload)
-        arg_str = f'{bin_str} {command} redis -s -P {workload_str} {self.PARAMS}'
+        arg_str = f'numactl -m 0 -N 0 {bin_str} {command} redis -s -P {workload_str} {self.PARAMS}'
         args = shlex.split(arg_str)
 
         res = subprocess.run(args, cwd=self.dir, stdout=PIPE, stderr=STDOUT)

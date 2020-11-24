@@ -502,82 +502,87 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
     errs() << __PRETTY_FUNCTION__ << " BEGIN\n";
     // Instruction *startInst = fl.first;
 
-    if (!mapper.contains(callstack[0])) {
-        // assert(1 == idx && "don't know how to handle nested unknowns!");
-        if (idx != 1) {
-            for (const auto &li : callstack) {
-                errs() << li.str() << "\n";
-            }
-            errs() << "don't know how to handle nested unknowns, abort!\n";
-            errs() << "idx=" << idx << ", contains=" << mapper.contains(callstack[0]) << "\n";
-            return nullptr;
-        }
-
-        std::list<CallBase*> candidates;
-        for (Instruction *i : fl.insts()) {
-            if (auto *c = dyn_cast<CallBase>(i)) candidates.push_back(c);
-        }
-        assert(!candidates.empty() && "has to be calling something!");
-        assert(candidates.size() == 1 && "don't know how to handle multiple calls yet!");
-
-        auto *cb = candidates.front();
-        Function *f = cb->getCalledFunction();
-        assert(f && "don't know what to do!");    
-
-        if (f->getIntrinsicID() != Intrinsic::not_intrinsic) {
-            Function *newFn = nullptr;
-            switch (f->getIntrinsicID()) {
-                case Intrinsic::memcpy: {
-                    newFn = getPersistentMemcpy();
-                    break;
-                }
-                case Intrinsic::memset: {
-                    newFn = getPersistentMemset();
-                    break;
-                }
-                case Intrinsic::memmove: {
-                    newFn = getPersistentMemmove();
-                    break;
-                }
-                default: {
-                    assert(false && "unhandled!");
-                    break;
-                }
-            }
-
-            assert(cb && "wut");
-            assert(newFn && "wut");
-
-            errs() << "SUBPROGRAM: " << *newFn << "\n";
-            errs() << "SUBPROGRAM: " << *cb << "\n";
-            
-            // return modifyCall(cb, newFn);
-            CallBase *modCb = modifyCall(cb, newFn);
-            cb->eraseFromParent();
-
-            errs() << "NOW: " << *modCb->getFunction() << "\n";
-
-            return modCb;
-        }
-
-        if (f->isDeclaration()) {  
-            std::string declName(utils::demangle(f->getName().data()));
-            errs() << *cb << "\n";
-            errs() << "DECL: " << declName << "\n";
-
-            Function *pmVersion = getPersistentVersion(declName.c_str());
-            CallBase *modCb = modifyCall(cb, pmVersion);
-            errs() << *modCb << "\n";
-            cb->eraseFromParent();
-
-            return modCb;
-        }
-    }
-
     Instruction *retInst = nullptr;
     // errs() << "GFIN " << *startInst << "\n";
     for (int i = 0; i < idx; ++i) {
         errs() << "GFLI " << callstack[i].str() << "\n";
+
+        if (!mapper.contains(callstack[i])) {
+            // assert(0 == i && "don't know how to handle nested unknowns!");
+            if (i > 0) {
+                for (const auto &li : callstack) {
+                    errs() << li.str() << "---contains? " << mapper.contains(li) << "\n";
+                }
+                errs() << "don't know how to handle nested unknowns, abort!\n";
+                errs() << "idx=" << idx << ", contains=" << mapper.contains(callstack[0]) << "\n";
+                return nullptr;
+            }
+
+            std::list<CallBase*> candidates;
+            auto &nextFixLoc = mapper[callstack[i+1]];
+            assert(!nextFixLoc.empty());
+            assert(nextFixLoc.size() == 1);
+            for (Instruction *i : nextFixLoc.front().insts()) {
+                if (auto *c = dyn_cast<CallBase>(i)) candidates.push_back(c);
+            }
+            assert(!candidates.empty() && "has to be calling something!");
+            assert(candidates.size() == 1 && "don't know how to handle multiple calls yet!");
+
+            auto *cb = candidates.front();
+            Function *f = cb->getCalledFunction();
+            assert(f && "don't know what to do!");    
+
+            if (f->getIntrinsicID() != Intrinsic::not_intrinsic) {
+                Function *newFn = nullptr;
+                switch (f->getIntrinsicID()) {
+                    case Intrinsic::memcpy: {
+                        newFn = getPersistentMemcpy();
+                        break;
+                    }
+                    case Intrinsic::memset: {
+                        newFn = getPersistentMemset();
+                        break;
+                    }
+                    case Intrinsic::memmove: {
+                        newFn = getPersistentMemmove();
+                        break;
+                    }
+                    default: {
+                        assert(false && "unhandled!");
+                        break;
+                    }
+                }
+
+                assert(cb && "wut");
+                assert(newFn && "wut");
+
+                // errs() << "SUBPROGRAM: " << *newFn << "\n";
+                // errs() << "SUBPROGRAM: " << *cb << "\n";
+                
+                // return modifyCall(cb, newFn);
+                CallBase *modCb = modifyCall(cb, newFn);
+                cb->eraseFromParent();
+
+                errs() << "NOW: " << *modCb->getFunction() << "\n";
+
+                retInst = modCb;
+            }
+
+            if (f->isDeclaration()) {  
+                std::string declName(utils::demangle(f->getName().data()));
+                errs() << *cb << "\n";
+                errs() << "DECL: " << declName << "\n";
+
+                Function *pmVersion = getPersistentVersion(declName.c_str());
+                CallBase *modCb = modifyCall(cb, pmVersion);
+                errs() << *modCb << "\n";
+                cb->eraseFromParent();
+
+                retInst = modCb;
+            }
+
+            continue;
+        }
 
         auto &fixLocList = mapper[callstack[i]];
         if (fixLocList.size() > 1) {

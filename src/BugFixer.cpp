@@ -41,7 +41,8 @@ bool BugFixer::addFixToMapping(const FixLoc &fl, FixDesc desc) {
         return false;
     }
 
-    if (fixMap_[fl].type == ADD_FLUSH_ONLY && desc.type == ADD_FENCE_ONLY) {
+    if (fixMap_[fl].type == ADD_FLUSH_ONLY && 
+            (desc.type == ADD_FENCE_ONLY || desc.type == ADD_FLUSH_AND_FENCE)) {
         fixMap_[fl].type = ADD_FLUSH_AND_FENCE;
         return true;
     } else if (fixMap_[fl].type == ADD_FENCE_ONLY && desc.type == ADD_FLUSH_ONLY) {
@@ -72,8 +73,45 @@ bool BugFixer::addFixToMapping(const FixLoc &fl, FixDesc desc) {
         
         return true;
     }
+
+    auto isPrimative = [] (auto &fd) { 
+        return (fd.type == ADD_FLUSH_AND_FENCE || 
+                fd.type == ADD_FLUSH_ONLY || 
+                fd.type == ADD_FENCE_ONLY); };
+    
+    auto isPST = [] (auto &fd) {
+        return (fd.type == ADD_PERSIST_CALLSTACK_OPT || 
+                fd.type == ADD_PERSIST_CALLSTACK_OPT_NOFENCE);
+    };
+
+    auto addsFence = [] (auto &fd) {
+        return (fd.type == ADD_PERSIST_CALLSTACK_OPT || 
+                fd.type == ADD_FENCE_ONLY || 
+                fd.type == ADD_FLUSH_AND_FENCE);
+    };
+
+    auto noFence = [] (auto &fd) {
+        return (fd.type == ADD_PERSIST_CALLSTACK_OPT_NOFENCE || 
+                fd.type == ADD_FLUSH_ONLY);
+    };
+
+    if (fixMap_[fl].type == ADD_PERSIST_CALLSTACK_OPT && 
+            (isPST(desc) || isPrimative(desc))) {
+        return false;
+    }
+
+    if (desc.type == ADD_PERSIST_CALLSTACK_OPT && 
+            (isPST(fixMap_[fl]) || isPrimative(fixMap_[fl]))) {
+        fixMap_[fl] = desc;
+        return true;
+    }
+
+    if (fixMap_[fl].type == ADD_PERSIST_CALLSTACK_OPT_NOFENCE && addsFence(desc)) {
+        fixMap_[fl].type = ADD_PERSIST_CALLSTACK_OPT;
+        return true;
+    }
  
-    // errs() << "NEW: " << desc.type << " OLD: " << fixMap_[fl].type << "\n";
+    errs() << "NEW: " << desc.type << " OLD: " << fixMap_[fl].type << "\n";
 
     assert(false && "what");
 
@@ -475,7 +513,8 @@ bool BugFixer::fixBug(FixGenerator *fixer, const FixLoc &fl, const FixDesc &desc
         case ADD_PERSIST_CALLSTACK_OPT_NOFENCE: 
         case ADD_PERSIST_CALLSTACK_OPT: {
             bool addFence = desc.type == ADD_PERSIST_CALLSTACK_OPT;
-            summary_ << summaryNum_ << ") ADD_PERSISTENT_SUBPROGRAM:\n" << fl.str() << "\n";
+            summary_ << summaryNum_ << ") ADD_PERSISTENT_SUBPROGRAM " << 
+                (addFence ? "(+FENCE!)" : "(FLUSHONLY)") << ":\n" << fl.str() << "\n";
             ++summaryNum_;
 
             Instruction *n = fixer->insertPersistentSubProgram(
@@ -988,9 +1027,9 @@ bool BugFixer::doRepair(void) {
     // errs() << *module_.getFunction("memset_mov_avx512f_empty")->
 
     /**
-     * Step 2.
+     * Step 4.
      * 
-     * Patch primitives if we raising was not enabled.
+     * Patch primitives if raising was not enabled.
      */
     if (DisableFixRaising) {
         bool patched = patchMemoryPrimitives(fixer);
