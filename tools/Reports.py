@@ -135,6 +135,143 @@ class BugReport:
     def add_trace_event(self, te: TraceEvent) -> None:
         self._add_internal(**te)
 
+    @staticmethod
+    def _is_bug(te: TraceEvent) -> bool: 
+        bug_events = ['ASSERT_PERSISTED', 'ASSERT_ORDERED', 'REQUIRED_FLUSH']
+        return te['event'] in bug_events
+
+    @classmethod
+    def _freeze(cls, data):
+        '''
+            Generate a frozen data type from this
+        '''
+        if isinstance(data, dict):
+            return frozenset((key, cls._freeze(value)) for key, value in data.items())
+        elif isinstance(data, list):
+            return tuple(cls._freeze(value) for value in data)
+        return data
+
+    @classmethod
+    def _get_bug_addresses(cls, bug):
+        assert cls._is_bug(bug)
+        
+        if bug['event'] == 'ASSERT_ORDERED':
+            a1 = (bug['address_a'], bug['address_a'] + bug['length_a'])
+            a2 = (bug['address_b'], bug['address_b'] + bug['length_b'])
+            return a1, a2
+        else:
+            addr = (bug['address'], bug['address'] + bug['length'])
+            return addr, None
+
+    def _opt_remove_bugs(self) -> list: 
+        from intervaltree import IntervalTree, Interval
+        is_flush = lambda x: x['event'] == 'FLUSH'
+        is_store = lambda x: x['event'] == 'STORE'
+        is_fence = lambda x: x['event'] == 'FENCE'
+        get_range = lambda x: (x['address'], x['address'] + x['length'])
+        '''
+            All stores should now be related to some bug.
+
+            Now, we want to remove bugs which have redundant fix locations.
+            We do this in the fixer as well, but it costs a lot of extra
+            effort.
+        '''
+
+        bugs = [x for x in self.trace if self._is_bug(x)]
+
+        # First, we should create a global update thing
+        '''
+            - Make an interval tree for stores
+            - Make an interval tree for flushes
+            -
+        '''
+        store_tree = IntervalTree()
+        flush_tree = IntervalTree()
+        for te in self.trace:
+            if is_store(te):
+                addr = get_range(te)
+                store_tree.addi(addr[0], addr[1], te)
+            if is_flush(te):
+                addr = get_range(te)
+                ivts = store_tree.overlap(*addr)
+                store_tree.discardi(*addr)
+                for ivt in ivts:
+                    flush_tree.add(ivt)
+            if is_fence(te):
+                flush_tree.clear()
+
+        # Maps (type, location) -> bug
+        fix_locs = {}
+        new_trace = []
+        for tidx, te in enumerate(self.trace):
+            print(f'opt: {tidx}/{len(self.trace)}')
+            print(f'loc: {len(fix_locs)}')
+            if te not in bugs or te['event'] != 'ASSERT_PERSISTED':
+                new_trace += [te]
+                continue
+
+            addr = (te['address'], te['address'] + te['length'])
+            # Now, we need to reverse through the new trace and find which store
+            # is the source of the bug.
+            missing_fence = True
+
+            # What are we going to do here?
+            r = IntervalTree()
+            r.addi(addr[0], addr[1], True)
+            found = False
+            added = False
+            for xidx, x in enumerate(reversed(new_trace)):
+                print(f'\ttrace: {xidx}/{len(new_trace)}')
+                if is_fence(x):
+                    missing_fence = False
+                    continue
+
+                if not (is_flush(x) or is_store(x)):
+                    continue
+
+                ea = (x['address'], x['address'] + x['length'])
+                if not r.overlaps(ea[0], ea[1]):
+                    # print('no overlap')
+                    # embed()
+                    continue
+
+                if (is_flush(x) and missing_fence) or is_store(x):
+                    found = True
+                    key = [x['event'], x['stack']]
+                    # only frozen stuff is hashable
+                    fkey = self._freeze(key)
+                    if fkey not in fix_locs:
+                        added = True
+                        fix_locs[fkey] = te
+                    elif te == bugs[-1]:
+                        print('eexist')
+                        embed()
+                    # Now remove it from the range
+                    r.discardi(ea[0], ea[1], True)
+                
+                if r.is_empty():
+                    break
+            
+            if not found:
+                print('wut')
+                embed()
+                exit()
+            
+    
+        embed()
+        exit()
+
+
+        # Now, add back the fix locations
+        for _, bug in fix_locs.items():
+            new_trace += [bug]
+
+        get_timestamp = lambda x: x['timestamp']
+        new_trace.sort(key=get_timestamp)
+
+        return new_trace
+
+
     def _optimize(self):
         from intervaltree import IntervalTree, Interval
         ''' 
@@ -142,21 +279,20 @@ class BugReport:
             1. Remove redundant bugs first.
             2. Remove everything that isn't related to a bug. 
         '''
-        is_bug = lambda x: x['event'] in ['ASSERT_PERSISTED', 'ASSERT_ORDERED', 'REQUIRED_FLUSH']
-        bugs = [x for x in self.trace if is_bug(x)]
+        bugs = [x for x in self.trace if self._is_bug(x)]
 
-        def get_bug_addresses(bug):
-            assert is_bug(bug)
-            
-            if bug['event'] == 'ASSERT_ORDERED':
-                a1 = (bug['address_a'], bug['address_a'] + bug['length_a'])
-                a2 = (bug['address_b'], bug['address_b'] + bug['length_b'])
-                return a1, a2
-            else:
-                addr = (bug['address'], bug['address'] + bug['length'])
-                return addr, None
+        is_flush = lambda x: x['event'] == 'FLUSH'
+        is_store = lambda x: x['event'] == 'STORE'
+        is_fence = lambda x: x['event'] == 'FENCE'
+        get_timestamp = lambda x: x['timestamp']
 
-        # Step 1: Remove redundancies.
+        # Step 1: Remove bugs from redundant locations
+        new_trace = self._opt_remove_bugs()
+
+        print(f'(Step 1) Optimized from {len(self.trace)} trace events to {len(new_trace)} trace events.')
+        self.trace = new_trace
+
+        # Step 2: Remove redundancies.
         '''
         - This includes things like redundant store locations
             - For each bug, get the address. Then, for the stores that match that
@@ -168,14 +304,13 @@ class BugReport:
             if not is_bug(te):
                 continue
 
-            a1, a2 = get_bug_addresses(te)
+            a1, a2 = self._get_bug_addresses(te)
 
             if a1 is not None and a1 not in unique_bug_addrs:
                 unique_bug_addrs.addi(a1[0], a1[1], True)
             
             if a2 is not None and a2 not in unique_bug_addrs:
                 unique_bug_addrs.addi(a2[0], a2[1], True)
-        
 
         # Now we have the bug addresses. We now remove stores unrelated to those.
         # We will remove the ranges as we reverse through the list.
@@ -196,86 +331,44 @@ class BugReport:
         print(f'(Step 1) Optimized from {len(self.trace)} trace events to {len(new_trace)} trace events.')
         self.trace = new_trace
 
+
+        '''
+        Now, we want to remove all repeated stores between flushes. Essentially,
+        if store X, store X, ... flush X, we only want the most recent store X.
+        '''
+
+        in_flight = IntervalTree()
+        new_trace = []
+        for te in self.trace:
+            if not is_flush(te) and not is_store(te):
+                new_trace += [te]
+                continue
+
+            addr = (te['address'], te['address'] + te['length'])
+
+            if is_flush(te):
+                # Get all the stores in the range, remove them, and add them to the
+                # new trace
+                tes = in_flight[addr[0]:addr[1]]
+                if tes:
+                    # Make them trace events again
+                    new_trace += [x.data for x in tes]
+                    in_flight.remove_overlap(addr[0], addr[1])
+            
+            if is_store(te):
+                # Add to the range, overwriting anything before.
+                in_flight.addi(addr[0], addr[1], te)
+                # embed()
+
+        # Now, I need to add all the things back that were never flushed
+        new_trace += [x.data for x in in_flight[:]]
+
+        # Sort the new_trace by timestamp
         # embed()
-        # exit()
+        new_trace.sort(key=get_timestamp)
 
-        if False:
-            # Step 2: Remove junk
-            # -- First, get all modified address ranges. This should work, as 
-            # the trace essentially tracks the stored ranges individually
-            bug_addresses = []
-            for bug in bugs:
-                if bug['event'] == 'ASSERT_ORDERED':
-                    a1 = (bug['address_a'], bug['address_a'] + bug['length_a'])
-                    a2 = (bug['address_b'], bug['address_b'] + bug['length_b'])
-                    bug_addresses += [a1, a2]
-                else:
-                    addr = (bug['address'], bug['address'] + bug['length'])
-                    bug_addresses += [addr]
-
-            '''
-            We should move backward in the trace, add the first event we find that
-            matches the range, then report an error on it.
-            '''
-
-        
-            # --- Maps (start, stop) from a bug -> idx
-            stores = {}
-            flushes = {}
-            def check(d, r, i):
-                # If r is in d, update r with i and return the old i
-                old = -1
-                if r in d:
-                    old = d[r]
-                
-                d[r] = i
-                return old
-
-            to_rm = []
-            for idx, te in enumerate(self.trace):
-                if te['event'] not in ['FLUSH', 'STORE']:
-                    continue
-
-                address_range = (te['address'], te['address'] + te['length'])
-
-                contains = False
-                for bug_addr in bug_addresses:      
-                    if bug_addr[0] < address_range[1] and address_range[0] < bug_addr[1]:
-                        contains = True
-                        break
-                
-                if not contains:
-                    # Remove operations on non-buggy addresses
-                    to_rm += [idx]
-                    continue
-                        
-                if te['event'] == 'FLUSH':
-                    i = check(flushes, address_range, idx)
-                    assert i < idx
-                    if i != -1:
-                        to_rm += [i]
-                elif te['event'] == 'STORE':
-                    i = check(stores, address_range, idx)
-                    assert i < idx
-                    if i != -1:
-                        to_rm += [i]
-                else:
-                    raise Exception(te['event'])
-
-
-            # embed()
-            # --- we should quickly expand to_rm into a bitmap like list
-            flist = [True] * len(self.trace)
-            for idx in to_rm:
-                flist[idx] = False
-
-            new_trace = []
-            for idx, te in enumerate(self.trace):
-                if flist[idx]:
-                    new_trace += [te]
-
-            print(f'(Step 1) Optimized from {len(self.trace)} trace events to {len(new_trace)} trace events.')
-            self.trace = new_trace
+        print(f'(Step X) Optimized from {len(self.trace)} trace events to {len(new_trace)} trace events.')
+        self.trace = new_trace
 
         # Step: Remove redundant fences
         new_trace = []
