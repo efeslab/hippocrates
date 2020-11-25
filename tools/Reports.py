@@ -204,8 +204,8 @@ class BugReport:
         fix_locs = {}
         new_trace = []
         for tidx, te in enumerate(self.trace):
-            print(f'opt: {tidx}/{len(self.trace)}')
-            print(f'loc: {len(fix_locs)}')
+            # print(f'opt: {tidx}/{len(self.trace)}')
+            # print(f'loc: {len(fix_locs)}')
             if te not in bugs or te['event'] != 'ASSERT_PERSISTED':
                 new_trace += [te]
                 continue
@@ -213,55 +213,23 @@ class BugReport:
             addr = (te['address'], te['address'] + te['length'])
             # Now, we need to reverse through the new trace and find which store
             # is the source of the bug.
-            missing_fence = True
 
             # What are we going to do here?
-            r = IntervalTree()
-            r.addi(addr[0], addr[1], True)
-            found = False
-            added = False
-            for xidx, x in enumerate(reversed(new_trace)):
-                print(f'\ttrace: {xidx}/{len(new_trace)}')
-                if is_fence(x):
-                    missing_fence = False
-                    continue
-
-                if not (is_flush(x) or is_store(x)):
-                    continue
-
-                ea = (x['address'], x['address'] + x['length'])
-                if not r.overlaps(ea[0], ea[1]):
-                    # print('no overlap')
-                    # embed()
-                    continue
-
-                if (is_flush(x) and missing_fence) or is_store(x):
-                    found = True
-                    key = [x['event'], x['stack']]
+            def handle_overlaps(tree):
+                ivts = tree.overlap(*addr)
+                for ivt in ivts:
+                    key = [ivt.data['event'], ivt.data['stack']]
                     # only frozen stuff is hashable
                     fkey = self._freeze(key)
                     if fkey not in fix_locs:
-                        added = True
                         fix_locs[fkey] = te
-                    elif te == bugs[-1]:
-                        print('eexist')
-                        embed()
-                    # Now remove it from the range
-                    r.discardi(ea[0], ea[1], True)
-                
-                if r.is_empty():
-                    break
-            
-            if not found:
-                print('wut')
-                embed()
-                exit()
-            
-    
-        embed()
-        exit()
 
+            # First, find overlap in the store tree
+            handle_overlaps(store_tree)
 
+            # Second, find overlap in the flush tree
+            handle_overlaps(flush_tree)
+            
         # Now, add back the fix locations
         for _, bug in fix_locs.items():
             new_trace += [bug]
@@ -301,15 +269,15 @@ class BugReport:
         unique_bug_addrs = IntervalTree()
         new_trace = []
         for te in self.trace:
-            if not is_bug(te):
+            if not self._is_bug(te):
                 continue
 
             a1, a2 = self._get_bug_addresses(te)
 
-            if a1 is not None and a1 not in unique_bug_addrs:
+            if a1 is not None:
                 unique_bug_addrs.addi(a1[0], a1[1], True)
             
-            if a2 is not None and a2 not in unique_bug_addrs:
+            if a2 is not None:
                 unique_bug_addrs.addi(a2[0], a2[1], True)
 
         # Now we have the bug addresses. We now remove stores unrelated to those.
@@ -328,7 +296,7 @@ class BugReport:
 
         new_trace.reverse()
 
-        print(f'(Step 1) Optimized from {len(self.trace)} trace events to {len(new_trace)} trace events.')
+        print(f'(Step 2) Optimized from {len(self.trace)} trace events to {len(new_trace)} trace events.')
         self.trace = new_trace
 
 

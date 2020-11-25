@@ -152,6 +152,8 @@ bool BugFixer::handleAssertPersisted(const TraceEvent &te, int bug_index) {
         const TraceEvent &event = trace_[i];
         if (!event.isOperation()) continue;
 
+        // errs() << "Current index: " <<  i << "\n";
+
         assert(event.addresses.size() <= 1 && 
                 "Don't know how to handle more addresses!");
         if (event.addresses.size()) {

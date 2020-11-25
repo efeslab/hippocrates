@@ -505,7 +505,7 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
     Instruction *retInst = nullptr;
     // errs() << "GFIN " << *startInst << "\n";
     for (int i = 0; i < idx; ++i) {
-        errs() << "GFLI " << callstack[i].str() << "\n";
+        errs() << "GFLI IDX " << i << ": " << callstack[i].str() << "\n";
 
         if (!mapper.contains(callstack[i])) {
             // assert(0 == i && "don't know how to handle nested unknowns!");
@@ -560,25 +560,34 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
                 // errs() << "SUBPROGRAM: " << *cb << "\n";
                 
                 // return modifyCall(cb, newFn);
-                CallBase *modCb = modifyCall(cb, newFn);
-                cb->eraseFromParent();
 
-                errs() << "NOW: " << *modCb->getFunction() << "\n";
+                // --- This screws up later pointers
+                // CallBase *modCb = modifyCall(cb, newFn);
+                // cb->eraseFromParent();
 
-                retInst = modCb;
-            }
+                cb->setCalledFunction(newFn);
 
-            if (f->isDeclaration()) {  
+                // errs() << "NOW: " << *modCb->getFunction() << "\n";
+                errs() << "NOW: " << *cb->getFunction() << "\n";
+
+                // retInst = modCb;
+                retInst = cb;
+            } else if (f->isDeclaration()) {  
                 std::string declName(utils::demangle(f->getName().data()));
                 errs() << *cb << "\n";
                 errs() << "DECL: " << declName << "\n";
 
                 Function *pmVersion = getPersistentVersion(declName.c_str());
-                CallBase *modCb = modifyCall(cb, pmVersion);
-                errs() << *modCb << "\n";
-                cb->eraseFromParent();
 
-                retInst = modCb;
+                // -- This screws up stuff
+                // CallBase *modCb = modifyCall(cb, pmVersion);
+                // errs() << *modCb << "\n";
+                // cb->eraseFromParent();
+
+                // retInst = modCb;
+
+                cb->setCalledFunction(pmVersion);
+                retInst = cb;
             }
 
             continue;
@@ -593,7 +602,10 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
         }
 
         Instruction *currInst = fixLocList.front().last;
+        assert(currInst && "current can't be nullptr!");
+        errs() << "CI ptr:" << currInst << "\n";
         errs() << "CI:" << *currInst << "\n";
+        errs() << "cool\n";
 
         Function *fn = currInst->getFunction();
         ValueToValueMapTy vmap;
