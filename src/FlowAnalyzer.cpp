@@ -70,6 +70,8 @@ void PmDesc::addKnownPmValue(Value *pmv) {
     }
     assert(ptsSet.size() && "no points to!");
 
+
+    // We also need to filter the ptsSet to not include allocas, those are always volatile
     for (const Value *v : ptsSet) {
         if (isa<AllocaInst>(v)) continue;
         if (isa<Function>(v)) continue;
@@ -78,7 +80,11 @@ void PmDesc::addKnownPmValue(Value *pmv) {
         filtered.insert(v);
     }
 
-    // We also need to filter the ptsSet to not include allocas, those are always volatile
+    // if (filtered.empty()) {
+    //     errs() << *pmv << "\n";
+    // }
+
+    // assert(filtered.size() && "We don't have the allocation site of the PM!");
 
     if (isa<GlobalValue>(pmv)) pm_globals_.insert(filtered.begin(), filtered.end());
     else pm_locals_.insert(filtered.begin(), filtered.end());

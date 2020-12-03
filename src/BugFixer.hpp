@@ -26,7 +26,7 @@ namespace pmfix {
  * redundancy of operations from the computed fixes. Then, runs the fix generator
  * over the reduced patch.
  */
-class BugFixer {
+class BugFixer final {
 private:
     llvm::Module &module_;
     TraceInfo &trace_;
@@ -127,7 +127,8 @@ private:
         }
     };
 
-    std::unordered_map<FixLoc, FixDesc, FixLoc::Hash> fixMap_;
+    // std::unordered_map<FixLoc, FixDesc, FixLoc::Hash> fixMap_;
+    std::map<FixLoc, FixDesc, FixLoc::Compare> fixMap_;
 
     /**
      * Utility to update the fix map. This provides basic fix coalescing (i.e.,
@@ -191,6 +192,18 @@ private:
      * Run the fix generator to fix the specified bug.
      */
     bool fixBug(FixGenerator *fixer, const FixLoc &fl, const FixDesc &desc);
+
+    /**
+     * Run the trace alias analysis, which reduces the time spent in the alias
+     * analysis by removing functions which don't appear in the trace.
+     */
+    void runTraceAA(void);
+
+    /**
+     * Run the reduce alloc alias analysis, which reduces the time spent in the alias
+     * analysis by removing stack allocation sites.
+     */
+    void runReducedAllocAA(void);
 
 public:
     BugFixer(llvm::Module &m, TraceInfo &ti);

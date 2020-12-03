@@ -95,6 +95,7 @@ public:
         const FixLoc &fl,
         const std::vector<LocationInfo> &callstack,
         int idx,
+        bool insertFlushes,
         bool insertFence) = 0;
 
     /** PERFORMANCE
@@ -149,6 +150,7 @@ public:
         const FixLoc &fl,
         const std::vector<LocationInfo> &callstack, 
         int idx,
+        bool insertFlushes,
         bool insertFence) override;
 
     virtual bool removeFlush(const FixLoc &fl) override;
@@ -183,6 +185,7 @@ public:
         const FixLoc &fl,
         const std::vector<LocationInfo> &callstack, 
         int idx,
+        bool insertFlush,
         bool insertFence) override;
 
     virtual bool removeFlush(const FixLoc &fl) override;

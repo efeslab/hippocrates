@@ -128,6 +128,10 @@ uint64_t FixLoc::Hash::operator()(const FixLoc &fl) const {
             ^ std::hash<void*>{}((void*)fl.last); 
 }
 
+bool FixLoc::Compare::operator()(const FixLoc &a, const FixLoc &b) const {
+    return a.first < b.first;
+}
+
 bool FixLoc::isValid() const {
     if (!first || !last) return false;
     // Make sure there are all in the same function
@@ -362,10 +366,17 @@ bool TraceEvent::callStacksEqual(const TraceEvent &a, const TraceEvent &b) {
     return true;
 }
 
-static 
-Value *getGenericPmValues(const BugLocationMapper &mapper, const FixLoc &fLoc) {
+static list<Value*> getGenericPmValues(
+    const BugLocationMapper &mapper, const FixLoc &fLoc) {
+    
+    list<Value*> values;
     for (Instruction *i : fLoc.insts()) {
-        // errs() << "GET PMV:" << *i << "\n";
+        errs() << "GET PMV FIRST:" << *i << "\n";
+    }
+
+
+    for (Instruction *i : fLoc.insts()) {
+        errs() << "GET PMV:" << *i << "\n";
         if (auto *cb = dyn_cast<CallBase>(i)) {
 
             Function *intr = cb->getCalledFunction();
@@ -374,7 +385,8 @@ Value *getGenericPmValues(const BugLocationMapper &mapper, const FixLoc &fLoc) {
                     case Intrinsic::memcpy:
                     case Intrinsic::memset:
                     case Intrinsic::memmove:
-                        return cb->getArgOperand(0);
+                        values.push_back(cb->getArgOperand(0));
+                        continue;
                     default: 
                         break;
                 }
@@ -382,7 +394,8 @@ Value *getGenericPmValues(const BugLocationMapper &mapper, const FixLoc &fLoc) {
             
             const Function *f = utils::getFlush(cb);
             if (f) {
-                return cb->getArgOperand(0);
+                values.push_back(cb->getArgOperand(0));
+                continue;
             } 
             
             if (auto *ci = dyn_cast<CallInst>(cb)) {
@@ -401,7 +414,7 @@ Value *getGenericPmValues(const BugLocationMapper &mapper, const FixLoc &fLoc) {
                     // }
                     // Check if it is
                     if (isFlushAsm) {
-                        return cb->getArgOperand(0);
+                        values.push_back(cb->getArgOperand(0));
                     }
                 }
             }
@@ -434,19 +447,22 @@ Value *getGenericPmValues(const BugLocationMapper &mapper, const FixLoc &fLoc) {
                     }
                     // errs() << "\tAddr (no cast):" << *pmAddr << "\n";
                     assert(pmAddr->getType()->isPointerTy());
-                    return pmAddr;
+                    values.push_back(pmAddr);
+                    continue;
                 }
                 // Fall-through, looking for magic VALGRIND number
             }
 
-            return si->getPointerOperand();
+            // return si->getPointerOperand();
+            values.push_back(si->getPointerOperand());
             // Fall-through, we already checked for valgrind
         } else if (auto *cx = dyn_cast<AtomicCmpXchgInst>(i)) {
-            return cx->getPointerOperand();
+            // return cx->getPointerOperand();
+            values.push_back(cx->getPointerOperand());
         }
     }
 
-    return nullptr;                      
+    return values;                      
 }
 
 std::list<Value*> TraceEvent::pmValues(const BugLocationMapper &mapper) const {
@@ -496,15 +512,17 @@ std::list<Value*> TraceEvent::pmValues(const BugLocationMapper &mapper) const {
                     case STORE: {
                         // errs() << "Try get store value!\n";
                         // errs() << str() << "\n";
-                        Value *pmv = getGenericPmValues(mapper, fLoc);
-                        if (pmv) pmAddrs.push_back(pmv);
+                        for (Value *pmv : getGenericPmValues(mapper, fLoc)) {
+                            if (pmv) pmAddrs.push_back(pmv);
+                        }
                         break;
                     }  
                     case FLUSH: {
                         // errs() << "Try get flush value!\n";
                         // errs() << str() << "\n";
-                        Value *pmv = getGenericPmValues(mapper, fLoc);
-                        if (pmv) pmAddrs.push_back(pmv);
+                        for (Value *pmv : getGenericPmValues(mapper, fLoc)) {
+                            if (pmv) pmAddrs.push_back(pmv);
+                        }
                         break;
                     }        
                     default:

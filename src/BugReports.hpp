@@ -99,6 +99,13 @@ struct FixLoc {
         uint64_t operator()(const FixLoc &fl) const;
     };
 
+    struct Compare {
+        /**
+         * Return a < b.
+         */
+        bool operator()(const FixLoc &a, const FixLoc &b) const;
+    };
+
     FixLoc() : first(nullptr), last(nullptr) {}
     FixLoc(llvm::Instruction *i) : first(i), last(i) {}
     FixLoc(llvm::Instruction *f, llvm::Instruction *l) : first(f), last(l) {}

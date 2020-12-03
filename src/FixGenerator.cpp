@@ -21,6 +21,7 @@ cl::opt<bool> UseNT("use-nt",
     cl::desc("Indicates whether or not to use NT stores for persistent subprograms."));
 
 extern cl::opt<bool> TraceAlias;
+extern cl::opt<bool> ReducedAlias;
 
 llvm::Function *FixGenerator::getClwbDefinition() const {
     // Function *clwb = Intrinsic::getDeclaration(&module_, Intrinsic::x86_clwb, {ptrTy});
@@ -221,7 +222,7 @@ bool FixGenerator::makeAllStoresPersistent(
                 ptrOp = cx->getPointerOperand();
             }
 
-            if (TraceAlias) {
+            if (TraceAlias || ReducedAlias) {
                 ptrOp = (*traceAAMap_)[ptrOp];
             }
             
@@ -497,6 +498,7 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
     const FixLoc &fl,
     const std::vector<LocationInfo> &callstack, 
     int idx,
+    bool addFlushes,
     bool addFence) {
     
     errs() << __PRETTY_FUNCTION__ << " BEGIN\n";
@@ -608,13 +610,16 @@ Instruction *GenericFixGenerator::insertPersistentSubProgram(
         errs() << "cool\n";
 
         Function *fn = currInst->getFunction();
+        Function *pmFn = fn;
         ValueToValueMapTy vmap;
-        Function *pmFn = duplicateFunction(fn, vmap);
 
-        // Now, we need to make all of the stores flushed
-        bool successful = makeAllStoresPersistent(fn, pmFn, vmap);
-        assert(successful && "failed to make persistent!");
-
+        if (addFlushes) {
+            pmFn = duplicateFunction(fn, vmap);
+            // Now, we need to make all of the stores flushed
+            bool successful = makeAllStoresPersistent(fn, pmFn, vmap);
+            assert(successful && "failed to make persistent!");
+        }
+        
         // Now we need to replace the call.
         auto &nextFixLoc = mapper[callstack[i+1]];
         // assert(nextInstLoc.size() == 1 && "next still too big");
@@ -844,6 +849,7 @@ Instruction *PMTestFixGenerator::insertPersistentSubProgram(
     const FixLoc &fl,
     const std::vector<LocationInfo> &callstack,
     int idx,
+    bool addFlush,
     bool addFence) {
 
     assert(false && "IMPLEMENT ME");
