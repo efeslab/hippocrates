@@ -28,7 +28,7 @@ function(add_pmdk_unit_test)
     # This is for some tests that need the pmempool exe or whatnot
     set(options SKIP_EXTRACT)                                                                  
     set(oneValueArgs TEST_CASE TEST_FILE TEST_PATCH 
-                     PMDK_PATH PMDK_TARGET COMMIT_HASH SUITE)                                                       
+                     PMDK_PATH PMDK_TARGET COMMIT_HASH SUITE ISSUE)                                                       
     set(multiValueArgs SOURCES EXTRA_LIBS INCLUDE)                                         
     cmake_parse_arguments(FN_ARGS "${options}" "${oneValueArgs}"                   
                         "${multiValueArgs}" ${ARGN})

@@ -11,6 +11,7 @@ set(TEST_EXE_LIST "" CACHE INTERNAL "List of all generated tests (executables)")
 set(TEST_BC_LIST "" CACHE INTERNAL "List of all generated tests (bitcodes)")
 set(TEST_TOOL_LIST "" CACHE INTERNAL "List of tools to use for each test")
 set(TEST_SUITE_LIST "" CACHE INTERNAL "List of suites that each test belongs to")
+set(ISSUE_LIST "" CACHE INTERNAL "Issue number")
 
 function(append_tool_lists)
     set(options)                                                                   
@@ -40,6 +41,9 @@ function(append_tool_lists)
         
         list(APPEND TEST_SUITE_LIST "${FN_ARGS_SUITE}")
         set(TEST_SUITE_LIST ${TEST_SUITE_LIST} CACHE INTERNAL "")
+
+        list(APPEND ISSUE_LIST "${FN_ARGS_ISSUE}")
+        set(ISSUE_LIST ${ISSUE_LIST} CACHE INTERNAL "")
     endif()
 endfunction()
 

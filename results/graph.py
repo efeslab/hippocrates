@@ -43,9 +43,10 @@ def graph(mean_df, ci_df, output_file):
 
 def prepare(df):
     # Remove servers we don't want
-    smap = {'redis-server-dumb': r'Redis$_{H-intra}$', 
+    smap = {
+            'redis-server-dumb': r'Redis$_{H-intra}$', 
             'redis-server': 'Redis-pmem', 
-            'redis-server-heuristic': r'Redis$_{H-full}$'}
+            'redis-server-trace': r'Redis$_{H-full}$',}
     wmap = {'load': 'Load', 'workloada': 'A', 'workloadb': 'B', 
             'workloadc': 'C', 'workloadd': 'D', 'workloade': 'E', 'workloadf': 'F'}
     

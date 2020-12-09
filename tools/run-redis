@@ -93,10 +93,11 @@ class RedisServer:
     @classmethod
     def servers(cls):
         yield 'redis-server-dumb'
-        yield 'redis-server-repair'
+        # yield 'redis-server-repair'
         yield 'redis-server'
-        yield 'redis-server-noflush'
-        yield 'redis-server-heuristic'
+        yield 'redis-server-trace'
+        # yield 'redis-server-noflush'
+        # yield 'redis-server-heuristic'
 
 
 class YCSBRunner:

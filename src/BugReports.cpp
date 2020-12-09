@@ -129,7 +129,7 @@ uint64_t FixLoc::Hash::operator()(const FixLoc &fl) const {
 }
 
 bool FixLoc::Compare::operator()(const FixLoc &a, const FixLoc &b) const {
-    return a.first < b.first;
+    return a.first < b.first || (a.first == b.first && a.last < b.last);
 }
 
 bool FixLoc::isValid() const {

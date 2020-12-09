@@ -1201,6 +1201,8 @@ void BugFixer::runTraceAA() {
         f->deleteBody();
     }
 
+    errs() << "analysis start!\n";
+
     pmDesc_.reset(new PmDesc(*dupMod_));
 
     errs() << "analysis done!\n";

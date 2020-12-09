@@ -34,6 +34,7 @@ add_pmdk_unit_test(TEST_CASE obj_list_recovery
                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                   PMDK_TARGET VALIDATION_PMDK
                   SUITE NO_REPRO
+                  ISSUE 440
                   SKIP_EXTRACT)
 
 add_pmdk_unit_test(TEST_CASE obj_list_recovery
@@ -41,6 +42,7 @@ add_pmdk_unit_test(TEST_CASE obj_list_recovery
                   COMMIT_HASH 8bbb0af9c
                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                   PMDK_TARGET VALIDATION_PMDK
+                  ISSUE 440
                   SUITE NO_REPRO)
 
 add_pmdk_unit_test(TEST_CASE obj_list_recovery
@@ -48,6 +50,7 @@ add_pmdk_unit_test(TEST_CASE obj_list_recovery
                   COMMIT_HASH 8bbb0af9c
                   PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                   PMDK_TARGET VALIDATION_PMDK
+                  ISSUE 440
                   SUITE NO_REPRO)
 
 # Issue: https://github.com/pmem/issues/issues/441
@@ -59,6 +62,7 @@ add_pmdk_unit_test(TEST_CASE obj_locks
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 441
                    SUITE NO_REPRO)
 
 # Issue: https://github.com/pmem/issues/issues/442
@@ -69,6 +73,7 @@ add_pmdk_unit_test(TEST_CASE obj_persist_count
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 442
                    SUITE NO_REPRO)
 
 add_pmdk_unit_test(TEST_CASE obj_persist_count
@@ -76,6 +81,7 @@ add_pmdk_unit_test(TEST_CASE obj_persist_count
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 442
                    SUITE NO_REPRO)
 
 # Issue: https://github.com/pmem/issues/issues/444
@@ -87,6 +93,7 @@ add_pmdk_unit_test(TEST_CASE obj_pvector
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 444
                    SUITE NO_REPRO)
 
 # Issue: https://github.com/pmem/issues/issues/446
@@ -98,6 +105,7 @@ add_pmdk_unit_test(TEST_CASE obj_redo_log
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 446
                    SUITE PASSING)
 
 add_pmdk_unit_test(TEST_CASE obj_redo_log
@@ -106,6 +114,7 @@ add_pmdk_unit_test(TEST_CASE obj_redo_log
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 446
                    SUITE PASSING)
 
 # Issue: https://github.com/pmem/issues/issues/447
@@ -117,6 +126,7 @@ add_pmdk_unit_test(TEST_CASE obj_toid
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 447
                    SUITE PASSING)
 
 # Issue: https://github.com/pmem/issues/issues/448
@@ -126,6 +136,7 @@ add_pmdk_unit_test(TEST_CASE obj_tx_alloc
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 448
                    SUITE PASSING)
 
 # Issue: https://github.com/pmem/issues/issues/449
@@ -135,6 +146,7 @@ add_pmdk_unit_test(TEST_CASE obj_tx_add_range
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 449
                    SUITE PASSING)
 
 # Issue: https://github.com/pmem/issues/issues/450
@@ -144,6 +156,7 @@ add_pmdk_unit_test(TEST_CASE obj_tx_add_range_direct
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 450
                    SUITE PASSING)
 
 # Issue: https://github.com/pmem/issues/issues/452
@@ -155,6 +168,7 @@ add_pmdk_unit_test(TEST_CASE obj_constructor
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 452
                    SUITE PASSING)
 
 add_pmdk_unit_test(TEST_CASE obj_constructor
@@ -162,6 +176,7 @@ add_pmdk_unit_test(TEST_CASE obj_constructor
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 452
                    SUITE PASSING)
 
 # Issue: https://github.com/pmem/issues/issues/458
@@ -172,6 +187,7 @@ add_pmdk_unit_test(TEST_CASE pmemspoil
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 458
                    SUITE PASSING)
 
 # Issue: https://github.com/pmem/issues/issues/459
@@ -182,6 +198,7 @@ add_pmdk_unit_test(TEST_CASE pmem_memcpy
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 459
                    SUITE PASSING)
 
 add_pmdk_unit_test(TEST_CASE pmem_memcpy
@@ -189,6 +206,7 @@ add_pmdk_unit_test(TEST_CASE pmem_memcpy
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 459
                    SUITE PASSING)
 
 add_pmdk_unit_test(TEST_CASE pmem_memcpy
@@ -196,6 +214,7 @@ add_pmdk_unit_test(TEST_CASE pmem_memcpy
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 459
                    SUITE PASSING)
 
 add_pmdk_unit_test(TEST_CASE pmem_memcpy
@@ -203,6 +222,7 @@ add_pmdk_unit_test(TEST_CASE pmem_memcpy
                    COMMIT_HASH 8bbb0af9c
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 459
                    SUITE PASSING)           
 
 # Issue: https://github.com/pmem/issues/issues/460
@@ -214,6 +234,7 @@ add_pmdk_unit_test(TEST_CASE pmem_memmove
                    COMMIT_HASH 0fd509d73
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 460
                    SUITE PASSING)
 
 add_pmdk_unit_test(TEST_CASE pmem_memmove
@@ -221,6 +242,7 @@ add_pmdk_unit_test(TEST_CASE pmem_memmove
                    COMMIT_HASH 0fd509d73
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 460
                    SUITE PASSING)
 
 add_pmdk_unit_test(TEST_CASE pmem_memmove
@@ -228,6 +250,7 @@ add_pmdk_unit_test(TEST_CASE pmem_memmove
                    COMMIT_HASH 0fd509d73
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 460
                    SUITE PASSING)
 
 add_pmdk_unit_test(TEST_CASE pmem_memmove
@@ -235,6 +258,7 @@ add_pmdk_unit_test(TEST_CASE pmem_memmove
                    COMMIT_HASH 0fd509d73
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 460
                    SUITE PASSING)
 
 add_pmdk_unit_test(TEST_CASE pmem_memmove
@@ -242,6 +266,7 @@ add_pmdk_unit_test(TEST_CASE pmem_memmove
                    COMMIT_HASH 0fd509d73
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 460
                    SUITE PASSING)
 
 add_pmdk_unit_test(TEST_CASE pmem_memmove
@@ -249,6 +274,7 @@ add_pmdk_unit_test(TEST_CASE pmem_memmove
                    COMMIT_HASH 0fd509d73
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 460
                    SUITE PASSING)
 
 add_pmdk_unit_test(TEST_CASE pmem_memmove
@@ -256,6 +282,7 @@ add_pmdk_unit_test(TEST_CASE pmem_memmove
                    COMMIT_HASH 0fd509d73
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 460
                    SUITE PASSING)
 
 add_pmdk_unit_test(TEST_CASE pmem_memmove
@@ -263,6 +290,7 @@ add_pmdk_unit_test(TEST_CASE pmem_memmove
                    COMMIT_HASH 0fd509d73
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 460
                    SUITE PASSING)
 
 add_pmdk_unit_test(TEST_CASE pmem_memmove
@@ -270,6 +298,7 @@ add_pmdk_unit_test(TEST_CASE pmem_memmove
                    COMMIT_HASH 0fd509d73
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 460
                    SUITE PASSING)
 
 add_pmdk_unit_test(TEST_CASE pmem_memmove
@@ -277,6 +306,7 @@ add_pmdk_unit_test(TEST_CASE pmem_memmove
                    COMMIT_HASH 0fd509d73
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 460
                    SUITE PASSING)
 
 add_pmdk_unit_test(TEST_CASE pmem_memmove
@@ -284,6 +314,7 @@ add_pmdk_unit_test(TEST_CASE pmem_memmove
                    COMMIT_HASH 0fd509d73
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 460
                    SUITE PASSING)
 
 add_pmdk_unit_test(TEST_CASE pmem_memmove
@@ -291,6 +322,7 @@ add_pmdk_unit_test(TEST_CASE pmem_memmove
                    COMMIT_HASH 0fd509d73
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 460
                    SUITE PASSING)
 
 # Issue: https://github.com/pmem/issues/issues/461
@@ -301,6 +333,7 @@ add_pmdk_unit_test(TEST_CASE pmem_memset
                    COMMIT_HASH 0fd509d73
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 461
                    SUITE PASSING)
 
 # Issue: https://github.com/pmem/issues/issues/463
@@ -312,6 +345,7 @@ add_pmdk_unit_test(TEST_CASE pmempool_sync
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
                    SUITE NO_REPRO
+                   ISSUE 463
                    SKIP_EXTRACT)
 
 
@@ -323,6 +357,7 @@ add_pmdk_unit_test(TEST_CASE libpmempool_sync
                    COMMIT_HASH 0fd509d73
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 465
                    SUITE NO_REPRO)
 
 add_pmdk_unit_test(TEST_CASE libpmempool_sync
@@ -330,6 +365,7 @@ add_pmdk_unit_test(TEST_CASE libpmempool_sync
                    COMMIT_HASH 0fd509d73
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 465
                    SUITE NO_REPRO)
 
 add_pmdk_unit_test(TEST_CASE libpmempool_sync
@@ -337,6 +373,7 @@ add_pmdk_unit_test(TEST_CASE libpmempool_sync
                    COMMIT_HASH 0fd509d73
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 465
                    SUITE NO_REPRO)
 
 add_pmdk_unit_test(TEST_CASE libpmempool_sync
@@ -344,6 +381,7 @@ add_pmdk_unit_test(TEST_CASE libpmempool_sync
                    COMMIT_HASH 0fd509d73
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 465
                    SUITE NO_REPRO)
 
 # Issue: https://github.com/pmem/issues/issues/466
@@ -354,6 +392,7 @@ add_pmdk_unit_test(TEST_CASE libpmempool_sync
                    COMMIT_HASH 9a1651b11
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 466
                    SUITE NO_REPRO)
 
 # Issue: https://github.com/pmem/issues/issues/535
@@ -364,6 +403,7 @@ add_pmdk_unit_test(TEST_CASE pmemobjcli
                    COMMIT_HASH 60e24d2 
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 535
                    SUITE NO_REPRO)
 
 # Issue: https://github.com/pmem/issues/issues/585
@@ -374,6 +414,7 @@ add_pmdk_unit_test(TEST_CASE rpmemd_db
                    COMMIT_HASH 60e24d2 
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 585
                    SUITE PASSING)
 
 # Issue: https://github.com/pmem/issues/issues/940
@@ -384,6 +425,7 @@ add_pmdk_unit_test(TEST_CASE obj_first_next
                    COMMIT_HASH e71dfa41b
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 940
                    SUITE PASSING)
 
 add_pmdk_unit_test(TEST_CASE obj_first_next
@@ -391,6 +433,7 @@ add_pmdk_unit_test(TEST_CASE obj_first_next
                    COMMIT_HASH e71dfa41b
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 940
                    SUITE PASSING)
 
 # Issue: https://github.com/pmem/issues/issues/942
@@ -402,6 +445,7 @@ add_pmdk_unit_test(TEST_CASE obj_mem
                    COMMIT_HASH e71dfa41b
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 942
                    SUITE PASSING)
 
 # Issue: https://github.com/pmem/issues/issues/943
@@ -412,6 +456,7 @@ add_pmdk_unit_test(TEST_CASE obj_memops
                    COMMIT_HASH e71dfa41b
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 943
                    SUITE PASSING)
 
 # Issue: https://github.com/pmem/issues/issues/945
@@ -424,6 +469,7 @@ add_pmdk_unit_test(TEST_CASE pmem_memset
                    COMMIT_HASH e71dfa41b
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 945
                    SUITE PASSING)
 
 # Issue: https://github.com/pmem/issues/issues/949
@@ -434,6 +480,7 @@ add_pmdk_unit_test(TEST_CASE obj_pmalloc_basic
                    COMMIT_HASH e71dfa41b
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 949
                    SUITE TIMEOUT)
 
 # Issue: https://github.com/pmem/issues/issues/1103 
@@ -444,6 +491,7 @@ add_pmdk_unit_test(TEST_CASE pmemobjcli
                    COMMIT_HASH 2c2ba2e
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 1103
                    SUITE NO_REPRO)
 
 # Issue: https://github.com/pmem/issues/issues/1118
@@ -453,4 +501,5 @@ add_pmdk_unit_test(TEST_CASE obj_pmalloc_mt
                    COMMIT_HASH 7ff604b
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
+                   ISSUE 1118
                    SUITE TIMEOUT)
