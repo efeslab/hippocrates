@@ -139,7 +139,7 @@ The output should look like:
 ...
 
 11 issues resolved:
-[]
+[447, 452, 458, 459, 460, 461, 585, 940, 942, 943, 945]
 ```
 
 #### RECIPE bugs
@@ -167,7 +167,40 @@ ls /mnt/pmem/
 Then, build Redis:
 
 ```
+make REDIS
 ```
+
+Now, we need to generate the baseline and the log.
+
+```
+cd deps/redis/src
+
+```
+
+Now, run the performance evaluation:
+
+```
+cd build
+./run-redis -t 10 --output-file ../results/test.csv
+
+cd ../results
+./graph.py test.csv test.pdf
+```
+
+This should create a graph similar to Figure 4 in the paper, and should also produce textual output similar to the following:
+
+```
+          Redis$_{H-intra}$  Redis-pmem  Redis$_{H-full}$
+Workload                                                 
+Load               0.215850         1.0          1.003542
+A                  0.797220         1.0          1.009079
+B                  0.721691         1.0          1.029106
+C                  0.728584         1.0          1.034976
+D                  0.682358         1.0          1.004612
+E                  0.167548         1.0          1.027780
+F                  0.680404         1.0          0.997616
+```
+
 
 
 ### 3. Hippocrates's overhead
