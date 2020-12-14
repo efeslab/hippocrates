@@ -149,7 +149,8 @@ function(add_pmdk_unit_test)
     append_tool_lists(TARGET "${FN_ARGS_TARGET}"
                       EXECUTABLE "${FN_ARGS_TARGET}/${FN_ARGS_TEST_CASE}" 
                       TOOL "PMDK_UNIT_TEST" 
-                      SUITE "${FN_ARGS_SUITE}")
+                      SUITE "${FN_ARGS_SUITE}"
+                      ISSUE "${FN_ARGS_ISSUE}")
     append_unit_test_list(TARGET "${FN_ARGS_TARGET}")
 
 endfunction()

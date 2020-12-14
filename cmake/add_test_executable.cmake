@@ -40,7 +40,10 @@ function(add_test_executable)
                                -o $<TARGET_FILE:${FN_ARGS_TARGET}>.bc
                        COMMENT "\textract-bc ${FN_ARGS_TARGET}")
     
-    append_tool_lists(TARGET ${FN_ARGS_TARGET} TOOL ${FN_ARGS_TOOL} SUITE ${FN_ARGS_SUITE})
+    append_tool_lists(TARGET ${FN_ARGS_TARGET} 
+                      TOOL ${FN_ARGS_TOOL} 
+                      SUITE ${FN_ARGS_SUITE} 
+                      ISSUE "-1")
 
 endfunction()
 

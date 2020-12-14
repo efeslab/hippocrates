@@ -188,7 +188,8 @@ add_pmdk_unit_test(TEST_CASE pmemspoil
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
                    ISSUE 458
-                   SUITE PASSING)
+                  #  SUITE PASSING)
+                   SUITE NO_REPRO)
 
 # Issue: https://github.com/pmem/issues/issues/459
 # pmem_memcpy/TEST0, TEST1, TEST2, TEST3 

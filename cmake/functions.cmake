@@ -15,7 +15,7 @@ set(ISSUE_LIST "" CACHE INTERNAL "Issue number")
 
 function(append_tool_lists)
     set(options)                                                                   
-    set(oneValueArgs TARGET TOOL SUITE EXECUTABLE)                                                       
+    set(oneValueArgs TARGET TOOL SUITE EXECUTABLE ISSUE)                                                       
     set(multiValueArgs)                                         
     cmake_parse_arguments(FN_ARGS "${options}" "${oneValueArgs}"                   
                          "${multiValueArgs}" ${ARGN})

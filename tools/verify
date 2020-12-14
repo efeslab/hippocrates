@@ -95,8 +95,6 @@ class ToolRunner:
         # res = subprocess.run(runtests_args, cwd=self.exe_path.parent.parent, 
         #     env=new_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         res = subprocess.run(runtests_args, cwd=self.exe_path.parent.parent, env=new_env)
-        if res.returncode == 0:
-            embed()
         assert (res.returncode != 0), 'Test was successful, meaning no bugs!'
         assert pmemcheck_log.exists(), f'pmemcheck log "{str(pmemcheck_log)}" does not exist!'
 
@@ -226,6 +224,7 @@ def run_test(runner):
     success = runner.run()
     if not success:
         raise Exception(f'{runner.target} failed!')
+    return success
 
 def run_all(args, test_list):
     runners = []
@@ -242,11 +241,14 @@ def run_all(args, test_list):
     issues = []
     with TheBar() as bar:
         for r in runners:
-            run_test(r)
+            if args.dry_run:
+                print('\tDry run, skip!')
+            else:
+                run_test(r)
             issues += [r.issue]
             bar.next()
     
-    issues_resolved = set(issues)
+    issues_resolved = sorted(list(set(issues)))
 
     print(f'{len(issues_resolved)} issues resolved:')
     print(issues_resolved)
@@ -256,7 +258,10 @@ def run_target(args, test_list):
     for target, exe, bc, tool, suite in test_list:
         r = ToolRunner(target, exe, bc, tool, suite)
         if r.target == args.target:
-            run_test(r)
+            if args.dry_run:
+                print('\tDry run, skip!')
+            else:
+                run_test(r)
 
 def main():
     test_list, targets, suites = get_test_list()
@@ -267,6 +272,7 @@ def main():
                         nargs='?', help='Which set of tests to run')
     parser.add_argument('--target', '-t', type=str, choices=targets, 
                         help='Which target to run.')
+    parser.add_argument('--dry-run', action='store_true', help='do a dry run')
     args = parser.parse_args()
 
     if args.target is not None:
