@@ -120,6 +120,14 @@ There are three main results from Hippocrates:
 
 ### 1. Fixing previously reported bugs.
 
+#### PMDK bugs
+
+We provide a script, `build/verify`, which does the following:
+
+1. Gathers the list of all reproducible bugs listed
+
+This script 
+
 ```
 cd build
 ./verify
@@ -128,8 +136,64 @@ cd build
 The output should look like:
 
 ```
+...
+
+11 issues resolved:
+[]
+```
+
+#### RECIPE bugs
+
+To reproduce the RECIPE bugs, do the following:
+
+```
+```
+
+#### memcached-pm bugs
+
+To reproduce the memcached-pm bugs, do the following:
+
+```
 ```
 
 ### 2. Performing the Redis experiment
+
+First, confirm that `/mnt/pmem/` exists, as this is where Redis will persist its data store:
+
+```
+ls /mnt/pmem/
+```
+
+Then, build Redis:
+
+```
+```
+
+
+### 3. Hippocrates's overhead
+
+This information is gathered from examining `./build/apply_fixer.log`. This is a log which is appended to for every invocation of the `apply-fixer` script.
+
+The format of entries in this log is the following:
+
+<pre>
+Fixer stats for <em>{command line string}</em>
+INFO:root:Fixer time: <em>{time in seconds}</em>
+INFO:root:Fixer mem: <em>{memory usage in MB}</em>
+</pre>
+
+- If a command is run with the **full heuristic (Full-AA)**, the command line will end with **`-heuristic-raising`**.
+- If the command is run with the **trace heuristic (Trace-AA)**, the command line will instead end with **`-heuristic-raising -trace-aa`**
+
+Example for PMDK:
+
+<pre>
+Fixer stats for "/usr/lib/llvm-8/bin/opt -load /home/iangneal/workspace/pm-bug-fixing/build/src/PMFIXER.so -pm-bug-fixer -trace-file /home/iangneal/workspace/pm-bug-fixing/build/tests/validation/obj_toid_TEST0_8bbb0af9c/pmemcheck0.trace -fix-summary-file=obj_toid_TEST0_8bbb0af9c_summary.txt <b>-heuristic-raising</b> /tmp/tmp9r8nsj59/obj_toid.static-debug_linked.bc":
+INFO:root:Fixer time: 00:00:05 <b>(5.251097 seconds)</b>                                
+INFO:root:Fixer mem: <b>86.9296875</b> MB
+</pre>
+
+
+
 
 [//]: # (Links below)
