@@ -1,25 +1,14 @@
 # Hippocrates ASPLOS '21 Artifact
 
 This document describes the artifact for our ASPLOS '21 paper on Hippocrates, 
-a symbolic-execution based approach for systematically finding bugs in 
-persistent memory applications and libraries. The remainder of this document 
+an automated tool for fixing PM durability bugs. The remainder of this document 
 describes how to run Hippocrates and reproduce the key results from our paper.
 
 ### Resources
 
 **Server login**: We will be providing access to one of our servers, which has
 real NVDIMMs installed on it (this is required for our performance evaluation).
-We will provide the login procedure
-
-### Artifact Overview
-
-
-`targets/`: This directory contains the scripts required to run all the tests needed to reproduce the main results from the paper.
-After running experiments, the results will be placed into the `results/` directory
-
-`results/`: This directory contains the scripts required to parse the results generated from the main experiments.
-
-`vm_scripts/`: This directory contains scripts for building and running the evaluation VM.
+We will provide the login procedure on the artifact submission site.
 
 
 ## Artifacts Available Criteria
@@ -29,8 +18,7 @@ Hippocrates is open-source and is available at https://github.com/efeslab/hippoc
 
 ## Artifacts Functional Criteria
 
-We now provide an overview of how to build and run Hippocrates. For a guide on how to compile applications to run on Hippocrates, see [Klee's tutorial on building coreutils](https://klee.github.io/tutorials/testing-coreutils/).
-
+We now provide an overview of how to build and run Hippocrates. 
 
 ### Building Hippocrates
 
@@ -43,7 +31,6 @@ This step is only needed if setting up Hippocrates on a new machine.
 ./install-deps.sh
 ```
 
-
 #### Compiling Hippocrates
 
 
@@ -52,10 +39,9 @@ make PMFIXER
 make PMINTRINSICS
 ```
 
-
 ### Building Dependencies
 
-- wllvm:
+- wllvm (**optional**, only if installing on a new machine):
 
 ```
 cd deps/whole-program-llvm
@@ -137,7 +123,6 @@ After collecting the trace:
 ./apply-fixer ../deps/redis/src/redis-server-noflush.bc redis_noflush.trace -o ../deps/redis/src/redis-server-dumb --keep-files --cxx --extra-opt-args="-fix-summary-file=redis_dumb_summary.txt -disable-raising -extra-dumb" 
 
 ```
-
 
 
 ## Results Reproduced
