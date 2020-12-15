@@ -48,6 +48,7 @@ class ToolRunner:
         self.suite = suite
         self.target = target_name
         self.issue = issue
+        self.use_trace_aa = False
 
         fixed_postfix = '.fixed'
         if tool_type == ToolTypes.PMDK_UNIT_TEST:
@@ -58,6 +59,9 @@ class ToolRunner:
         if suite == 'all' or suite == self.suite:
             return True
         return False
+
+    def set_trace_aa(self, use_trace_aa):
+        self.use_trace_aa = use_trace_aa
 
     def _run_pmtest(self):
         return True
@@ -158,9 +162,11 @@ class ToolRunner:
         fixer_script = Path(__file__).parent.absolute() / 'apply-fixer'
         if self.exe_fixed_path.exists():
             self.exe_fixed_path.unlink()
+        
+        aa_str = '-heuristic-raising -trace-aa ' if self.use_trace_aa else '-heuristic-raising'
         fixer_arg_str = (f'{str(fixer_script)} {str(self.bc_linked_path)} '
             f'{str(trace_file)} -o {str(self.exe_fixed_path)} --extra-opt-args='
-            f'"-fix-summary-file={self.exe_path.parent.name}_summary.txt -heuristic-raising"')
+            f'"-fix-summary-file={self.exe_path.parent.name}_summary.txt {aa_str}"')
         print(fixer_arg_str)
         fixer_args = shlex.split(fixer_arg_str)
         res = subprocess.run(fixer_args)
@@ -272,6 +278,8 @@ def main():
                         nargs='?', help='Which set of tests to run')
     parser.add_argument('--target', '-t', type=str, choices=targets, 
                         help='Which target to run.')
+    parser.add_argument('--use-trace-aa', action='store_true', 
+                        help='Use trace alias analysis instead of the full alias analysis')
     parser.add_argument('--dry-run', action='store_true', help='do a dry run')
     args = parser.parse_args()
 

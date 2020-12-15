@@ -1,25 +1,14 @@
 # Hippocrates ASPLOS '21 Artifact
 
 This document describes the artifact for our ASPLOS '21 paper on Hippocrates, 
-a symbolic-execution based approach for systematically finding bugs in 
-persistent memory applications and libraries. The remainder of this document 
+an automated tool for fixing PM durability bugs. The remainder of this document 
 describes how to run Hippocrates and reproduce the key results from our paper.
 
 ### Resources
 
 **Server login**: We will be providing access to one of our servers, which has
 real NVDIMMs installed on it (this is required for our performance evaluation).
-We will provide the login procedure
-
-### Artifact Overview
-
-
-`targets/`: This directory contains the scripts required to run all the tests needed to reproduce the main results from the paper.
-After running experiments, the results will be placed into the `results/` directory
-
-`results/`: This directory contains the scripts required to parse the results generated from the main experiments.
-
-`vm_scripts/`: This directory contains scripts for building and running the evaluation VM.
+We will provide the login procedure on the artifact submission site.
 
 
 ## Artifacts Available Criteria
@@ -29,8 +18,7 @@ Hippocrates is open-source and is available at https://github.com/efeslab/hippoc
 
 ## Artifacts Functional Criteria
 
-We now provide an overview of how to build and run Hippocrates. For a guide on how to compile applications to run on Hippocrates, see [Klee's tutorial on building coreutils](https://klee.github.io/tutorials/testing-coreutils/).
-
+We now provide an overview of how to build and run Hippocrates. 
 
 ### Building Hippocrates
 
@@ -43,7 +31,6 @@ This step is only needed if setting up Hippocrates on a new machine.
 ./install-deps.sh
 ```
 
-
 #### Compiling Hippocrates
 
 
@@ -52,10 +39,9 @@ make PMFIXER
 make PMINTRINSICS
 ```
 
-
 ### Building Dependencies
 
-- wllvm:
+- wllvm (**optional**, only if installing on a new machine):
 
 ```
 cd deps/whole-program-llvm
@@ -74,6 +60,27 @@ make PMEMCHECK
 make PMDK
 ```
 
+- memcached-pmem
+
+```
+source build.env
+cd build
+make MEMCACHED_PMEM
+
+cd ./deps/memcached-pmem/bin/
+llvm-link-8 memcached.bc -o memcached.linked.bc ../../pmdk/lib/pmdk_debug/libpmem.so.1.bc
+```
+
+- RECIPE (P-CLHT)
+
+```
+cd build
+make p-clht_example
+
+cd ./deps/RECIPE/P-CLHT/
+llvm-link-8 p-clht_example.bc --override=../../pmdk/lib/pmdk_debug/libpmem.so.bc --override=../../pmdk/lib/pmdk_debug/libpmemobj.so.bc -o p-clht_example.linked.bc
+```
+
 - Redis:
 
 ```
@@ -84,29 +91,37 @@ cd ../deps/redis/src
 extract-bc redis-server
 llvm-link-8 redis-server.bc --override=../../../build/deps/pmdk/lib/pmdk_debug/libpmem.so.bc --override=../../../build/deps/pmdk/lib/pmdk_debug/libpmemobj.so.bc -o redis-server.linked.bc
 
+# This creates the baseline for the redis experiment
 cd -
-make PMFIXER && ./remove-flushes ../deps/redis/src/redis-server.linked.bc -o ../deps/redis/src/redis-server-noflush -s
-
-make PMFIXER && make PMINTRINSICS && time ./apply-fixer ../deps/redis/src/redis-server-noflush.bc ../deps/redis/src/redis_noflush_112420.trace -o ../deps/redis/src/redis-server-trace --keep-files --cxx --extra-opt-args="-fix-summary-file=redis_heuristic_traceaa.txt -heuristic-raising -trace-aa" > log_trace.txt 2>&1
-
+./remove-flushes ../deps/redis/src/redis-server.linked.bc -o ../deps/redis/src/redis-server-noflush -s
 ```
 
-### Running Hippocrates
+The following will be run in two terminals (to collect the trace):
 
-- Redis:
+- In the first terminal:
+```
+cd ./deps/redis/src/
+rm /mnt/pmem/redis.pmem
+~/workspace/pm-bug-fixing/build/deps/valgrind-pmem/bin/valgrind --tool=pmemcheck --log-file=redis.log ./redis-server-noflush ../../redis-pmem.conf
+```
+
+- In the second terminal:
+```
+telnet localhost 6380
+> set foo bar
+...
+> shutdown
+```
+
+After collecting the trace:
 
 ```
-cd deps/redis/src
-# Make the trace using pmemcheck
-rm /mnt/pmem/redis.pmem; ~/workspace/pm-bug-fixing/build/deps/valgrind-pmem/bin/valgrind --tool=pmemcheck --log-file=redis_noflush.log ./redis-server-noflush ../../redis-pmem.conf
+./parse-trace pmemcheck ../deps/redis/src/redis.log -o ../deps/redis/src/redis.trace
 
-../../../build/parse-trace pmemcheck redis_noflush.log -o redis_noflush.trace
+./apply-fixer ../deps/redis/src/redis-server-noflush.bc ../deps/redis/src/redis_noflush.trace -o ../deps/redis/src/redis-server-trace --keep-files --cxx --extra-opt-args="-fix-summary-file=redis_summary.txt -heuristic-raising -trace-aa"
 
-# Build the evaluation targets using the Hippocrates
-cd build
-time ./apply-fixer ../deps/redis/src/redis-server-noflush.bc ../deps/redis/src/redis_noflush.trace -o ../deps/redis/src/redis-server-trace --keep-files --cxx --extra-opt-args="-fix-summary-file=redis_heuristic_traceaa.txt -heuristic-raising -trace-aa"
+./apply-fixer ../deps/redis/src/redis-server-noflush.bc redis_noflush.trace -o ../deps/redis/src/redis-server-dumb --keep-files --cxx --extra-opt-args="-fix-summary-file=redis_dumb_summary.txt -disable-raising -extra-dumb" 
 
-make PMFIXER && ./apply-fixer ../deps/redis/src/redis-server.linked.bc redis_noflush.trace -o ../deps/redis/src/redis-server-dumb --keep-files --cxx --extra-opt-args="-fix-summary-file=redis_dumb_summary.txt -disable-raising -extra-dumb" 
 ```
 
 
@@ -137,36 +152,137 @@ The output should look like:
 
 ```
 ...
-
 11 issues resolved:
-[]
+[447, 452, 458, 459, 460, 461, 585, 940, 942, 943, 945]
 ```
 
 #### RECIPE bugs
 
 To reproduce the RECIPE bugs, do the following:
 
+1. First, generate the bug report using pmemcheck:
 ```
+~/workspace/pm-bug-fixing/build/deps/valgrind-pmem/bin/valgrind --tool=pmemcheck --log-file=recipe.log ./deps/RECIPE/P-CLHT/p-clht_example 100 1
+~/workspace/pm-bug-fixing/build/parse-trace pmemcheck recipe.log -o recipe.trace
+```
+
+2. Apply Hippocrates to fix the bugs:
+```
+cd build
+
+./apply-fixer ./deps/RECIPE/P-CLHT/p-clht_example.linked.bc recipe.trace -o ./deps/RECIPE/P-CLHT/fixed --cxx --extra-opt-args="-fix-summary-file=recipe_summary.txt -heuristic-raising -trace-aa"
+```
+
+3. Rerun pmemcheck and generate a new bug report:
+```
+rm -f /mnt/pmem/pool 
+~/workspace/pm-bug-fixing/build/deps/valgrind-pmem/bin/valgrind --tool=pmemcheck --log-file=recipe_fixed.log ./deps/RECIPE/P-CLHT/fixed 100 1
+```
+
+4. Confirm the bug report is empty, thus confirming the bugs are fixed:
+```
+~/workspace/pm-bug-fixing/build/parse-trace pmemcheck recipe_fixed.log -o recipe_fixed.trace
+```
+
+This should produce output similar to the following:
+```
+Identified trace start
+
+
+Identified trace end
+...
+Prepare to dump.
+        Num items: 1
+Prepare to write.
+Report written to recipe_fixed.trace
 ```
 
 #### memcached-pm bugs
 
-To reproduce the memcached-pm bugs, do the following:
+To reproduce the memcached-pm bugs, do the following 
+
+1. First, find the bugs and generate a pmemcheck trace:
 
 ```
+cd build/deps/memcached/bin
+LD_LIBRARY_PATH=$(realpath ../../pmdk/lib/pmdk_debug) ~/workspace/pm-bug-fixing/build/deps/valgrind-pmem/bin/valgrind --tool=pmemcheck --log-file=memcached.log ./memcached -m 0 -U 0 -t 1 -A -o pslab_file=/mnt/pmem/pool,pslab_size=8,pslab_force
+```
+
+In a second terminal:
+```
+telnet localhost 11211
+> set foo 1 0 3
+> bar
+> shutdown
+```
+
+Then parse the trace:
+```
+cd build
+./parse-trace pmemcheck ./deps/memcached/bin/memcached.log -o ./deps/memcached/bin/memcached.trace
+```
+
+2. Then, apply Hippocrates:
+```
+./apply-fixer ./deps/memcached-pmem/bin/memcached.linked.bc ./deps/memcached-pmem/bin/memcached.trace -o ./deps/memcached-pmem/bin/memcached-fixed --keep-files --extra-opt-args="-fix-summary-file=memcached_summary_time.txt -heuristic-raising -trace-aa" 
+```
+
+3. Repeat steps 1, except using the fixed binary. Then confirm the new binary does not have any bugs:
+```
+cd build/deps/memcached/bin
+LD_LIBRARY_PATH=$(realpath ../../pmdk/lib/pmdk_debug) ~/workspace/pm-bug-fixing/build/deps/valgrind-pmem/bin/valgrind --tool=pmemcheck --log-file=memcached_fixed.log ./memcached-fixed -m 0 -U 0 -t 1 -A -o pslab_file=/mnt/pmem/pool,pslab_size=8,pslab_force
+
+# --- Follow the same steps in a second terminal
+
+cd build
+./parse-trace pmemcheck ./deps/memcached/bin/memcached_fixed.log -o ./deps/memcached/bin/memcached_fixed.trace
+```
+
+The output should be like the following:
+
+```
+Identified trace start
+
+
+Identified trace end
+...
+Prepare to dump.
+        Num items: 1
+Prepare to write.
+Report written to memcached_fixed.trace
 ```
 
 ### 2. Performing the Redis experiment
 
-First, confirm that `/mnt/pmem/` exists, as this is where Redis will persist its data store:
+1. First, we need to generate the baseline and the log.
 
 ```
-ls /mnt/pmem/
-```
-
-Then, build Redis:
+cd deps/redis/src
 
 ```
+
+Now, run the performance evaluation:
+
+```
+cd build
+./run-redis -t 10 --output-file ../results/test.csv
+
+cd ../results
+./graph.py test.csv test.pdf
+```
+
+This should create a graph similar to Figure 4 in the paper, and should also produce textual output similar to the following:
+
+```
+          Redis$_{H-intra}$  Redis-pmem  Redis$_{H-full}$
+Workload                                                 
+Load               0.215850         1.0          1.003542
+A                  0.797220         1.0          1.009079
+B                  0.721691         1.0          1.029106
+C                  0.728584         1.0          1.034976
+D                  0.682358         1.0          1.004612
+E                  0.167548         1.0          1.027780
+F                  0.680404         1.0          0.997616
 ```
 
 

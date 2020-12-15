@@ -106,7 +106,8 @@ add_pmdk_unit_test(TEST_CASE obj_redo_log
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
                    ISSUE 446
-                   SUITE PASSING)
+                   #  SUITE PASSING)
+                   SUITE NO_REPRO)
 
 add_pmdk_unit_test(TEST_CASE obj_redo_log
                    TEST_FILE TEST1
@@ -115,7 +116,8 @@ add_pmdk_unit_test(TEST_CASE obj_redo_log
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
                    ISSUE 446
-                   SUITE PASSING)
+                   #  SUITE PASSING)
+                   SUITE NO_REPRO)
 
 # Issue: https://github.com/pmem/issues/issues/447
 # obj_toid/TEST0
@@ -137,7 +139,8 @@ add_pmdk_unit_test(TEST_CASE obj_tx_alloc
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
                    ISSUE 448
-                   SUITE PASSING)
+                  #  SUITE PASSING)
+                  SUITE NO_REPRO)
 
 # Issue: https://github.com/pmem/issues/issues/449
 # obj_tx_add_range/TEST0
@@ -147,7 +150,8 @@ add_pmdk_unit_test(TEST_CASE obj_tx_add_range
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
                    ISSUE 449
-                   SUITE PASSING)
+                  #  SUITE PASSING)
+                  SUITE NO_REPRO)
 
 # Issue: https://github.com/pmem/issues/issues/450
 # obj_tx_add_range_direct/TEST0
@@ -157,7 +161,8 @@ add_pmdk_unit_test(TEST_CASE obj_tx_add_range_direct
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
                    ISSUE 450
-                   SUITE PASSING)
+                  #  SUITE PASSING)
+                  SUITE NO_REPRO)
 
 # Issue: https://github.com/pmem/issues/issues/452
 # obj_constructor/TEST0, TEST2
@@ -188,8 +193,8 @@ add_pmdk_unit_test(TEST_CASE pmemspoil
                    PMDK_PATH ${VALIDATE_PMDK_ROOT_DIR}
                    PMDK_TARGET VALIDATION_PMDK
                    ISSUE 458
-                  #  SUITE PASSING)
-                   SUITE NO_REPRO)
+                   SUITE PASSING)
+                  #  SUITE NO_REPRO)
 
 # Issue: https://github.com/pmem/issues/issues/459
 # pmem_memcpy/TEST0, TEST1, TEST2, TEST3 
