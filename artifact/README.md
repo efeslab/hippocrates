@@ -18,7 +18,8 @@ Hippocrates is open-source and is available at https://github.com/efeslab/hippoc
 
 ## Artifacts Functional Criteria
 
-We now provide an overview of how to build and run Hippocrates. 
+We now provide an overview of how to build and run Hippocrates. We provide pre-built binaries in `artifact/prebuilt` as an alternative to 
+the following compilation instructions.
 
 ### Building Hippocrates
 
