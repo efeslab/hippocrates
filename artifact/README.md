@@ -267,6 +267,8 @@ Now, run the performance evaluation:
 ```
 cd build
 ./run-redis -t 10 --output-file ../results/test.csv
+# if using prebuilt:
+./run-redis -t 10 --output-file ../results/test.csv -r ../artifact/prebuilt
 
 cd ../results
 ./graph.py test.csv test.pdf
