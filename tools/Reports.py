@@ -1,8 +1,9 @@
+from IPython import embed
 from argparse import ArgumentParser
 from copy import deepcopy
 from enum import Enum, auto
+from intervaltree import IntervalTree, Interval
 from pathlib import Path
-from IPython import embed
 
 import collections
 import re
@@ -140,6 +141,25 @@ class BugReport:
         bug_events = ['ASSERT_PERSISTED', 'ASSERT_ORDERED', 'REQUIRED_FLUSH']
         return te['event'] in bug_events
 
+    @staticmethod
+    def _is_flush(te: TraceEvent) -> bool:
+        return te['event'] == 'FLUSH'
+
+    @staticmethod
+    def _is_store(te: TraceEvent) -> bool:
+        return te['event'] == 'STORE'
+
+    @staticmethod
+    def _is_fence(te: TraceEvent) -> bool:
+        return te['event'] == 'FENCE'
+
+    @staticmethod
+    def _get_range(te: TraceEvent) -> tuple:
+        return (te['address'], te['address'] + te['length'])
+
+    def _get_bugs(self) -> list:
+        return [x for x in self.trace if self._is_bug(x)]
+
     @classmethod
     def _freeze(cls, data):
         '''
@@ -163,85 +183,38 @@ class BugReport:
             addr = (bug['address'], bug['address'] + bug['length'])
             return addr, None
 
-    def _opt_remove_bugs(self) -> list: 
-        from intervaltree import IntervalTree, Interval
-        is_flush = lambda x: x['event'] == 'FLUSH'
-        is_store = lambda x: x['event'] == 'STORE'
-        is_fence = lambda x: x['event'] == 'FENCE'
-        get_range = lambda x: (x['address'], x['address'] + x['length'])
+    def _opt_remove_redt_bugs(self) -> list:
         '''
-            All stores should now be related to some bug.
-
-            Now, we want to remove bugs which have redundant fix locations.
+            We want to remove bugs which have redundant fix locations.
             We do this in the fixer as well, but it costs a lot of extra
             effort.
+
+            The bugs have the location of the modification.
         '''
 
-        bugs = [x for x in self.trace if self._is_bug(x)]
+        bugs = self._get_bugs()
 
-        # First, we should create a global update thing
-        '''
-            - Make an interval tree for stores
-            - Make an interval tree for flushes
-            -
-        '''
-        store_tree = IntervalTree()
-        flush_tree = IntervalTree()
-        for te in self.trace:
-            if is_store(te):
-                addr = get_range(te)
-                store_tree.addi(addr[0], addr[1], te)
-            if is_flush(te):
-                addr = get_range(te)
-                ivts = store_tree.overlap(*addr)
-                store_tree.discardi(*addr)
-                for ivt in ivts:
-                    flush_tree.add(ivt)
-            if is_fence(te):
-                flush_tree.clear()
+        unique_stacks = set()
+        for bug in bugs:
+            unique_stacks.add(self._freeze(bug['stack']))
+        
+        unique_bugs = []
+        for b in bugs:
+            fstack = self._freeze(b['stack'])
+            if fstack in unique_stacks:
+                unique_bugs += [b]
+                unique_stacks.remove(fstack)
 
-        # Maps (type, location) -> bug
-        fix_locs = {}
         new_trace = []
         for tidx, te in enumerate(self.trace):
-            # print(f'opt: {tidx}/{len(self.trace)}')
-            # print(f'loc: {len(fix_locs)}')
-            if te not in bugs or te['event'] != 'ASSERT_PERSISTED':
+            if not self._is_bug(te):
                 new_trace += [te]
-                continue
-
-            addr = (te['address'], te['address'] + te['length'])
-            # Now, we need to reverse through the new trace and find which store
-            # is the source of the bug.
-
-            # What are we going to do here?
-            def handle_overlaps(tree):
-                ivts = tree.overlap(*addr)
-                for ivt in ivts:
-                    key = [ivt.data['event'], ivt.data['stack']]
-                    # only frozen stuff is hashable
-                    fkey = self._freeze(key)
-                    if fkey not in fix_locs:
-                        fix_locs[fkey] = te
-
-            # First, find overlap in the store tree
-            handle_overlaps(store_tree)
-
-            # Second, find overlap in the flush tree
-            handle_overlaps(flush_tree)
-            
-        # Now, add back the fix locations
-        for _, bug in fix_locs.items():
-            new_trace += [bug]
-
-        get_timestamp = lambda x: x['timestamp']
-        new_trace.sort(key=get_timestamp)
+            elif te in unique_bugs:
+                new_trace += [te]
 
         return new_trace
 
-
     def _optimize(self):
-        from intervaltree import IntervalTree, Interval
         ''' 
             Do a few things:
             1. Remove redundant bugs first.
@@ -255,7 +228,7 @@ class BugReport:
         get_timestamp = lambda x: x['timestamp']
 
         # Step 1: Remove bugs from redundant locations
-        new_trace = self._opt_remove_bugs()
+        new_trace = self._opt_remove_redt_bugs()
 
         print(f'(Step 1) Optimized from {len(self.trace)} trace events to {len(new_trace)} trace events.')
         self.trace = new_trace
@@ -335,7 +308,7 @@ class BugReport:
         # embed()
         new_trace.sort(key=get_timestamp)
 
-        print(f'(Step X) Optimized from {len(self.trace)} trace events to {len(new_trace)} trace events.')
+        print(f'(Step 3) Optimized from {len(self.trace)} trace events to {len(new_trace)} trace events.')
         self.trace = new_trace
 
         # Step: Remove redundant fences
@@ -354,7 +327,7 @@ class BugReport:
             new_trace += [te]
             prev_te = te
 
-        print(f'(Step 2) Optimized from {len(self.trace)} trace events to {len(new_trace)} trace events.')
+        print(f'(Step 4) Optimized from {len(self.trace)} trace events to {len(new_trace)} trace events.')
         self.trace = new_trace
         
     
