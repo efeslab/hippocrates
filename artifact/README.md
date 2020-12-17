@@ -148,8 +148,15 @@ There are three main results from Hippocrates:
 We provide a script, `build/verify`, which does the following:
 
 1. Gathers the list of all reproducible bugs listed
+2. Patches PMDK to the correct version for each test
+3. Builds the tests
+4. Runs each test, generating a pmemcheck trace
+5. Fixes each test based on the pmemcheck trace
+6. Reruns each test and confirms that the bugs are no longer present.
 
-This script 
+**Note**: It is expected that the full test suite takes several hours to run.
+
+To run this script, do the following:
 
 ```
 cd build
