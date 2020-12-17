@@ -8,9 +8,11 @@ from argparse import ArgumentParser
 from copy import deepcopy
 from enum import Enum, auto
 from IPython import embed
+from multiprocessing import cpu_count
 from pathlib import Path
 from pprint import pprint
 from progress.bar import ChargingBar as Bar
+from subprocess import DEVNULL, PIPE, STDOUT
 
 import os
 import shlex
@@ -49,6 +51,7 @@ class ToolRunner:
         self.target = target_name
         self.issue = issue
         self.use_trace_aa = False
+        self.do_compile = True
 
         fixed_postfix = '.fixed'
         if tool_type == ToolTypes.PMDK_UNIT_TEST:
@@ -63,15 +66,20 @@ class ToolRunner:
     def set_trace_aa(self, use_trace_aa):
         self.use_trace_aa = use_trace_aa
 
+    def set_compile(self, do_compile):
+        self.do_compile = do_compile
+
     def _run_pmtest(self):
-        return True
+        raise Exception('Not implemented!')
 
     def _run_pmemcheck(self):
-        return True
+        raise Exception('Not implemented!')
 
     def _run_pmdk_unit_test(self):
         '''
-            We get the trace from the log file.
+            Run a PMDK unit test.
+
+            Return the fix summary file on success.
         '''
         # Need to set the PATH so the scripts can find the pmemcheck tool
         new_env = deepcopy(os.environ)
@@ -98,7 +106,8 @@ class ToolRunner:
         runtests_args = shlex.split(f'{runtests_str} -b debug -p force-enable {self.exe_path.parent.name} -s {test_file}')
         # res = subprocess.run(runtests_args, cwd=self.exe_path.parent.parent, 
         #     env=new_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        res = subprocess.run(runtests_args, cwd=self.exe_path.parent.parent, env=new_env)
+        res = subprocess.run(runtests_args, stdout=DEVNULL, stderr=DEVNULL,
+                             cwd=self.exe_path.parent.parent, env=new_env)
         assert (res.returncode != 0), 'Test was successful, meaning no bugs!'
         assert pmemcheck_log.exists(), f'pmemcheck log "{str(pmemcheck_log)}" does not exist!'
 
@@ -113,7 +122,7 @@ class ToolRunner:
         parse_args = shlex.split(parse_arg_str)
         print(f'{parse_arg_str}')
 
-        res = subprocess.run(parse_args)
+        res = subprocess.run(parse_args, stdout=DEVNULL, stderr=DEVNULL)
         res.check_returncode()
         assert trace_file.exists()
 
@@ -131,7 +140,7 @@ class ToolRunner:
 
         # --- Get the required libraries
         ldd_args = shlex.split(f'ldd {str(self.exe_path)}')
-        res = subprocess.run(ldd_args, stdout=subprocess.PIPE)
+        res = subprocess.run(ldd_args, stdout=PIPE, stderr=DEVNULL)
         res.check_returncode()
 
         libs = [ l.strip().split()[0] for l in res.stdout.decode().split('\n') if l]
@@ -162,32 +171,52 @@ class ToolRunner:
         fixer_script = Path(__file__).parent.absolute() / 'apply-fixer'
         if self.exe_fixed_path.exists():
             self.exe_fixed_path.unlink()
+
+        summary_file = f'{self.exe_path.parent.name}_summary.txt'
         
         aa_str = '-heuristic-raising -trace-aa ' if self.use_trace_aa else '-heuristic-raising'
         fixer_arg_str = (f'{str(fixer_script)} {str(self.bc_linked_path)} '
             f'{str(trace_file)} -o {str(self.exe_fixed_path)} --extra-opt-args='
-            f'"-fix-summary-file={self.exe_path.parent.name}_summary.txt {aa_str}"')
+            f'"-fix-summary-file={summary_file} {aa_str}"')
         print(fixer_arg_str)
         fixer_args = shlex.split(fixer_arg_str)
-        res = subprocess.run(fixer_args)
+        res = subprocess.run(fixer_args, stdout=DEVNULL, stderr=DEVNULL)
         res.check_returncode()
         assert self.exe_fixed_path.exists(), 'Fixer did not succeed!'
 
         # 5. Re-run the unit tests, see if we fixed it!
         runtests_str = f'{runtests_str} -b static-debug -p force-enable {self.exe_path.parent.name} -s {test_file}'
         runtests_args = shlex.split(runtests_str)
-        res = subprocess.run(runtests_args, cwd=self.exe_path.parent.parent, env=new_env)
-        # res = subprocess.run(runtests_args, cwd=self.exe_path.parent.parent, 
-        #     env=new_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        res = subprocess.run(runtests_args, stdout=DEVNULL, stderr=DEVNULL, 
+                             cwd=self.exe_path.parent.parent, env=new_env)
         print(runtests_str)
+        print(summary_file)
         assert (res.returncode != 1), 'Test failed!'
 
-        return True
+        summary_path = Path(summary_file)
+        assert summary_path.exists()
+        return summary_path
+
+    def _compile(self):
+        '''
+            Automatically builds/rebuilts the target test case so that it runs
+            properly.
+        '''
+        build_dir = r'${CMAKE_BINARY_DIR}'
+        argstr = f'make -C {build_dir} {self.target} -j {cpu_count()}'
+        print(f'\tCompiling: {argstr}')
+        proc = subprocess.run(shlex.split(argstr), stdout=DEVNULL, stderr=DEVNULL)
+        proc.check_returncode()
 
     def run(self):
-        print(f'{self.exe_path}: {self.tool_type.name}')
+        '''
+            Run the test. Return the summary file path if successful, or None
+        '''
+        # print(f'{self.exe_path}: {self.tool_type.name}')
         # assert self.exe_path.exists(), f'{self.exe_path.name} does not exist!'
         # assert self.bc_path.exists(), f'{self.bc_path.name} was not extracted!'
+        if self.do_compile:
+            self._compile()
 
         if self.tool_type == ToolTypes.PMTEST:
             return self._run_pmtest()
@@ -196,7 +225,7 @@ class ToolRunner:
         elif self.tool_type == ToolTypes.PMDK_UNIT_TEST:
             return self._run_pmdk_unit_test()
         else:
-            return False
+            return None
 
 def get_test_list():
     '''
@@ -227,10 +256,15 @@ def get_test_list():
     return test_list, sorted(target_list), sorted(list(suites))
 
 def run_test(runner):
-    success = runner.run()
-    if not success:
+    '''
+        Given a test runner, run the test!
+
+        Return the summary path, or raise exception
+    '''
+    summary_path = runner.run()
+    if summary_path is None:
         raise Exception(f'{runner.target} failed!')
-    return success
+    return summary_path
 
 def run_all(args, test_list):
     runners = []
@@ -250,6 +284,7 @@ def run_all(args, test_list):
             if args.dry_run:
                 print('\tDry run, skip!')
             else:
+                # Ignore the summary path.
                 run_test(r)
             issues += [r.issue]
             bar.next()
@@ -261,13 +296,17 @@ def run_all(args, test_list):
 
 
 def run_target(args, test_list):
-    for target, exe, bc, tool, suite in test_list:
-        r = ToolRunner(target, exe, bc, tool, suite)
+    for target, exe, bc, tool, suite, issue in test_list:
+        r = ToolRunner(target, exe, bc, tool, suite, issue)
+        r.set_compile(not args.disable_compile)
         if r.target == args.target:
             if args.dry_run:
                 print('\tDry run, skip!')
             else:
-                run_test(r)
+                path = run_test(r)
+                with path.open() as f:
+                    print('Fix summary file contents:\n')
+                    print(f.read())
 
 def main():
     test_list, targets, suites = get_test_list()
@@ -277,10 +316,11 @@ def main():
     parser.add_argument('suite', type=str, choices=suites, default='passing',
                         nargs='?', help='Which set of tests to run')
     parser.add_argument('--target', '-t', type=str, choices=targets, 
-                        help='Which target to run.')
+                        help='Which target to run.\nWhen running in target mode, will automatically dump the fix summary to the command line.')
     parser.add_argument('--use-trace-aa', action='store_true', 
                         help='Use trace alias analysis instead of the full alias analysis')
     parser.add_argument('--dry-run', action='store_true', help='do a dry run')
+    parser.add_argument('--disable-compile', action='store_true')
     args = parser.parse_args()
 
     if args.target is not None:

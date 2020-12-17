@@ -59,6 +59,10 @@ make PMEMCHECK
 
 ```
 make PMDK
+
+cd ./deps/pmdk/lib/pmdk_debug
+extract-bc libpmem.so
+extract-bc libpmemobj.so
 ```
 
 - memcached-pmem
@@ -69,7 +73,7 @@ cd build
 make MEMCACHED_PMEM
 
 cd ./deps/memcached-pmem/bin/
-llvm-link-8 memcached.bc -o memcached.linked.bc ../../pmdk/lib/pmdk_debug/libpmem.so.1.bc
+llvm-link-8 memcached.bc -o memcached.linked.bc ../../pmdk/lib/pmdk_debug/libpmem.so.bc
 ```
 
 - RECIPE (P-CLHT)
@@ -79,7 +83,8 @@ cd build
 make p-clht_example
 
 cd ./deps/RECIPE/P-CLHT/
-llvm-link-8 p-clht_example.bc --override=../../pmdk/lib/pmdk_debug/libpmem.so.bc --override=../../pmdk/lib/pmdk_debug/libpmemobj.so.bc -o p-clht_example.linked.bc
+llvm-link-8 p-clht_example.bc --override=../../pmdk/lib/pmdk_debug/libpmem.so.bc \
+        --override=../../pmdk/lib/pmdk_debug/libpmemobj.so.bc -o p-clht_example.linked.bc
 ```
 
 - Redis:
@@ -90,7 +95,8 @@ make REDIS
 
 cd ../deps/redis/src
 extract-bc redis-server
-llvm-link-8 redis-server.bc --override=../../../build/deps/pmdk/lib/pmdk_debug/libpmem.so.bc --override=../../../build/deps/pmdk/lib/pmdk_debug/libpmemobj.so.bc -o redis-server.linked.bc
+llvm-link-8 redis-server.bc --override=../../../build/deps/pmdk/lib/pmdk_debug/libpmem.so.bc \
+        --override=../../../build/deps/pmdk/lib/pmdk_debug/libpmemobj.so.bc -o redis-server.linked.bc
 
 # This creates the baseline for the redis experiment
 cd -
@@ -103,7 +109,8 @@ The following will be run in two terminals (to collect the trace):
 ```
 cd ./deps/redis/src/
 rm /mnt/pmem/redis.pmem
-~/workspace/pm-bug-fixing/build/deps/valgrind-pmem/bin/valgrind --tool=pmemcheck --log-file=redis.log ./redis-server-noflush ../../redis-pmem.conf
+~/workspace/pm-bug-fixing/build/deps/valgrind-pmem/bin/valgrind --tool=pmemcheck \
+        --log-file=redis.log ./redis-server-noflush ../../redis-pmem.conf
 ```
 
 - In the second terminal:
@@ -141,8 +148,15 @@ There are three main results from Hippocrates:
 We provide a script, `build/verify`, which does the following:
 
 1. Gathers the list of all reproducible bugs listed
+2. Patches PMDK to the correct version for each test
+3. Builds the tests
+4. Runs each test, generating a pmemcheck trace
+5. Fixes each test based on the pmemcheck trace
+6. Reruns each test and confirms that the bugs are no longer present.
 
-This script 
+**Note**: It is expected that the full test suite takes several hours to run.
+
+To run this script, do the following:
 
 ```
 cd build
@@ -156,6 +170,59 @@ The output should look like:
 11 issues resolved:
 [447, 452, 458, 459, 460, 461, 585, 940, 942, 943, 945]
 ```
+
+If you instead want to run each issue individually, run the following:
+```
+# Issue 447
+./verify --target obj_toid_TEST0_8bbb0af9c
+
+# Issue 452
+./verify --target obj_constructor_TEST0_8bbb0af9c
+./verify --target obj_constructor_TEST2_8bbb0af9c
+
+# Issue 458
+./verify --target pmemspoil_TEST0_8bbb0af9c
+
+# Issue 459
+./verify --target pmem_memcpy_TEST0_8bbb0af9c
+./verify --target pmem_memcpy_TEST1_8bbb0af9c
+./verify --target pmem_memcpy_TEST2_8bbb0af9c
+./verify --target pmem_memcpy_TEST3_8bbb0af9c
+
+# Issue 460
+./verify --target pmem_memmove_TEST0_0fd509d73
+./verify --target pmem_memmove_TEST1_0fd509d73
+./verify --target pmem_memmove_TEST2_0fd509d73
+./verify --target pmem_memmove_TEST3_0fd509d73
+./verify --target pmem_memmove_TEST4_0fd509d73
+./verify --target pmem_memmove_TEST5_0fd509d73
+./verify --target pmem_memmove_TEST6_0fd509d73
+./verify --target pmem_memmove_TEST7_0fd509d73
+./verify --target pmem_memmove_TEST8_0fd509d73
+./verify --target pmem_memmove_TEST9_0fd509d73
+./verify --target pmem_memmove_TEST10_0fd509d73
+./verify --target pmem_memmove_TEST11_0fd509d73
+
+# Issue 461
+./verify --target pmem_memset_TEST1_0fd509d73
+
+# Issue 585
+./verify --target rpmemd_db_TEST0_60e24d2
+
+# Issue 940
+./verify --target obj_first_next_TEST0_e71dfa41b
+./verify --target obj_first_next_TEST1_e71dfa41b
+
+# Issue 942
+./verify --target obj_mem_TEST0_e71dfa41b
+
+# Issue 943
+./verify --target obj_memops_TEST0_e71dfa41b
+
+# Issue 945
+./verify --target pmem_memset_TEST0_e71dfa41b
+```
+
 
 #### RECIPE bugs
 
@@ -198,9 +265,19 @@ Prepare to write.
 Report written to recipe_fixed.trace
 ```
 
-#### memcached-pm bugs
+#### memcached-pmem bugs
 
-To reproduce the memcached-pm bugs, do the following 
+To automate the below process, do the following:
+```
+cd build
+./verify-memcached --help
+./verify-memcached 
+```
+
+The `verify-memcached` can also run over the prebuilt files present in `artifact/prebuilt`
+if you run using the `--use-prebuilt` flag.
+
+To reproduce the memcached-pm bugs manually, do the following:
 
 1. First, find the bugs and generate a pmemcheck trace:
 

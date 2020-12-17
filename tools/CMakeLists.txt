@@ -18,3 +18,6 @@ configure_file(parse-trace "${CMAKE_BINARY_DIR}/parse-trace")
 
 install(PROGRAMS verify DESTINATION bin)
 configure_file(verify "${CMAKE_BINARY_DIR}/verify")
+
+install(PROGRAMS verify-memcached DESTINATION bin)
+configure_file(verify-memcached "${CMAKE_BINARY_DIR}/verify-memcached")
