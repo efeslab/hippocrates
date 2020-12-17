@@ -59,6 +59,10 @@ make PMEMCHECK
 
 ```
 make PMDK
+
+cd ./deps/pmdk/lib/pmdk_debug
+extract-bc libpmem.so
+extract-bc libpmemobj.so
 ```
 
 - memcached-pmem
@@ -69,7 +73,7 @@ cd build
 make MEMCACHED_PMEM
 
 cd ./deps/memcached-pmem/bin/
-llvm-link-8 memcached.bc -o memcached.linked.bc ../../pmdk/lib/pmdk_debug/libpmem.so.1.bc
+llvm-link-8 memcached.bc -o memcached.linked.bc ../../pmdk/lib/pmdk_debug/libpmem.so.bc
 ```
 
 - RECIPE (P-CLHT)
@@ -79,7 +83,8 @@ cd build
 make p-clht_example
 
 cd ./deps/RECIPE/P-CLHT/
-llvm-link-8 p-clht_example.bc --override=../../pmdk/lib/pmdk_debug/libpmem.so.bc --override=../../pmdk/lib/pmdk_debug/libpmemobj.so.bc -o p-clht_example.linked.bc
+llvm-link-8 p-clht_example.bc --override=../../pmdk/lib/pmdk_debug/libpmem.so.bc \
+        --override=../../pmdk/lib/pmdk_debug/libpmemobj.so.bc -o p-clht_example.linked.bc
 ```
 
 - Redis:
@@ -90,7 +95,8 @@ make REDIS
 
 cd ../deps/redis/src
 extract-bc redis-server
-llvm-link-8 redis-server.bc --override=../../../build/deps/pmdk/lib/pmdk_debug/libpmem.so.bc --override=../../../build/deps/pmdk/lib/pmdk_debug/libpmemobj.so.bc -o redis-server.linked.bc
+llvm-link-8 redis-server.bc --override=../../../build/deps/pmdk/lib/pmdk_debug/libpmem.so.bc \
+        --override=../../../build/deps/pmdk/lib/pmdk_debug/libpmemobj.so.bc -o redis-server.linked.bc
 
 # This creates the baseline for the redis experiment
 cd -
@@ -103,7 +109,8 @@ The following will be run in two terminals (to collect the trace):
 ```
 cd ./deps/redis/src/
 rm /mnt/pmem/redis.pmem
-~/workspace/pm-bug-fixing/build/deps/valgrind-pmem/bin/valgrind --tool=pmemcheck --log-file=redis.log ./redis-server-noflush ../../redis-pmem.conf
+~/workspace/pm-bug-fixing/build/deps/valgrind-pmem/bin/valgrind --tool=pmemcheck \
+        --log-file=redis.log ./redis-server-noflush ../../redis-pmem.conf
 ```
 
 - In the second terminal:
@@ -198,9 +205,19 @@ Prepare to write.
 Report written to recipe_fixed.trace
 ```
 
-#### memcached-pm bugs
+#### memcached-pmem bugs
 
-To reproduce the memcached-pm bugs, do the following 
+To automate the below process, do the following:
+```
+cd build
+./verify-memcached --help
+./verify-memcached 
+```
+
+The `verify-memcached` can also run over the prebuilt files present in `artifact/prebuilt`
+if you run using the `--use-prebuilt` flag.
+
+To reproduce the memcached-pm bugs manually, do the following:
 
 1. First, find the bugs and generate a pmemcheck trace:
 

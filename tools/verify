@@ -180,7 +180,7 @@ class ToolRunner:
             f'"-fix-summary-file={summary_file} {aa_str}"')
         print(fixer_arg_str)
         fixer_args = shlex.split(fixer_arg_str)
-        res = subprocess.run(fixer_args)#, stdout=DEVNULL, stderr=DEVNULL)
+        res = subprocess.run(fixer_args, stdout=DEVNULL, stderr=DEVNULL)
         res.check_returncode()
         assert self.exe_fixed_path.exists(), 'Fixer did not succeed!'
 

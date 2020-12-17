@@ -20,7 +20,4 @@ install(PROGRAMS verify DESTINATION bin)
 configure_file(verify "${CMAKE_BINARY_DIR}/verify")
 
 install(PROGRAMS verify-memcached DESTINATION bin)
-configure_file(verify "${CMAKE_BINARY_DIR}/verify-memcached")
-
-install(PROGRAMS verify-recipe DESTINATION bin)
-configure_file(verify "${CMAKE_BINARY_DIR}/verify-recipe")
+configure_file(verify-memcached "${CMAKE_BINARY_DIR}/verify-memcached")

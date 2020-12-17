@@ -1,0 +1,205 @@
+#! /usr/bin/env python3
+'''
+    This script fully automates running tests, applying the fixer, and 
+    validating that the fixed binaries no longer report bugs.
+'''
+#! /usr/bin/env python3
+
+from argparse import ArgumentParser
+from copy import deepcopy
+from IPython import embed
+from pathlib import Path
+from progress.bar import ChargingBar as Bar
+from tempfile import TemporaryDirectory
+from subprocess import DEVNULL, PIPE, STDOUT
+
+import logging
+import time
+import os
+import pandas as pd
+import psutil
+import re
+import shlex
+import socket
+import subprocess
+import sys
+import yaml
+
+PMCHK_PATH = Path(r'${PMCHK_BIN_DIR}/valgrind')
+assert PMCHK_PATH.exists(), f'{str(PMCHK_PATH)} does not exist!'
+
+PMDK_PATH = Path(r'${PMDK_LIB_DIR}/pmdk_debug')
+assert PMDK_PATH.exists(), f'Please build PMDK!'
+
+ENV = deepcopy(os.environ)
+ENV['LD_LIBRARY_PATH'] = str(PMDK_PATH.absolute())
+
+class MemcachedServer:
+
+    PMEM_FILE = Path('/mnt/pmem/pool')
+    CONFIG_STR = f'-m 0 -U 0 -t 1 -A -o pslab_file={str(PMEM_FILE)},pslab_size=8,pslab_force'
+    PORT = 11211
+
+    def __init__(self, exe_path):
+        assert isinstance(exe_path, Path)
+        assert exe_path.exists(), f'{str(exe_path)} does not exist!'
+
+        self.exe_path = exe_path
+
+    def __del__(self):
+        if hasattr(self, 'proc'):
+            self.proc.terminate()
+
+    def start(self):
+        # First, remove the old pmfile if it exists
+        if self.PMEM_FILE.exists():
+            self.PMEM_FILE.unlink()
+        
+        self.log_file = self.exe_path.parent / 'memcached.log'
+        # Next, assemble the server arguments
+        args = shlex.split(f'{str(PMCHK_PATH)} --tool=pmemcheck --log-file={str(self.log_file)} {str(self.exe_path)} {self.CONFIG_STR}')
+        print(args)
+        self.proc = subprocess.Popen(args, env=ENV, stdout=DEVNULL, stderr=DEVNULL)
+
+        # Make sure it's up and running
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        while True:
+            try:
+                s.connect(('localhost', self.PORT))
+                s.sendall('PING\r\n'.encode())
+                resp = s.recv(1024).decode()
+                assert resp == 'ERROR\r\n', f'"{resp}" is invalid!'
+                s.close()
+                break
+            except ConnectionRefusedError:
+                time.sleep(0.5)
+        
+    
+    def check_shutdown(self):
+        '''
+            Return the log file from pmemcheck
+        '''
+        self.proc.poll()
+        assert self.proc.returncode is not None, 'was not shutdown!'
+        return self.log_file
+
+
+class ClientProc:
+
+    def __init__(self, port):
+        assert isinstance(port, int), f'{port} is not a port!'
+        self.port = port
+
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket.connect(('localhost', self.port))
+
+    def __del__(self):
+        if self.socket:
+            self.socket.close()   
+            
+    def _send_line(self, line):
+        self.socket.sendall(f'{line}\r\n'.encode())
+
+    def _check_recv(self):
+        resp = self.socket.recv(1024).decode()
+        assert resp != 'ERROR\r\n', f'"{line}" is invalid!'
+
+    def run(self, n=1):
+        for i in range(n):
+            key = f'key_{i}'
+            value = f'val_{i}'
+            self._send_line(f'set {key} 1 0 {len(value)}')
+            self._send_line(f'{value}')
+            self._check_recv()
+        
+        self._send_line('shutdown')
+        self._check_recv()
+
+
+
+def get_trace(exe_path):
+    '''
+        Runs a memcached server and generates a trace.
+    '''
+    mcd = MemcachedServer(exe_path)
+    mcd.start()
+
+    cli = ClientProc(mcd.PORT)
+    cli.run(1)
+    
+    pmemcheck_log = mcd.check_shutdown()
+
+    # Now, parse the trace.
+    assert pmemcheck_log.exists(), 'Log not created!'
+    parse_script = Path(__file__).parent.absolute() / 'parse-trace'
+    assert parse_script.exists(), 'parser not available!'
+    trace_file = pmemcheck_log.parent / f'memcached.trace'
+    parse_arg_str = f'{str(parse_script)} pmemcheck {str(pmemcheck_log)} -o {str(trace_file)}'
+    parse_args = shlex.split(parse_arg_str)
+    print(f'{parse_arg_str}')
+
+    res = subprocess.run(parse_args, stdout=DEVNULL, stderr=DEVNULL)
+    res.check_returncode()
+    assert trace_file.exists()
+
+    return trace_file
+
+def apply_trace(bitcode_path, exe_path, trace_file):
+    assert bitcode_path.exists(), f'Need to build {str(bitcode_path)}!'
+
+    fixer_script = Path(__file__).parent.absolute() / 'apply-fixer'
+    if exe_path.exists():
+        exe_path.unlink()
+
+    summary_file = exe_path.parent / 'memcached_summary.txt'
+    
+    aa_str = '-heuristic-raising -trace-aa '
+    fixer_arg_str = (f'{str(fixer_script)} {str(bitcode_path)} '
+        f'{str(trace_file)} -o {str(exe_path)} --extra-opt-args='
+        f'"-fix-summary-file={summary_file} {aa_str}"')
+    fixer_args = shlex.split(fixer_arg_str)
+    res = subprocess.run(fixer_args)#, stdout=DEVNULL, stderr=DEVNULL)
+    res.check_returncode()
+    assert exe_path.exists(), 'Fixer did not succeed!'
+
+    return exe_path
+
+
+def run(args):
+    '''
+        Find and fix bugs in memcached!
+
+        1. First, run the original memcached and find the bugs.
+    '''
+    # Trace
+    trace_path = get_trace(args.memcached_dir / 'memcached')
+
+    # Fix 
+    fixed_exe = apply_trace(args.memcached_dir / 'memcached.linked.bc', 
+            args.memcached_dir / 'memcached-fixed', trace_path)
+
+    # Trace again
+    fixed_trace = get_trace(fixed_exe)
+
+    # Check for lack of bugs
+    with fixed_trace.open() as f:
+        assert 'is_bug: true' not in f.read()
+    print('Fixed!')
+    
+
+def main():
+    parser = ArgumentParser('Automatically find and fix bugs in memcached-pm.')
+    parser.add_argument('--use-prebuilt', '-p', action='store_true', help='Use the pre-built memcached')
+    parser.add_argument('--memcached-dir', '-d', type=Path, help='Where the memcached binary is.',
+                        default=r'${CMAKE_BINARY_DIR}/deps/memcached-pmem/bin')
+
+    args = parser.parse_args()
+
+    if args.use_prebuilt:
+        print('Using prebuilt!')
+        args.memcached_dir = Path(r'${CMAKE_SOURCE_DIR}/artifact/prebuilt')
+
+    run(args)
+
+if __name__ == '__main__':
+    main()
