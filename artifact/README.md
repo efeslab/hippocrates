@@ -171,6 +171,59 @@ The output should look like:
 [447, 452, 458, 459, 460, 461, 585, 940, 942, 943, 945]
 ```
 
+If you instead want to run each issue individually, run the following:
+```
+# Issue 447
+./verify --target obj_toid_TEST0_8bbb0af9c
+
+# Issue 452
+./verify --target obj_constructor_TEST0_8bbb0af9c
+./verify --target obj_constructor_TEST2_8bbb0af9c
+
+# Issue 458
+./verify --target pmemspoil_TEST0_8bbb0af9c
+
+# Issue 459
+./verify --target pmem_memcpy_TEST0_8bbb0af9c
+./verify --target pmem_memcpy_TEST1_8bbb0af9c
+./verify --target pmem_memcpy_TEST2_8bbb0af9c
+./verify --target pmem_memcpy_TEST3_8bbb0af9c
+
+# Issue 460
+./verify --target pmem_memmove_TEST0_0fd509d73
+./verify --target pmem_memmove_TEST1_0fd509d73
+./verify --target pmem_memmove_TEST2_0fd509d73
+./verify --target pmem_memmove_TEST3_0fd509d73
+./verify --target pmem_memmove_TEST4_0fd509d73
+./verify --target pmem_memmove_TEST5_0fd509d73
+./verify --target pmem_memmove_TEST6_0fd509d73
+./verify --target pmem_memmove_TEST7_0fd509d73
+./verify --target pmem_memmove_TEST8_0fd509d73
+./verify --target pmem_memmove_TEST9_0fd509d73
+./verify --target pmem_memmove_TEST10_0fd509d73
+./verify --target pmem_memmove_TEST11_0fd509d73
+
+# Issue 461
+./verify --target pmem_memset_TEST1_0fd509d73
+
+# Issue 585
+./verify --target rpmemd_db_TEST0_60e24d2
+
+# Issue 940
+./verify --target obj_first_next_TEST0_e71dfa41b
+./verify --target obj_first_next_TEST1_e71dfa41b
+
+# Issue 942
+./verify --target obj_mem_TEST0_e71dfa41b
+
+# Issue 943
+./verify --target obj_memops_TEST0_e71dfa41b
+
+# Issue 945
+./verify --target pmem_memset_TEST0_e71dfa41b
+```
+
+
 #### RECIPE bugs
 
 To reproduce the RECIPE bugs, do the following:
