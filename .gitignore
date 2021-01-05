@@ -39,3 +39,6 @@ build/
 # VSCode
 .vscode/
 *.code-workspace
+
+# Force add results
+results/*.csv
