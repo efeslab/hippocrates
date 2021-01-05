@@ -32,11 +32,37 @@ This step is only needed if setting up Hippocrates on a new machine.
 ./install-deps.sh
 ```
 
-#### Compiling Hippocrates
+#### Setting up the repository (once)
 
+After cloning the repository, you need to set up the submodules, which Hippocrates
+depends on for both the LLVM pass and for running tests.
 
 ```
-make PMFIXER 
+git clone https://github.com/efeslab/hippocrates.git
+cd hippocrates
+
+git submodule init
+git submodule update --recursive
+```
+
+If you need to re-initialize the submodules for any reason, try:
+
+```
+git submodule deinit --all -f
+git submodule init
+git submodule update --recursive
+```
+
+#### Compiling Hippocrates
+
+Starting in the root of the repository:
+
+```
+mkdir build
+cd build
+cmake ..
+
+make PMFIXER -j$(nproc)
 make PMINTRINSICS
 ```
 
