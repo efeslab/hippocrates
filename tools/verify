@@ -140,12 +140,6 @@ class ToolRunner:
         # -- We DON'T extract here for build reasons.
         shared_objects = [f for f in self.exe_path.parent.iterdir() if '.so' in f.name and '.bc' not in f.name]
         shared_bc = [f.parent / (f.name + '.bc') for f in shared_objects]
-        # for so, bc in zip(shared_objects, shared_bc):
-        #     extract_args = shlex.split(f'extract-bc {so} -o {bc}')
-        #     res = subprocess.run(extract_args)
-        #     res.check_returncode()
-
-        # embed()
 
         # --- Get the required libraries
         ldd_args = shlex.split(f'ldd {str(self.exe_path)}')
@@ -177,11 +171,11 @@ class ToolRunner:
         res.check_returncode()
 
         # 4. Run the fixer script
+        summary_file = f'{self.exe_path.parent.name}_summary.txt'
+
         fixer_script = Path(__file__).parent.absolute() / 'apply-fixer'
         if self.exe_fixed_path.exists():
             self.exe_fixed_path.unlink()
-
-        summary_file = f'{self.exe_path.parent.name}_summary.txt'
         
         aa_str = '-heuristic-raising -trace-aa ' if self.use_trace_aa else '-heuristic-raising'
         fixer_arg_str = (f'{str(fixer_script)} {str(self.bc_linked_path)} '
@@ -200,7 +194,17 @@ class ToolRunner:
                              env=new_env, **subproc_kwargs)
         print(runtests_str)
         print(summary_file)
-        assert (res.returncode != 1), 'Test failed after applying the fixer!'
+        if res.returncode != 1:
+            '''
+            This doesn't necessarily mean there's still bugs, but that some other
+            weird PMDK issue has occured.
+            '''
+            if self.verbose:
+                print('Test failed after applying the fixer! Checking pmemcheck log...')
+            
+            with pmemcheck_log.open() as f:
+                last_line = f.readlines()[-1]
+                assert 'ERROR SUMMARY: 0 errors' in last_line, 'Still has bugs!'
 
         summary_path = Path(summary_file)
         assert summary_path.exists()
