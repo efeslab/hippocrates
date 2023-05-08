@@ -1,3 +1,4 @@
 #! /usr/bin/sudo /bin/bash
 
-apt install -y libevent-dev llvm-8-dev llvm-8 llvm-8-doc python3
+apt install -y python3 python3-pip build-essential cmake
+apt install -y libevent-dev libtbb-dev libjemalloc-dev libboost-dev mpi-default-dev
