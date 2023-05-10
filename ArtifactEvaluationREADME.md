@@ -4,7 +4,7 @@ This repository contains the artifact for our ASPLOS '21 paper on Hippocrates,
 an automated tool for fixing PM durability bugs.
 
 (__Note: this README may be out of date with the current release of Hippocrates, but
-should function on the version provided in the [official artifact](https://cknow.io/c/lib/19e2593ed9df4ad5/).__)
+should function on the version provided in the [official artifact](https://cknow.io/c/lib/19e2593ed9df4ad5/) and should correspond to the `artifact-evaluation` branch on GitHub.__)
 
 # Artifact Evaluation
 

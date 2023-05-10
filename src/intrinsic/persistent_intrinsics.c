@@ -142,14 +142,14 @@ char *PMFIXER(strncpy)(char *dest, const char *src, size_t n) {
         // int val = (int)(src[i]);
         // _mm_stream_si32(ptr, val);
         // VALGRIND_PMC_DO_FLUSH(ptr, sizeof(*ptr));
-    }     
+    }
     for ( ; i < n; i++) {
         dest[i] = '\0';
         // int *ptr = (int*)(dest + i);
         // int val = (int)('\0');
         // _mm_stream_si32(ptr, val);
         // VALGRIND_PMC_DO_FLUSH(ptr, sizeof(*ptr));
-    }  
+    }
     #else
     strncpy(dest, src, n);
     #endif
@@ -157,7 +157,7 @@ char *PMFIXER(strncpy)(char *dest, const char *src, size_t n) {
     flush_loop(dest, n);
 
     // _mm_sfence();
-    
+
     return dest;
 }
 

@@ -33,5 +33,5 @@ add_custom_command(TARGET PMINTRINSICS
                                -o $<TARGET_FILE:PMINTRINSICS>.bc
                    COMMENT "\textract-bc PMINTRINSICS")
 
-set(PMINTRINSICS_BITCODE 
+set(PMINTRINSICS_BITCODE
     ${CMAKE_CURRENT_BINARY_DIR}/libPMINTRINSICS.so.bc CACHE INTERNAL "")
