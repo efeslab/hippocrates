@@ -3,32 +3,34 @@
 This repository contains the artifact for our ASPLOS '21 paper on Hippocrates,
 an automated tool for fixing PM durability bugs.
 
-### ASPLOS '21 Artifact Evaluation
+(__Note: this README may be out of date with the current release of Hippocrates, but
+should function on the version provided in the [official artifact](https://cknow.io/c/lib/19e2593ed9df4ad5/).__)
 
-The [Artifact Evaluation README](./ArtifactEvaluationREADME.md) contains the README
-from the original ASPLOS'21 artifact evaluation process.
-That README will remain relatively static for legacy purposes, while we will keep
-the following README more up-to-date.
+# Artifact Evaluation
 
-If you are curious:
-- The artifact evaluation results are presented [here](https://cknow.io/c/lib/19e2593ed9df4ad5/).
-- The ASPLOS'21 Artifact Evaluation page is available at [ctuning.org](https://ctuning.org/ae/asplos2021.html).
+The remainder of this document
+describes how to run Hippocrates and reproduce the key results from our paper.
 
 ### Requirements
 
-This has been tested on a server configured with Ubuntu 20.04.1 LTS on a CPU
-that supports the `clwb` instruction
-(to check if your CPU has this feature enabled, run `lscpu` and look for the
-`clwb` flag, e.g. `lscpu | grep clwb`).
+This has been tested on a server configured with Ubuntu 20.04.1 LTS with CLWB CPU support.
 
-Other requirements can be installed via the `./install-deps.sh` script.
-Python requirements can be found in `requirements.txt`.
+Other requirements can be installed via the `./install-deps.sh` script. Python requirements
+can be found in `requirements.txt`.
 
+### Resources
 
-## Compilation
+**Server login**: For the artifact evaluators, we will be providing access to one of our servers, which has
+real NVDIMMs installed on it (this is required for our performance evaluation).
+We will provide the login procedure on the artifact submission site.
 
-We now provide an overview of how to build and run Hippocrates.
-We provide pre-built binaries in `artifact/prebuilt` as an alternative to
+## Artifacts Available Criteria
+
+Hippocrates is open-source and is available at https://github.com/efeslab/hippocrates.git.
+
+## Artifacts Functional Criteria
+
+We now provide an overview of how to build and run Hippocrates. We provide pre-built binaries in `artifact/prebuilt` as an alternative to
 the following compilation instructions.
 
 ### Building Hippocrates
@@ -189,7 +191,7 @@ llvm-link-8 redis-server.bc --override=$REPO_ROOT/build/deps/pmdk/lib/pmdk_debug
         --override=$REPO_ROOT/build/deps/pmdk/lib/pmdk_debug/libpmemobj.so.bc -o redis-server.linked.bc
 ```
 
-## Evaluation
+## Results Reproduced
 
 There are three main results from Hippocrates:
 

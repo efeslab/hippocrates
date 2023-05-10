@@ -26,7 +26,13 @@ void PMFIXER(valgrind_flush)(uint8_t *ptr, size_t n) {
 
 void __always_inline flush_loop(void *p, size_t n) {
     for (size_t i = 0; i < n; i += 64) {
+#ifdef CLWB
         _mm_clwb(p + i);
+#elif CLFLUSH_OPT
+        _mm_clflushopt(p + i);
+#elif CLFLUSH
+        _mm_clflush(p + i);
+#endif
     }
 }
 
@@ -162,23 +168,37 @@ char *PMFIXER(strncpy)(char *dest, const char *src, size_t n) {
  * Memory functions.
  */
 
-void PMFIXER(memset_dumb)(uint8_t *d, uint8_t c, size_t n, bool _unused) {
+void PMFIXER(memset_naive)(uint8_t *d, uint8_t c, size_t n, bool _unused) {
     for (size_t i = 0; i < n; ++i) {
         d[i] = c;
+#ifdef CLWB
         _mm_clwb(&d[i]);
         _mm_sfence();
+#elif CLFLUSH_OPT
+        _mm_clflushopt(&d[i]);
+        _mm_sfence();
+#elif CLFLUSH
+        _mm_clflush(&d[i]);
+#endif
     }
 }
 
-void PMFIXER(memcpy_dumb)(uint8_t *d, uint8_t *s, size_t n, bool _unused) {
+void PMFIXER(memcpy_naive)(uint8_t *d, uint8_t *s, size_t n, bool _unused) {
     for (size_t i = 0; i < n; ++i) {
         d[i] = s[i];
+#ifdef CLWB
         _mm_clwb(&d[i]);
         _mm_sfence();
+#elif CLFLUSH_OPT
+        _mm_clflushopt(&d[i]);
+        _mm_sfence();
+#elif CLFLUSH
+        _mm_clflush(&d[i]);
+#endif
     }
 }
 
-void PMFIXER(memmove_dumb)(uint8_t *d, uint8_t *s, size_t n, bool _unused) {
+void PMFIXER(memmove_naive)(uint8_t *d, uint8_t *s, size_t n, bool _unused) {
     // https://opensource.apple.com/source/network_cmds/network_cmds-481.20.1/unbound/compat/memmove.c.auto.html
     uint8_t* from = (uint8_t*) s;
 	uint8_t* to = (uint8_t*) d;
@@ -195,8 +215,15 @@ void PMFIXER(memmove_dumb)(uint8_t *d, uint8_t *s, size_t n, bool _unused) {
 		/* copy in reverse, to avoid overwriting from */
 		for(int64_t i = n-1; i >= 0; i--) {
             to[i] = from[i];
+#ifdef CLWB
             _mm_clwb(&to[i]);
             _mm_sfence();
+#elif CLFLUSH_OPT
+            _mm_clflushopt(&to[i]);
+            _mm_sfence();
+#elif CLFLUSH
+            _mm_clflush(&to[i]);
+#endif
         }
         return;
 	}
@@ -208,32 +235,53 @@ void PMFIXER(memmove_dumb)(uint8_t *d, uint8_t *s, size_t n, bool _unused) {
 		/* copy forwards, to avoid overwriting from */
 		for (int64_t i=0; i < n; i++) {
             to[i] = from[i];
+#ifdef CLWB
             _mm_clwb(&to[i]);
             _mm_sfence();
+#elif CLFLUSH_OPT
+            _mm_clflushopt(&to[i]);
+            _mm_sfence();
+#elif CLFLUSH
+            _mm_clflush(&to[i]);
+#endif
         }
         return;
 	}
 
-	PMFIXER(memcpy_dumb)(d, s, n, _unused);
+	PMFIXER(memcpy_naive)(d, s, n, _unused);
 }
 
 /**
  * String functions.
  */
 
-char *PMFIXER(strncpy_dumb)(char *dest, const char *src, size_t n) {
+char *PMFIXER(strncpy_naive)(char *dest, const char *src, size_t n) {
     size_t i;
 
     for (i = 0; i < n && src[i] != '\0'; i++) {
         dest[i] = src[i];
+#ifdef CLWB
         _mm_clwb(&dest[i]);
         _mm_sfence();
-    }     
+#elif CLFLUSH_OPT
+        _mm_clflushopt(&dest[i]);
+        _mm_sfence();
+#elif CLFLUSH
+        _mm_clflush(&dest[i]);
+#endif
+    }
     for ( ; i < n; i++) {
         dest[i] = '\0';
+#ifdef CLWB
         _mm_clwb(&dest[i]);
         _mm_sfence();
-    } 
-    
+#elif CLFLUSH_OPT
+        _mm_clflushopt(&dest[i]);
+        _mm_sfence();
+#elif CLFLUSH
+        _mm_clflush(&dest[i]);
+#endif
+    }
+
     return dest;
 }

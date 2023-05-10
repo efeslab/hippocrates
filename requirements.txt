@@ -1,6 +1,7 @@
-pandas
-matplotlib
+IPython
 intervaltree
+matplotlib
+pandas
 progress
 psutil
-IPython
+wllvm
